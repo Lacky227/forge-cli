@@ -2,22 +2,36 @@
 
 Cross-platform CLI for interactively designing and generating application project architectures.
 
-Run something like `forge new`, answer clear questions about what you want to build, and get a coherent, runnable project structured from those choices.
+**Status:** foundation spike — interactive `forge new` builds a normalized `ProjectDefinition`. Project generation is not implemented yet.
 
-**Status:** documentation and project conventions only. Application implementation has not started.
+## Quick start
+
+```bash
+uv sync
+uv run forge new
+uv run forge new my-api
+uv run pytest
+```
 
 ## Documentation
 
 | Document | Contents |
 |----------|----------|
 | [docs/product.md](docs/product.md) | Product definition, principles, scope, non-goals |
-| [docs/architecture.md](docs/architecture.md) | Architecture layers, project definition, presets, extensibility |
-| [docs/cli.md](docs/cli.md) | Interactive CLI experience |
+| [docs/architecture.md](docs/architecture.md) | Architecture, `ProjectDefinition`, package layout |
+| [docs/cli.md](docs/cli.md) | Interactive CLI, commands, prompt stack |
 | [docs/generation.md](docs/generation.md) | Quality requirements for generated projects |
-| [docs/development.md](docs/development.md) | Development workflow and technology direction |
+| [docs/development.md](docs/development.md) | Toolchain and development workflow |
 
-Cursor agent rules: [`.cursor/rules/`](.cursor/rules/).
+## Layout
+
+```text
+src/forge/cli/    # Typer + questionary + Rich
+src/forge/core/   # ProjectDefinition (no UI deps)
+tests/
+docs/
+```
 
 ## First ecosystem
 
-Python — FastAPI, Django, and potentially Flask — with a core designed so other languages and frameworks can be added later without rewriting Forge.
+Python — FastAPI, Django, Flask (and CLI/worker frameworks in the adaptive catalog). Core types stay open to additional languages later.

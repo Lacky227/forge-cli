@@ -1,63 +1,100 @@
 # CLI experience
 
-Forge’s interactive CLI should feel modern, clear, and pleasant. Presentation may use libraries such as Rich; the exact UI toolkit is an implementation choice.
+Forge’s interactive CLI should feel modern, clear, and pleasant.
 
-## Example flow
+## Chosen stack (foundation spike)
 
-```text
-╭──────────────────────────────────────╮
-│             ⚒ FORGE                  │
-│     Build your architecture.         │
-╰──────────────────────────────────────╯
+| Concern | Choice | Role |
+|---------|--------|------|
+| Commands / args | **Typer** | Subcommands, help, version, packaging entrypoint |
+| Presentation | **Rich** | Banner, definition panel, readable output |
+| Interactive prompts | **questionary** | Cross-platform select/confirm/text on prompt_toolkit |
+| Domain model | **Pydantic** | `ProjectDefinition` validation (in `forge.core`, not the CLI) |
 
-What are you building?
+**Why this mix:** Typer alone does not provide polished arrow-key menus. Rich alone is weak for structured selects. questionary (prompt_toolkit) gives keyboard navigation and solid Windows/macOS/Linux support while staying easy to style alongside Rich. InquirerPy was considered; questionary was chosen for a smaller, mature API that still meets the UX bar. Jinja2 and PyYAML are **not** dependencies yet (no templates or config-file mode in this spike).
 
-❯ REST API
-  Web App
-  CLI
-  Worker
-  Microservice
-  Library
+## Current commands
+
+```bash
+uv sync
+uv run forge --help
+uv run forge --version
+uv run forge new
+uv run forge new my-api
 ```
 
-Subsequent questions depend on prior answers. Only ask what changes the generated project.
+| Command | Behavior |
+|---------|----------|
+| `forge new` | Interactive interview; prints a validated project definition |
+| `forge new NAME` | Same flow; skips the name prompt |
+| `forge --version` / `-V` | Print version |
+
+Generation is **not** implemented. The command completes after showing the definition.
+
+## Example interactive flow
+
+```text
+╭────────────────────────────────╮
+│    ⚒  FORGE                    │
+│    Build your architecture.    │
+╰────────────────────────────────╯
+
+What are you building?
+❯ REST API
+  CLI Application
+  Worker
+
+Language
+❯ Python
+
+Framework
+❯ FastAPI
+  Django
+  Flask
+
+Architecture
+❯ Simple
+  Modular Monolith
+  Clean Architecture
+
+Include a database? (Y/n)
+Database engine
+❯ PostgreSQL
+  SQLite
+
+Include Docker support? (Y/n)
+Include testing setup? (Y/n)
+```
+
+Then a **Project Definition** panel summarizes the normalized result.
 
 ## Adaptive questioning
 
 **Principle: ask only questions that affect the resulting project.**
 
-Examples:
+Demonstrated in the prototype:
 
-- If the user chooses Django, do not ask questions that only make sense for FastAPI.
-- If the user disables a database, hide database engine, ORM, and migration questions.
-- If Docker is disabled, do not ask Docker-only options.
-- Framework-specific capabilities stay behind framework selection.
+- Framework list depends on language + project type (e.g. CLI → Typer/Click, not FastAPI).
+- Architecture is prompted only when more than one style is valid (CLI → Simple only; question skipped).
+- Database engine / ORM questions appear only for database-capable frameworks; ORM is implied by framework (e.g. Django → django-orm, FastAPI → sqlalchemy).
+- Worker frameworks differ from API frameworks.
 
-The flow should progressively narrow options and avoid long questionnaires full of irrelevant choices.
+## Interaction modes
 
-## Interaction modes (intended)
-
-| Mode | Intent |
+| Mode | Status |
 |------|--------|
-| Interactive | `forge new` — guided prompts |
-| Preset-assisted | `forge new … --preset …` — start from a valid composition, optionally customize |
-| Config-driven | `forge new … --config …` — non-interactive, same definition model |
-
-All modes should feed the same normalized project definition. See [architecture.md](./architecture.md).
+| Interactive (`forge new`) | **Implemented** (definition only) |
+| Preset-assisted | Planned |
+| Config-driven (`--config`) | Planned; same `ProjectDefinition` model already constructible from data |
 
 ## Cross-platform behavior
 
-- Works on Linux, macOS, and Windows
-- Avoid shell-specific prompts or scripts as the primary UX
-- Paths, line endings, and terminal capabilities must be handled portably
-- Degrade gracefully when fancy terminal features are unavailable where practical
+- Prompt stack is prompt_toolkit-based (Linux, macOS, Windows).
+- Paths and packaging use Python/`uv` conventions—no shell-specific install scripts.
+- Cancel (Ctrl+C / abort) exits cleanly without a partial definition.
 
-## Public commands (conceptual)
+## UX guidelines
 
-Exact command set will solidify during implementation. Expected early surface:
-
-- `forge new` — create a project
-- `forge preset list` (and related preset commands) — browse/use presets
-- Help and version commands consistent with normal CLI practice
-
-Document real flags and behavior here when they exist; do not invent a stable public API ahead of implementation beyond the concepts above.
+- Concise questions, useful defaults, clear selection state
+- Graceful cancellation and short validation errors
+- No huge ASCII art, noisy animations, or long in-prompt essays

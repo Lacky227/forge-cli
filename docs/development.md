@@ -1,38 +1,26 @@
 # Development
 
-Guidance for people (and agents) implementing Forge. Application code is not present yet; follow this when it is.
+Guidance for implementing Forge.
 
 ## Documentation philosophy
 
 Keep documentation **useful and small**.
 
-Do **not** create:
+Do **not** create progress reports, diaries, “task completed” write-ups, duplicate architecture docs, or changelogs for every tiny change.
 
-- progress reports or daily logs
-- implementation diaries
-- “task completed” write-ups
-- duplicate architecture documents
-- changelog-like notes for every tiny change
-
-Documentation should describe the system, decisions, usage, and important constraints.
-
-When implementation changes something already documented, **update the existing authoritative document** in the same logical task. Do not add a parallel doc.
-
-Authoritative set today:
+When implementation changes something already documented, **update the existing authoritative document** in the same logical task.
 
 | Document | Role |
 |----------|------|
 | [product.md](./product.md) | Product definition, principles, scope, non-goals |
-| [architecture.md](./architecture.md) | Layers, definition model, presets, extensibility, repo layout |
-| [cli.md](./cli.md) | Interactive and non-interactive UX |
+| [architecture.md](./architecture.md) | Layers, package layout, `ProjectDefinition`, extensibility |
+| [cli.md](./cli.md) | UX, commands, prompt stack |
 | [generation.md](./generation.md) | Generated-project quality bar |
-| [development.md](./development.md) | Workflow, stack recommendation, docs rules |
+| [development.md](./development.md) | Workflow, toolchain, how to run |
 
 Root [README.md](../README.md) is a short entry point; it must not diverge from these docs.
 
 ## Development workflow
-
-For each task:
 
 1. Read relevant documentation under `docs/`.
 2. Read relevant `.cursor/rules/`.
@@ -47,46 +35,62 @@ For each task:
 11. Provide a suggested GitFlow-style commit message when the change is coherent and complete.
 12. **Do not** run `git add`, `git commit`, or `git push`.
 
-Do not require a formal report for every task. Final responses should be concise and useful.
+## Technology (current)
 
-## Technology direction (revisitable)
-
-**Recommendation before implementation—may be revisited:**
+Decided for the foundation spike (revisitable if evidence warrants):
 
 ```text
-Python
-Typer
-Rich
-Jinja2
-Pydantic
-PyYAML (only if the chosen config format needs it)
-uv
+Python >= 3.11
+uv                 # local env, lockfile, scripts
+Typer              # CLI commands
+Rich               # presentation
+questionary        # interactive prompts
+Pydantic v2        # ProjectDefinition
+pytest             # tests (dev)
 ```
 
-Interactive prompts may use Typer’s ecosystem, questionary, InquirerPy, or another cross-platform option. **Do not add dependencies until justified.**
+**Not added yet:** Jinja2, PyYAML (no templates / config-file mode).
 
-Forge should ship as a normal CLI usable on Linux, macOS, and Windows.
+Packaging: `pyproject.toml` + hatchling, import package `forge`, console script `forge`.
 
-Open decisions before (or early in) implementation:
+### Run locally
 
-- Exact prompt library
-- Config file format (YAML vs other) and whether it is public
-- Package layout and distribution (PyPI name, `src` layout, entry points)
-- Template engine conventions and template repository layout
-- How framework plugins declare compatibility
+```bash
+uv sync
+uv run forge new
+uv run pytest
+uv run python -m forge new
+```
+
+### Import boundary
+
+```text
+forge.cli  →  forge.core   (allowed)
+forge.core →  forge.cli    (forbidden)
+```
+
+UI libraries must not appear in `forge.core`.
+
+## Open decisions
+
+- Public config file format and `--config` UX
+- PyPI distribution name long-term (`forge` vs `forge-cli`)
+- Template engine and template layout (when generation starts)
+- How framework plugins declare compatibility (beyond today’s catalog)
+- Whether to stay on questionary or revisit InquirerPy if UX needs grow
 
 ## Scope and quality expectations
 
-- Prefer working integrations over placeholders (see [generation.md](./generation.md) and [product.md](./product.md)).
+- Prefer working integrations over placeholders.
 - Prefer quality over ceremony: no tests, abstractions, files, or dependencies without meaningful value.
-- Do not expand tasks into unrelated refactors; do make small architectural fixes required for a feature to work correctly.
-- Stay cross-platform: no OS-specific assumptions in core paths or tooling without a portable fallback.
+- Do not expand tasks into unrelated refactors; do make small architectural fixes required for correctness.
+- Stay cross-platform.
 
 ## Git discipline
 
-Agents and contributors following the Cursor rules must **not** stage, commit, or push unless a human explicitly asks outside the default agent rules for this project.
+Do **not** stage, commit, or push unless a human explicitly asks.
 
-Suggested commit messages use GitFlow-style prefixes for coherent, completed changes, for example:
+Suggested commit messages use GitFlow-style prefixes for coherent, completed changes:
 
 ```text
 feat: add project definition model
@@ -95,5 +99,3 @@ refactor: separate generation engine from cli
 docs: define generator architecture
 chore: configure packaging
 ```
-
-Do not suggest a commit after every tiny edit—only after a logically complete change.
