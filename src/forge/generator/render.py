@@ -1,0 +1,137 @@
+"""Locate and render Jinja2 project templates."""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Iterator
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+
+from forge.generator.context import TemplateContext
+from forge.generator.errors import GenerationError
+
+_PACKAGE_DIR_TOKEN = "__package__"
+_TEMPLATE_SUFFIX = ".j2"
+
+_DOCKER_FILES = frozenset({"Dockerfile.j2", "docker-compose.yml.j2"})
+_DB_ONLY_FILES = frozenset({"database.py.j2", "models.py.j2", "base.py.j2"})
+
+
+def templates_root() -> Path:
+    """Resolve the templates directory (source checkout or packaged wheel)."""
+    override = os.environ.get("FORGE_TEMPLATES_ROOT")
+    if override:
+        path = Path(override)
+        if not path.is_dir():
+            raise GenerationError(
+                f"FORGE_TEMPLATES_ROOT is not a directory: {override}"
+            )
+        return path.resolve()
+
+    packaged = Path(__file__).resolve().parent.parent / "templates"
+    if (packaged / "python").is_dir():
+        return packaged
+
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "templates"
+        if (candidate / "python").is_dir():
+            return candidate.resolve()
+
+    raise GenerationError(
+        "Cannot locate Forge templates. Expected templates/python/… "
+        "next to the package or at the repository root."
+    )
+
+
+def create_env(template_dir: Path) -> Environment:
+    return Environment(
+        loader=FileSystemLoader(str(template_dir)),
+        undefined=StrictUndefined,
+        keep_trailing_newline=True,
+        autoescape=select_autoescape(enabled_extensions=()),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+
+
+def iter_template_files(template_dir: Path) -> Iterator[Path]:
+    for path in sorted(template_dir.rglob("*")):
+        if path.is_file() and not path.name.startswith(".gitkeep"):
+            yield path
+        elif path.is_file() and path.name == ".gitkeep":
+            yield path
+
+
+def should_emit(relative: Path, context: TemplateContext) -> bool:
+    """Skip capability-specific template paths when the capability is off."""
+    parts = set(relative.parts)
+    name = relative.name
+
+    if name in _DOCKER_FILES and not context.docker:
+        return False
+    if "migrations" in parts and not context.migrations:
+        return False
+    if name.startswith("alembic") and not context.migrations:
+        return False
+    if "tests" in parts and not context.testing:
+        return False
+    if name == ".env.example.j2" and not (context.database or context.docker):
+        return False
+    if name in _DB_ONLY_FILES and not context.database:
+        return False
+    if "models" in parts and not context.database:
+        return False
+    return True
+
+
+def output_relative_path(relative: Path, context: TemplateContext) -> Path:
+    """Map a template-relative path to the destination-relative path."""
+    parts: list[str] = []
+    for part in relative.parts:
+        if part == _PACKAGE_DIR_TOKEN:
+            parts.append(context.package_name)
+        else:
+            parts.append(part)
+    out = Path(*parts) if parts else Path()
+    if out.name.endswith(_TEMPLATE_SUFFIX):
+        out = out.with_name(out.name[: -len(_TEMPLATE_SUFFIX)])
+    return out
+
+
+def render_tree(
+    template_dir: Path,
+    destination: Path,
+    context: TemplateContext,
+) -> list[Path]:
+    """Render all templates under ``template_dir`` into ``destination``."""
+    if not template_dir.is_dir():
+        raise GenerationError(f"Template directory not found: {template_dir}")
+
+    env = create_env(template_dir)
+    written: list[Path] = []
+    jinja_ctx = context.as_jinja_dict()
+
+    for source in iter_template_files(template_dir):
+        relative = source.relative_to(template_dir)
+        if not should_emit(relative, context):
+            continue
+
+        target_rel = output_relative_path(relative, context)
+        target = destination / target_rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        if source.name.endswith(_TEMPLATE_SUFFIX):
+            template_name = relative.as_posix()
+            content = env.get_template(template_name).render(**jinja_ctx)
+            # Preserve intentionally empty files (e.g. versions/.gitkeep via j2)
+            target.write_text(content, encoding="utf-8")
+        else:
+            target.write_bytes(source.read_bytes())
+
+        written.append(target_rel)
+
+    if not written:
+        raise GenerationError(f"No template files emitted from {template_dir}")
+
+    return written

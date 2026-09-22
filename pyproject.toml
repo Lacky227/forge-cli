@@ -9,6 +9,7 @@ dependencies = [
     "rich>=13",
     "questionary>=2",
     "pydantic>=2",
+    "jinja2>=3.1.6",
 ]
 
 [project.scripts]
@@ -20,6 +21,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/forge"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"templates" = "forge/templates"
 
 [dependency-groups]
 dev = [

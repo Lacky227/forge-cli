@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from pydantic import ValidationError
 
@@ -12,7 +14,9 @@ from forge.cli.render import (
     print_cancelled,
     print_definition,
     print_error,
+    print_generation_result,
 )
+from forge.generator import GenerationError, generate_project
 
 app = typer.Typer(
     name="forge",
@@ -47,10 +51,10 @@ def root(
 def new_command(
     name: str | None = typer.Argument(
         None,
-        help="Project name. Prompted interactively if omitted.",
+        help="Project name. Creates ./<name>. Prompted if omitted.",
     ),
 ) -> None:
-    """Interview for a project definition (generation not implemented yet)."""
+    """Interview for a project definition and generate the project."""
     print_banner()
     try:
         definition = run_new_flow(name=name)
@@ -58,14 +62,30 @@ def new_command(
         print_cancelled()
         raise typer.Exit(code=1) from None
     except ValidationError as exc:
-        print_error(str(exc))
+        print_error(_format_validation_error(exc))
         raise typer.Exit(code=1) from None
     except ValueError as exc:
         print_error(str(exc))
         raise typer.Exit(code=1) from None
 
     print_definition(definition)
-    # Future: pass `definition` into the generation engine here.
+
+    try:
+        result = generate_project(definition, base_dir=Path.cwd())
+    except GenerationError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=1) from None
+
+    print_generation_result(result)
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    parts: list[str] = []
+    for err in exc.errors():
+        loc = ".".join(str(x) for x in err.get("loc", ()))
+        msg = err.get("msg", "invalid value")
+        parts.append(f"{loc}: {msg}" if loc else msg)
+    return "; ".join(parts) if parts else str(exc)
 
 
 def main() -> None:

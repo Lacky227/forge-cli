@@ -153,6 +153,7 @@ def _collect_capabilities(framework: str) -> Capabilities:
     database = False
     database_engine: str | None = None
     orm: str | None = None
+    migrations = False
 
     if catalog.supports_database(framework):
         database = _confirm("Include a database?", default=True)
@@ -173,18 +174,22 @@ def _collect_capabilities(framework: str) -> Capabilities:
                     f"[dim]ORM:[/dim] {orm} "
                     f"[dim](selected for {catalog.FRAMEWORK_LABELS.get(framework, framework)})[/dim]"
                 )
+            migrations = _confirm("Include Alembic migrations?", default=True)
     else:
         _console.print(
             "[dim]Database options skipped — not applicable for this framework.[/dim]"
         )
 
     docker = _confirm("Include Docker support?", default=True)
-    testing = _confirm("Include testing setup?", default=True)
+    testing = _confirm("Include testing setup (pytest)?", default=True)
+    linting = _confirm("Include Ruff linting?", default=True)
 
     return Capabilities(
         database=database,
         database_engine=database_engine,
         orm=orm,
+        migrations=migrations,
         docker=docker,
         testing=testing,
+        linting=linting,
     )

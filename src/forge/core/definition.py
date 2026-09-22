@@ -16,8 +16,7 @@ _NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
 class Capabilities(BaseModel):
     """Optional features selected for the project.
 
-    Fields are omitted or left default when irrelevant — generation (later)
-    should treat absence as “not selected,” not as a missing requirement.
+    Absence means “not selected,” not a missing requirement for generation.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -25,8 +24,10 @@ class Capabilities(BaseModel):
     database: bool = False
     database_engine: str | None = None
     orm: str | None = None
+    migrations: bool = False
     docker: bool = False
     testing: bool = True
+    linting: bool = True
 
 
 class ProjectDefinition(BaseModel):
@@ -106,6 +107,8 @@ class ProjectDefinition(BaseModel):
                 raise ValueError(
                     "database_engine and orm require capabilities.database=True"
                 )
+            if caps.migrations:
+                raise ValueError("migrations require capabilities.database=True")
 
         return self
 
@@ -128,9 +131,12 @@ class ProjectDefinition(BaseModel):
                 else "No"
             ),
             "ORM": caps.orm or "—",
+            "Migrations": "Alembic" if caps.migrations else "No",
             "Docker": "Yes" if caps.docker else "No",
             "Testing": "Yes" if caps.testing else "No",
+            "Linting": "Ruff" if caps.linting else "No",
         }
         if not caps.database:
             rows.pop("ORM")
+            rows.pop("Migrations")
         return rows

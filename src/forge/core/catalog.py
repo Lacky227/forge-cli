@@ -1,4 +1,4 @@
-"""Supported option catalog and compatibility rules for the spike.
+"""Supported option catalog and compatibility rules.
 
 Concrete data for adaptive prompting and validation — not a plugin system.
 """
@@ -50,12 +50,11 @@ FRAMEWORKS_BY_LANGUAGE_AND_TYPE: dict[Language, dict[ProjectType, tuple[str, ...
     },
 }
 
-# project_type → architectures (CLI only needs simple — adaptive flow skips the question)
+# Architectures offered in the CLI. Clean is reserved until a generator exists.
 ARCHITECTURES_BY_TYPE: dict[ProjectType, tuple[ArchitectureStyle, ...]] = {
     ProjectType.REST_API: (
         ArchitectureStyle.SIMPLE,
         ArchitectureStyle.MODULAR_MONOLITH,
-        ArchitectureStyle.CLEAN,
     ),
     ProjectType.CLI: (ArchitectureStyle.SIMPLE,),
     ProjectType.WORKER: (
@@ -64,14 +63,30 @@ ARCHITECTURES_BY_TYPE: dict[ProjectType, tuple[ArchitectureStyle, ...]] = {
     ),
 }
 
-# Frameworks that can offer a database capability in this spike
+# Combinations the generation engine can materialize today.
+GENERATABLE: frozenset[tuple[str, str, str]] = frozenset(
+    {
+        (
+            Language.PYTHON.value,
+            "fastapi",
+            ProjectType.REST_API.value,
+        ),
+    }
+)
+
+GENERATABLE_ARCHITECTURES: frozenset[ArchitectureStyle] = frozenset(
+    {
+        ArchitectureStyle.SIMPLE,
+        ArchitectureStyle.MODULAR_MONOLITH,
+    }
+)
+
 DATABASE_CAPABLE_FRAMEWORKS: frozenset[str] = frozenset(
     {"fastapi", "django", "flask", "celery"}
 )
 
 DATABASE_ENGINES: tuple[str, ...] = ("postgresql", "sqlite")
 
-# ORM implied or offered when a database is enabled
 ORM_BY_FRAMEWORK: dict[str, str] = {
     "fastapi": "sqlalchemy",
     "flask": "sqlalchemy",
@@ -101,3 +116,13 @@ def supports_database(framework: str) -> bool:
 
 def default_orm_for(framework: str) -> str | None:
     return ORM_BY_FRAMEWORK.get(framework)
+
+
+def is_generatable(
+    language: Language,
+    framework: str,
+    project_type: ProjectType,
+    architecture: ArchitectureStyle,
+) -> bool:
+    key = (language.value, framework, project_type.value)
+    return key in GENERATABLE and architecture in GENERATABLE_ARCHITECTURES

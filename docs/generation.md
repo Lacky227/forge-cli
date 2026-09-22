@@ -4,23 +4,50 @@
 
 ## Quality bar
 
-A generated project should ideally:
+A generated project should:
 
-- have a coherent directory structure for the chosen stack
-- declare dependencies correctly
+- have a coherent directory structure for the chosen stack and architecture
+- declare dependencies correctly for selected capabilities only
 - wire configuration so selected components connect
-- **start successfully** (or document the minimal steps to start, if a local service is required)
-- expose the expected entry point (API server, CLI, worker, etc.)
-- include required environment configuration (e.g. `.env.example`) when relevant
-- include appropriate development tooling when selected (tests, linters, formatters)
-- include tests **where they provide value** (smoke/entry-point tests beat empty suites)
-- include Docker support when selected—and it should be runnable for the generated app
-- include database migrations when selected—and they should match the ORM/framework choice
-- include documentation appropriate for continuing work on **that** project (not a copy of Forge’s docs)
+- **start successfully** (or document minimal steps if a local service is required)
+- expose the expected entry point
+- include `.env.example` when database/Docker config is needed (never commit secrets as `.env`)
+- include pytest and/or Ruff when selected
+- include Docker / Alembic when selected—and they must be wired, not empty stubs
+- include a README that matches the actual generated commands and layout
+
+## Current FastAPI generator
+
+For Python FastAPI REST APIs, Forge generates projects that support (when selected):
+
+| Capability | Integration |
+|------------|-------------|
+| PostgreSQL / SQLite | `DATABASE_URL` via pydantic-settings |
+| SQLAlchemy | engine + session helpers |
+| Alembic | `alembic.ini` + `migrations/env.py` using app metadata/settings |
+| pytest | `tests/test_health.py` (no DB required for smoke test) |
+| Ruff | `[tool.ruff]` in `pyproject.toml` |
+| Docker | `Dockerfile` + `docker-compose.yml` (Postgres service when PostgreSQL selected) |
+
+### Dependency policy
+
+Generated `pyproject.toml` uses **minimum lower bounds** (e.g. `fastapi[standard]>=0.115`, `sqlalchemy>=2.0`) without upper pins unless a known incompatibility requires one. Projects are intended to work with `uv sync`.
+
+### Validation expectation
+
+After generation, a typical check path is:
+
+```text
+uv sync → uv run pytest → uv run ruff check .
+```
+
+With database + Alembic (example SQLite): `uv run alembic upgrade head`.
+
+Docker Compose files should be valid (`docker compose config`). Live container checks depend on the local Docker daemon and free ports.
 
 ## Reflect user choices
 
-Do not require every generated project to contain every tool. Optional capabilities appear only when selected (and valid). Absence of an unselected feature is success, not incompleteness.
+Do not emit Docker, Alembic, SQLAlchemy, or Ruff when the user did not select them.
 
 ## Working integrations
 
@@ -28,14 +55,21 @@ Selected features must be integrated, not merely mentioned.
 
 **Bad:** empty `db/` folders and a README saying “add SQLAlchemy later.”
 
-**Good:** FastAPI + PostgreSQL + SQLAlchemy + Alembic yields a coherent initial app config, models/session wiring, migration setup, and env vars that fit together.
-
-The same standard applies to Redis, JWT auth, Docker, background jobs, testing, and linting when those options are chosen.
+**Good:** FastAPI + PostgreSQL + SQLAlchemy + Alembic yields settings, session wiring, migration env, and `.env.example` that fit together.
 
 ## Proportional structure
 
-Layout and abstractions should match project type and selections. Prefer conventions familiar to that ecosystem. Avoid microservices, message brokers, or deep interface trees unless the user’s choices justify them.
+Simple vs modular layouts must differ meaningfully. Avoid microservices, brokers, or deep interface trees unless selections justify them.
 
 ## Maintainability
 
-Generated code should be readable by humans who never used Forge. Prefer clear names, conventional layouts, and minimal magic. Opaque generators that users cannot evolve manually fail the product goal—see [product.md](./product.md).
+Generated code should be readable by humans who never used Forge. Prefer clear names, conventional layouts, and minimal magic.
+
+## Forge tests vs generated tests
+
+| Suite | Location | Purpose |
+|-------|----------|---------|
+| Forge tests | `tests/` in this repository | Generator contracts, naming, CLI/domain |
+| Generated tests | `tests/` inside each generated project | Smoke tests for that application |
+
+Do not conflate the two.

@@ -4,98 +4,75 @@ Guidance for implementing Forge.
 
 ## Documentation philosophy
 
-Keep documentation **useful and small**.
-
-Do **not** create progress reports, diaries, “task completed” write-ups, duplicate architecture docs, or changelogs for every tiny change.
-
-When implementation changes something already documented, **update the existing authoritative document** in the same logical task.
+Keep documentation **useful and small**. Update authoritative docs in the same task when behavior changes. Do not create progress reports, diaries, or duplicate architecture docs.
 
 | Document | Role |
 |----------|------|
 | [product.md](./product.md) | Product definition, principles, scope, non-goals |
-| [architecture.md](./architecture.md) | Layers, package layout, `ProjectDefinition`, extensibility |
+| [architecture.md](./architecture.md) | Layers, package layout, generator, templates |
 | [cli.md](./cli.md) | UX, commands, prompt stack |
 | [generation.md](./generation.md) | Generated-project quality bar |
 | [development.md](./development.md) | Workflow, toolchain, how to run |
 
-Root [README.md](../README.md) is a short entry point; it must not diverge from these docs.
-
 ## Development workflow
 
-1. Read relevant documentation under `docs/`.
-2. Read relevant `.cursor/rules/`.
-3. Inspect the existing implementation.
-4. Understand the current architecture.
-5. Plan the smallest coherent implementation that works.
-6. Implement the feature completely enough to be usable.
-7. Run appropriate validation.
-8. Update relevant documentation/rules if behavior or architecture changed.
-9. Review the resulting diff.
-10. Provide a concise summary.
-11. Provide a suggested GitFlow-style commit message when the change is coherent and complete.
-12. **Do not** run `git add`, `git commit`, or `git push`.
+1. Read relevant `docs/` and `.cursor/rules/`.
+2. Inspect the existing implementation.
+3. Implement the smallest coherent change that works.
+4. Run validation (`uv run pytest`; generate and smoke-test when touching generation).
+5. Update documentation if behavior/architecture changed.
+6. Summarize and suggest a GitFlow-style commit message.
+7. **Do not** run `git add` / `git commit` / `git push` unless explicitly asked.
 
 ## Technology (current)
 
-Decided for the foundation spike (revisitable if evidence warrants):
-
 ```text
 Python >= 3.11
-uv                 # local env, lockfile, scripts
-Typer              # CLI commands
-Rich               # presentation
-questionary        # interactive prompts
-Pydantic v2        # ProjectDefinition
-pytest             # tests (dev)
+uv
+Typer
+Rich
+questionary
+Pydantic v2
+Jinja2
+pytest (dev)
 ```
 
-**Not added yet:** Jinja2, PyYAML (no templates / config-file mode).
+PyYAML is still unused (no config-file mode yet).
 
-Packaging: `pyproject.toml` + hatchling, import package `forge`, console script `forge`.
-
-### Run locally
+### Run Forge locally
 
 ```bash
 uv sync
-uv run forge new
+uv run forge new my-api
 uv run pytest
-uv run python -m forge new
 ```
 
-### Import boundary
+### Import boundaries
 
 ```text
-forge.cli  →  forge.core   (allowed)
-forge.core →  forge.cli    (forbidden)
+forge.cli        → forge.core, forge.generator
+forge.generator  → forge.core
+forge.core       → (no cli / generator / UI libs)
 ```
 
-UI libraries must not appear in `forge.core`.
+### Templates
+
+- Source of truth: repository `templates/`
+- Selected by `language/framework/architecture`
+- Rendered only by `forge.generator`, never by CLI prompt handlers
+
+### Generated dependency policy
+
+Minimum lower bounds in generated `pyproject.toml`; no upper pins by default. Prefer `uv`-friendly packaging (hatchling, `src/` layout).
 
 ## Open decisions
 
-- Public config file format and `--config` UX
-- PyPI distribution name long-term (`forge` vs `forge-cli`)
-- Template engine and template layout (when generation starts)
-- How framework plugins declare compatibility (beyond today’s catalog)
-- Whether to stay on questionary or revisit InquirerPy if UX needs grow
-
-## Scope and quality expectations
-
-- Prefer working integrations over placeholders.
-- Prefer quality over ceremony: no tests, abstractions, files, or dependencies without meaningful value.
-- Do not expand tasks into unrelated refactors; do make small architectural fixes required for correctness.
-- Stay cross-platform.
+- Public `--config` format and UX
+- PyPI distribution name long-term
+- Django / Flask / Clean Architecture generators
+- Whether `fastapi[standard]` vs slimmer FastAPI + uvicorn pins is preferable long-term
+- Plugin declaration model beyond the concrete catalog
 
 ## Git discipline
 
-Do **not** stage, commit, or push unless a human explicitly asks.
-
-Suggested commit messages use GitFlow-style prefixes for coherent, completed changes:
-
-```text
-feat: add project definition model
-fix: resolve template selection
-refactor: separate generation engine from cli
-docs: define generator architecture
-chore: configure packaging
-```
+Do not stage, commit, or push unless a human explicitly asks. Suggest one coherent GitFlow-style commit message per completed change.
