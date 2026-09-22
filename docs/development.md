@@ -1,99 +1,121 @@
 # Development
 
-Guidance for people (and agents) implementing Forge. Application code is not present yet; follow this when it is.
-
 ## Documentation philosophy
 
-Keep documentation **useful and small**.
-
-Do **not** create:
-
-- progress reports or daily logs
-- implementation diaries
-- “task completed” write-ups
-- duplicate architecture documents
-- changelog-like notes for every tiny change
-
-Documentation should describe the system, decisions, usage, and important constraints.
-
-When implementation changes something already documented, **update the existing authoritative document** in the same logical task. Do not add a parallel doc.
-
-Authoritative set today:
-
-| Document | Role |
-|----------|------|
-| [product.md](./product.md) | Product definition, principles, scope, non-goals |
-| [architecture.md](./architecture.md) | Layers, definition model, presets, extensibility, repo layout |
-| [cli.md](./cli.md) | Interactive and non-interactive UX |
-| [generation.md](./generation.md) | Generated-project quality bar |
-| [development.md](./development.md) | Workflow, stack recommendation, docs rules |
-
-Root [README.md](../README.md) is a short entry point; it must not diverge from these docs.
+Keep docs useful and small. Update authoritative documents when behavior changes.
 
 ## Development workflow
 
-For each task:
+1. Read `docs/` and `.cursor/rules/`
+2. Inspect implementation
+3. Smallest coherent change
+4. `uv run pytest` (+ generate/smoke-test when touching generation)
+5. Sync docs
+6. Suggest a GitFlow commit message
+7. Do not `git add` / `commit` / `push` unless asked
 
-1. Read relevant documentation under `docs/`.
-2. Read relevant `.cursor/rules/`.
-3. Inspect the existing implementation.
-4. Understand the current architecture.
-5. Plan the smallest coherent implementation that works.
-6. Implement the feature completely enough to be usable.
-7. Run appropriate validation.
-8. Update relevant documentation/rules if behavior or architecture changed.
-9. Review the resulting diff.
-10. Provide a concise summary.
-11. Provide a suggested GitFlow-style commit message when the change is coherent and complete.
-12. **Do not** run `git add`, `git commit`, or `git push`.
-
-Do not require a formal report for every task. Final responses should be concise and useful.
-
-## Technology direction (revisitable)
-
-**Recommendation before implementation—may be revisited:**
+## Technology
 
 ```text
-Python
-Typer
-Rich
-Jinja2
-Pydantic
-PyYAML (only if the chosen config format needs it)
-uv
+Python >= 3.11 · uv · Typer · Rich · questionary · Pydantic v2 · Jinja2 · PyYAML · pytest · hatchling
 ```
 
-Interactive prompts may use Typer’s ecosystem, questionary, InquirerPy, or another cross-platform option. **Do not add dependencies until justified.**
+Supported interpreters: **3.11, 3.12, 3.13** (`requires-python = ">=3.11"`).
 
-Forge should ship as a normal CLI usable on Linux, macOS, and Windows.
+### Run
 
-Open decisions before (or early in) implementation:
+```bash
+uv sync
+uv run forge --help
+uv run forge --version
+uv run forge new my-api
+uv run forge new my-api --preset fastapi-postgres
+uv run forge plan --preset fastapi-postgres
+uv run forge new --config forge.yaml
+uv run pytest
+```
 
-- Exact prompt library
-- Config file format (YAML vs other) and whether it is public
-- Package layout and distribution (PyPI name, `src` layout, entry points)
-- Template engine conventions and template repository layout
-- How framework plugins declare compatibility
+Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`.
+See [cli.md](./cli.md) for the full command surface, presets, and destination/exit behavior.
 
-## Scope and quality expectations
+### Packaging and distribution
 
-- Prefer working integrations over placeholders (see [generation.md](./generation.md) and [product.md](./product.md)).
-- Prefer quality over ceremony: no tests, abstractions, files, or dependencies without meaningful value.
-- Do not expand tasks into unrelated refactors; do make small architectural fixes required for a feature to work correctly.
-- Stay cross-platform: no OS-specific assumptions in core paths or tooling without a portable fallback.
+Distribution name: **`forge-cli`**. Entry point: **`forge`**.
 
-## Git discipline
+Jinja templates live at the repository root (`templates/`) for editable development. Hatch **force-includes** them into the wheel as `forge/templates/`, so an installed package is self-contained. `forge.generator.render.templates_root()` resolves:
 
-Agents and contributors following the Cursor rules must **not** stage, commit, or push unless a human explicitly asks outside the default agent rules for this project.
+1. `FORGE_TEMPLATES_ROOT` (override)
+2. Packaged `forge/templates` (installed wheel)
+3. Repository `templates/` next to `pyproject.toml` (editable checkout only)
 
-Suggested commit messages use GitFlow-style prefixes for coherent, completed changes, for example:
+```bash
+# Build wheel + sdist
+uv build
+
+# Clean-install smoke (venv outside the repo; generates FastAPI/Django/Flask projects)
+bash scripts/packaging_smoke.sh
+
+# Packaging-focused pytest (builds wheels; skipped by default via addopts)
+uv run pytest -m packaging
+
+# Generation smoke (uv sync + framework check/pytest/ruff; SQLite / no-db cases)
+uv run pytest -m generation_smoke
+```
+
+Do not publish to PyPI from this workflow yet. CI runs the test matrix and the packaging/generation smoke on every push/PR.
+
+Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com/Lacky227/forge-cli).
+
+### Versioning
+
+Current version: **`0.1.0`** — first public development release of the Forge CLI.
+
+| Version | Meaning |
+|---------|---------|
+| `0.x` | Public development releases |
+| `0.1.x` | Backwards-compatible fixes and small improvements |
+| `0.2.0` | Meaningful new capabilities or intentional public-interface changes |
+| `1.0.0` | Stable public CLI / domain contract |
+
+Record user-facing changes in [CHANGELOG.md](../CHANGELOG.md). Do not introduce automated semantic-release tooling for routine work.
+
+### Import boundaries
 
 ```text
-feat: add project definition model
-fix: resolve template selection
-refactor: separate generation engine from cli
-docs: define generator architecture
-chore: configure packaging
+forge.cli → forge.core, forge.generator
+forge.generator → forge.core
+forge.core → (no UI; may load YAML config → ProjectDefinition)
 ```
 
-Do not suggest a commit after every tiny edit—only after a logically complete change.
+### Adding a framework
+
+1. Catalog + `GENERATABLE` entries
+2. Resolver mapping (deps, features, implied ORM/migrations/REST) in `forge.generator.resolve`
+3. Templates under `templates/<language>/<framework>/<architecture>/`
+4. Adaptive CLI prompts (only user-selectable questions; leave implications to the resolver)
+5. Tests + generated-project smoke validation
+
+Do not add a plugin manager for the next framework.
+
+Keep the distinction:
+
+```text
+ProjectDefinition = explicit user intent
+GenerationPlan    = resolved implementation
+```
+
+## Open decisions
+
+- CLI / Worker generators
+- Slimmer FastAPI dependency set
+- Whether Django should ever support a non-REST project type without DRF
+- Whether Flask should ever offer an ORM other than SQLAlchemy
+- How far Clean Architecture persistence demos should go beyond a session/port boundary
+- Config export / round-trip tooling
+- Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator
+- Whether preset + config merging is ever worth the precedence complexity (currently rejected)
+- Author / maintainer contact metadata for PyPI
+- Whether and when to publish `forge-cli` to PyPI
+- Whether generated projects should inherit Forge's GPL-3.0-only license (they do **not** automatically; decision not made)
+
+Forge itself is licensed **GPL-3.0-only** (see [`LICENSE`](../LICENSE)).

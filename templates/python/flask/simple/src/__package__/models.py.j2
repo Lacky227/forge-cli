@@ -1,0 +1,8 @@
+"""SQLAlchemy models.
+
+Import model modules from Alembic's ``env.py`` so metadata is complete.
+"""
+
+from {{ package_name }}.database import Base
+
+__all__ = ["Base"]

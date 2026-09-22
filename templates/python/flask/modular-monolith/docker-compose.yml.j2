@@ -1,0 +1,37 @@
+services:
+{% if database and is_postgresql %}
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-{{ package_name }}}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+{% endif %}
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+{% if database and is_postgresql %}
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-{{ package_name }}}
+    depends_on:
+      db:
+        condition: service_healthy
+{% endif %}
+
+{% if database and is_postgresql %}
+volumes:
+  pgdata:
+{% endif %}

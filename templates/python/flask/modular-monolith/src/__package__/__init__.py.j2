@@ -1,0 +1,21 @@
+"""{{ project_name }} — generated Flask application."""
+
+from __future__ import annotations
+
+from dotenv import load_dotenv
+from flask import Flask
+
+from {{ package_name }}.core.config import Config
+
+
+def create_app(config_object: type[Config] | None = None) -> Flask:
+    """Application factory for the modular monolith layout."""
+    load_dotenv()
+    app = Flask(__name__)
+    app.config.from_object(config_object or Config)
+
+    from {{ package_name }}.api.routes import api_bp
+
+    app.register_blueprint(api_bp)
+
+    return app

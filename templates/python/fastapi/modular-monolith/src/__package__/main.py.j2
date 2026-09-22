@@ -1,0 +1,7 @@
+from fastapi import FastAPI
+
+from {{ package_name }}.api.routes import api_router
+from {{ package_name }}.core.config import settings
+
+app = FastAPI(title=settings.app_name)
+app.include_router(api_router)

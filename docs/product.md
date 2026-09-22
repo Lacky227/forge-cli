@@ -92,7 +92,9 @@ The first product version targets **Python** project generation.
 - Environment configuration
 - Migrations (e.g. Alembic where appropriate)
 
-**Design requirement:** the system must validate incompatible or meaningless combinations. Framework-specific options stay framework-aware (e.g. do not offer SQLAlchemy-centric paths for a pure Django stack without a conscious design). Documented here as a requirement; not implemented yet.
+**Design requirement:** the system must validate incompatible or meaningless combinations. Framework-specific options stay framework-aware (e.g. do not offer SQLAlchemy-centric paths for a pure Django stack without a conscious design).
+
+**Generation status:** Python **FastAPI**, **Django**, and **Flask** REST APIs are generated as runnable projects for **Simple**, **Modular Monolith**, and **Clean Architecture**. Other project types remain catalog options or future work until their generators exist.
 
 ## Product principles
 

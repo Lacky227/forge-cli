@@ -1,0 +1,22 @@
+{% if rest_framework %}
+from rest_framework.decorators import api_view
+from rest_framework.request import Request
+from rest_framework.response import Response
+
+from application.health import get_health_status
+
+
+@api_view(["GET"])
+def health(request: Request) -> Response:
+    status = get_health_status()
+    return Response({"status": status.status})
+{% else %}
+from django.http import JsonResponse
+
+from application.health import get_health_status
+
+
+def health(request):
+    status = get_health_status()
+    return JsonResponse({"status": status.status})
+{% endif %}

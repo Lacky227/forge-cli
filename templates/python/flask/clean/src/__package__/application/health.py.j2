@@ -1,0 +1,8 @@
+from __future__ import annotations
+
+from {{ package_name }}.domain.health import HealthStatus
+
+
+def get_health_status() -> HealthStatus:
+    """Return the current health status of the service."""
+    return HealthStatus()

@@ -1,0 +1,11 @@
+from fastapi import APIRouter
+
+from {{ package_name }}.application.health import get_health_status
+
+router = APIRouter(tags=["health"])
+
+
+@router.get("/api/health")
+def health() -> dict[str, str]:
+    status = get_health_status()
+    return {"status": status.status}

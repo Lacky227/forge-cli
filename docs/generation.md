@@ -1,41 +1,140 @@
 # Generated project quality
 
-“Generated successfully” means more than files appearing on disk. The output should be a **usable starting point for a real project**.
+“Generated successfully” means a **usable starting point for a real project**.
 
 ## Quality bar
 
-A generated project should ideally:
+Coherent layout, correct dependencies, wired integrations, runnable entrypoint, `.env.example` when needed, pytest/Ruff/Docker/migrations when selected, README matching real commands.
 
-- have a coherent directory structure for the chosen stack
-- declare dependencies correctly
-- wire configuration so selected components connect
-- **start successfully** (or document the minimal steps to start, if a local service is required)
-- expose the expected entry point (API server, CLI, worker, etc.)
-- include required environment configuration (e.g. `.env.example`) when relevant
-- include appropriate development tooling when selected (tests, linters, formatters)
-- include tests **where they provide value** (smoke/entry-point tests beat empty suites)
-- include Docker support when selected—and it should be runnable for the generated app
-- include database migrations when selected—and they should match the ORM/framework choice
-- include documentation appropriate for continuing work on **that** project (not a copy of Forge’s docs)
+## Official generation compatibility matrix
 
-## Reflect user choices
+Canonical product contract for what Forge **officially supports** generating today.
 
-Do not require every generated project to contain every tool. Optional capabilities appear only when selected (and valid). Absence of an unselected feature is success, not incompleteness.
+`resolve_plan()` remains the authority for validity. The matrix in
+`forge.core.compatibility` documents representative supported cases used for
+smoke coverage — it is **not** a second compatibility engine.
 
-## Working integrations
+### Supported frameworks × architectures
 
-Selected features must be integrated, not merely mentioned.
+| Framework \\ Architecture | Simple | Modular Monolith | Clean |
+|---------------------------|--------|------------------|-------|
+| FastAPI | Supported | Supported | Supported |
+| Django | Supported | Supported | Supported |
+| Flask | Supported | Supported | Supported |
 
-**Bad:** empty `db/` folders and a README saying “add SQLAlchemy later.”
+Python **REST API** only. CLI / Worker project types are catalogued but not generated yet.
 
-**Good:** FastAPI + PostgreSQL + SQLAlchemy + Alembic yields a coherent initial app config, models/session wiring, migration setup, and env vars that fit together.
+### Persistence
 
-The same standard applies to Redis, JWT auth, Docker, background jobs, testing, and linting when those options are chosen.
+| Framework | No database | SQLite | PostgreSQL |
+|-----------|-------------|--------|------------|
+| FastAPI | Supported | Supported | Supported |
+| Flask | Supported | Supported | Supported |
+| Django | **Unsupported** (REST API requires a database) | Supported | Supported |
 
-## Proportional structure
+### Framework-implied (resolved into `GenerationPlan`, not user toggles)
 
-Layout and abstractions should match project type and selections. Prefer conventions familiar to that ecosystem. Avoid microservices, message brokers, or deep interface trees unless the user’s choices justify them.
+| Framework | Implied when applicable |
+|-----------|-------------------------|
+| FastAPI + database | SQLAlchemy; Alembic only if migrations selected |
+| Flask + database | SQLAlchemy; Alembic only if migrations selected |
+| Django REST API | Django ORM, Django migrations, Django REST Framework |
 
-## Maintainability
+### Unsupported (fail in `resolve_plan` before writes)
 
-Generated code should be readable by humans who never used Forge. Prefer clear names, conventional layouts, and minimal magic. Opaque generators that users cannot evolve manually fail the product goal—see [product.md](./product.md).
+Examples:
+
+- Django + SQLAlchemy
+- FastAPI or Flask + Django ORM
+- Migrations without a database / Alembic without SQLAlchemy
+- Non-generatable language / framework / project-type combinations
+
+### Representative smoke cases
+
+Official list: `SUPPORTED_GENERATION_CASES` in `forge.core.compatibility`.
+
+| Case ID | Intent |
+|---------|--------|
+| `fastapi-simple-sqlite` | FastAPI Simple + SQLite + Alembic |
+| `fastapi-modular-postgres` | FastAPI Modular + PostgreSQL + Alembic |
+| `fastapi-clean-sqlite-migrations` | FastAPI Clean + SQLite + Alembic |
+| `fastapi-clean-postgres-docker` | FastAPI Clean + PostgreSQL + Docker |
+| `django-simple-sqlite` | Django Simple + SQLite |
+| `django-modular-postgres` | Django Modular + PostgreSQL |
+| `django-clean-sqlite` | Django Clean + SQLite |
+| `django-clean-postgres-docker` | Django Clean + PostgreSQL + Docker |
+| `flask-simple-nodb` | Flask Simple, no database |
+| `flask-modular-postgres` | Flask Modular + PostgreSQL + Alembic |
+| `flask-clean-sqlite` | Flask Clean + SQLite + Alembic |
+| `flask-clean-postgres-docker` | Flask Clean + PostgreSQL + Docker |
+
+Default tests generate every case structurally. Executable install/test smoke
+(`pytest -m generation_smoke`) runs SQLite / no-database cases only so CI does
+not require a live PostgreSQL server. PostgreSQL + Docker cases are still
+generated and checked for files/compose consistency.
+
+```bash
+uv run pytest -q                          # excludes packaging + generation_smoke
+uv run pytest -q -m generation_smoke      # uv sync + check/pytest/ruff
+```
+
+## Resolution before generation
+
+Invalid combinations fail in `resolve_plan` before directories are created. The same checks apply to interactive choices, YAML `--config` input, and `--preset` expansions after mapping to `ProjectDefinition`.
+
+## Capability implications
+
+Implications are the same across Simple, Modular Monolith, and Clean — architecture changes layout, not the dependency policy.
+
+### FastAPI
+
+| Selection | Resolved into GenerationPlan |
+|-----------|------------------------------|
+| Baseline | `fastapi[standard]`, `pydantic-settings` |
+| Database | ORM → SQLAlchemy; URL + optional `psycopg` |
+| Migrations (user choice) | migration system → Alembic |
+| pytest / Ruff / Docker | as selected |
+
+### Flask
+
+| Selection | Resolved into GenerationPlan |
+|-----------|------------------------------|
+| Baseline | Flask, `python-dotenv` (no ORM unless asked) |
+| Database | ORM → SQLAlchemy; URL + optional `psycopg` |
+| Migrations (user choice) | migration system → Alembic |
+| pytest / Ruff / Docker | as selected |
+
+Flask does not imply persistence infrastructure. No database → no SQLAlchemy, no driver, no Alembic, no persistence ports/packages.
+
+### Django
+
+| Selection | Resolved into GenerationPlan |
+|-----------|------------------------------|
+| Baseline | Django, `python-dotenv`, `manage.py`, `config` settings |
+| REST API | REST → Django REST Framework, `GET /api/health/` |
+| Database engine | ORM → Django ORM; `DATABASES` (env-aware) |
+| (implied) | migration system → Django (`makemigrations` / `migrate`) |
+| pytest | `pytest-django` |
+| Ruff / Docker | configured when selected |
+
+### Clean Architecture quality notes
+
+- Domain code must not import FastAPI, Flask, Django, or SQLAlchemy.
+- Health goes through application/domain layers.
+- Persistence ports and infrastructure packages appear only when a database is selected (except Django, which always has a database for REST API).
+
+### Dependency policy
+
+Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are deduplicated. FastAPI and Flask share the SQLAlchemy / Alembic / `psycopg` strategy when persistence is selected.
+
+### Validation expectation
+
+**FastAPI / Flask:** `uv sync` → `pytest` → `ruff` (Alembic/Docker as applicable).
+
+**Django:** `uv sync` → `python manage.py check` → `migrate` → `pytest` → `ruff` (Compose config when Docker selected).
+
+Live PostgreSQL containers are optional and environment-dependent.
+
+## Forge tests vs generated tests
+
+Forge tests live in this repo’s `tests/`. Generated app tests live inside each generated project.

@@ -1,0 +1,19 @@
+from __future__ import annotations
+
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Config:
+    """Flask configuration loaded from environment variables."""
+
+    APP_NAME: str = os.getenv("APP_NAME", "{{ project_name }}")
+{% if database %}
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        "{{ database_url_example }}",
+    )
+{% endif %}

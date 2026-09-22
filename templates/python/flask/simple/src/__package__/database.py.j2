@@ -1,0 +1,35 @@
+from __future__ import annotations
+
+from collections.abc import Generator
+
+from flask import current_app, g
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
+Base = declarative_base()
+_engine = None
+_SessionLocal = None
+
+
+def _get_engine():
+    global _engine, _SessionLocal
+    if _engine is None:
+        url = current_app.config["DATABASE_URL"]
+        kwargs = {}
+{% if is_sqlite %}
+        kwargs["connect_args"] = {"check_same_thread": False}
+{% endif %}
+        _engine = create_engine(url, **kwargs)
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+    return _engine
+
+
+def get_session() -> Generator[Session, None, None]:
+    _get_engine()
+    if "db_session" not in g:
+        g.db_session = _SessionLocal()
+    try:
+        yield g.db_session
+    finally:
+        g.db_session.close()
+        g.pop("db_session", None)

@@ -1,0 +1,91 @@
+[project]
+name = "forge-cli"
+version = "0.1.0"
+description = "Cross-platform CLI for interactively designing and generating application architectures"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+keywords = [
+    "cli",
+    "scaffolding",
+    "project-generator",
+    "fastapi",
+    "django",
+    "flask",
+    "architecture",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Typing :: Typed",
+]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13",
+    "questionary>=2",
+    "pydantic>=2",
+    "jinja2>=3.1.6",
+    "pyyaml>=6.0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/Lacky227/forge-cli"
+Repository = "https://github.com/Lacky227/forge-cli"
+Issues = "https://github.com/Lacky227/forge-cli/issues"
+Documentation = "https://github.com/Lacky227/forge-cli/tree/master/docs"
+Changelog = "https://github.com/Lacky227/forge-cli/blob/master/CHANGELOG.md"
+
+[project.scripts]
+forge = "forge.cli.app:main"
+
+[build-system]
+requires = ["hatchling>=1.26.3"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/forge",
+    "/templates",
+    "/tests",
+    "/docs",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/uv.lock",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/forge"]
+
+# Runtime Jinja templates live at the repo root for editable development, and
+# are packaged adjacent to the installable module as forge/templates/.
+[tool.hatch.build.targets.wheel.force-include]
+"templates" = "forge/templates"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "types-pyyaml>=6.0.12.20260906",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-m 'not packaging and not generation_smoke'"
+markers = [
+    "packaging: build/install smoke tests (slower; may build wheels)",
+    "generation_smoke: generate + uv sync + framework/pytest/ruff (slower)",
+]
