@@ -17,6 +17,7 @@ from forge.cli.render import (
     print_generation_result,
 )
 from forge.core.config import ConfigError, definition_from_config
+from forge.core.presets import Preset, PresetError, definition_from_preset, get_preset
 from forge.generator import GenerationError, generate_project
 
 app = typer.Typer(
@@ -24,7 +25,8 @@ app = typer.Typer(
     help=(
         "Design and generate application architectures.\n\n"
         "Run [bold]forge new[/bold] to create a project interactively, "
-        "or pass [bold]--config[/bold] for non-interactive generation."
+        "or pass [bold]--preset[/bold] / [bold]--config[/bold] "
+        "for non-interactive generation."
     ),
     no_args_is_help=True,
     add_completion=False,
@@ -62,7 +64,8 @@ def new_command(
         help=(
             "Project directory name under the current working directory "
             "(creates [bold]./<name>[/bold]). "
-            "Prompted if omitted unless [bold]--config[/bold] provides a name."
+            "Prompted if omitted unless [bold]--config[/bold] provides a name; "
+            "required with [bold]--preset[/bold]."
         ),
     ),
     config: Path | None = typer.Option(
@@ -71,18 +74,30 @@ def new_command(
         "-c",
         help=(
             "YAML config file. Skips interactive prompts "
-            "(required fields must be present)."
+            "(required fields must be present). "
+            "Cannot be combined with [bold]--preset[/bold]."
+        ),
+        show_default=False,
+    ),
+    preset: str | None = typer.Option(
+        None,
+        "--preset",
+        "-p",
+        help=(
+            "Named stack preset (non-interactive). "
+            "Cannot be combined with [bold]--config[/bold]."
         ),
         show_default=False,
     ),
 ) -> None:
-    """Generate a project interactively or from a YAML configuration file.
+    """Generate a project interactively, from a preset, or from YAML config.
 
     Interactive mode asks only questions that affect the generated project.
-    With [bold]--config[/bold], generation is fully non-interactive.
+    With [bold]--preset[/bold] or [bold]--config[/bold], generation is
+    fully non-interactive.
     """
     try:
-        _run_new(name=name, config=config)
+        _run_new(name=name, config=config, preset=preset)
     except FlowCancelled:
         print_cancelled()
         raise typer.Exit(code=1) from None
@@ -91,14 +106,25 @@ def new_command(
         raise typer.Exit(code=1) from None
 
 
-def _run_new(*, name: str | None, config: Path | None) -> None:
+def _run_new(
+    *,
+    name: str | None,
+    config: Path | None,
+    preset: str | None,
+) -> None:
     print_banner()
+    used_preset: Preset | None = None
     try:
-        if config is not None:
+        if config is not None and preset is not None:
+            raise PresetError("--preset and --config cannot be used together.")
+        if preset is not None:
+            definition = definition_from_preset(preset, name=name)
+            used_preset = get_preset(preset)
+        elif config is not None:
             definition = definition_from_config(config, cli_name=name)
         else:
             definition = run_new_flow(name=name)
-    except ConfigError as exc:
+    except (ConfigError, PresetError) as exc:
         print_error(str(exc))
         raise typer.Exit(code=1) from None
     except ValidationError as exc:
@@ -119,7 +145,10 @@ def _run_new(*, name: str | None, config: Path | None) -> None:
         print_error(str(exc))
         raise typer.Exit(code=1) from None
 
-    print_generation_result(result)
+    print_generation_result(
+        result,
+        preset_title=used_preset.title if used_preset else None,
+    )
 
 
 def _format_validation_error(exc: ValidationError) -> str:

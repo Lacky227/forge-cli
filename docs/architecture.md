@@ -20,17 +20,17 @@ Generated Project
 
 ### CLI / User Interaction
 
-**Current:** `forge.cli` — Typer, questionary, Rich, optional YAML via `--config`.
+**Current:** `forge.cli` — Typer, questionary, Rich, optional YAML via `--config`, optional `--preset`.
 
-Builds a **`ProjectDefinition`** either interactively or from configuration, then calls `generate_project`. Adaptive option lists come from `forge.core.catalog`. Generation semantics live in the resolver.
+Builds a **`ProjectDefinition`** from interactive prompts, configuration, or a named preset, then calls `generate_project`. Adaptive option lists come from `forge.core.catalog`. Presets live in `forge.core.presets` and only compose explicit choices. Generation semantics live in the resolver.
 
 ```text
 Interactive prompts ─┐
-                     ├→ ProjectDefinition → resolve_plan() → GenerationPlan
-YAML (--config)     ─┘
+YAML (--config)      ├→ ProjectDefinition → resolve_plan() → GenerationPlan
+Preset (--preset)    ─┘
 ```
 
-Both input paths share the same domain model and generation pipeline.
+All input paths share the same domain model and generation pipeline. A preset is **not** a generator: it expands to a `ProjectDefinition` and does not bypass validation, resolution, or templates.
 
 ### Project Definition / Configuration
 

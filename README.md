@@ -2,21 +2,22 @@
 
 Cross-platform CLI for interactively designing and generating application project architectures.
 
-**Status:** generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Supports interactive and YAML `--config` generation.
+**Status:** generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Supports interactive, `--preset`, and YAML `--config` generation.
 
 ## Quick start
 
 ```bash
 uv sync
 uv run forge new my-api
-# non-interactive (CI-safe — never prompts):
+uv run forge new my-api --preset fastapi-postgres
+# non-interactive config (CI-safe — never prompts):
 # uv run forge new --config forge.yaml
 # uv run forge new my-api --config forge.yaml
 cd my-api
 uv sync
 ```
 
-See [docs/cli.md](docs/cli.md) for the public command surface, destination rules, and exit behavior.
+See [docs/cli.md](docs/cli.md) for the public command surface, presets, destination rules, and exit behavior.
 
 Follow the generated README for framework-specific run commands.
 

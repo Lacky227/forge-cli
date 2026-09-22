@@ -27,12 +27,13 @@ uv sync
 uv run forge --help
 uv run forge --version
 uv run forge new my-api
+uv run forge new my-api --preset fastapi-postgres
 uv run forge new --config forge.yaml
 uv run pytest
 ```
 
-Public CLI contract (help, version, config path, errors, cancellation): `tests/test_cli.py`.
-See [cli.md](./cli.md) for the full command surface and destination/exit behavior.
+Public CLI contract (help, version, config, presets, errors, cancellation): `tests/test_cli.py`, `tests/test_presets.py`.
+See [cli.md](./cli.md) for the full command surface, presets, and destination/exit behavior.
 
 ### Import boundaries
 
@@ -68,3 +69,4 @@ GenerationPlan    = resolved implementation
 - How far Clean Architecture persistence demos should go beyond a session/port boundary
 - Config export / round-trip tooling
 - Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator
+- Whether preset + config merging is ever worth the precedence complexity (currently rejected)

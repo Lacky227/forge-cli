@@ -16,6 +16,7 @@ uv run forge --version
 uv run forge new
 uv run forge new --help
 uv run forge new my-api
+uv run forge new my-api --preset fastapi-postgres
 uv run forge new --config forge.yaml
 uv run forge new my-api --config forge.yaml
 ```
@@ -25,11 +26,14 @@ uv run forge new my-api --config forge.yaml
 | `forge` | Shows help (same as `forge --help`) and exits non-zero |
 | `forge --version` / `-V` | Prints `forge <version>` from package metadata |
 | `forge new [NAME]` | Interactive interview → generate `./<name>` |
+| `forge new NAME --preset ID` | Expand preset → `ProjectDefinition` → generate (no prompts) |
 | `forge new [NAME] --config FILE` | Load YAML config (no prompts) → generate |
 
 No additional subcommands (`init`, `generate`, `doctor`, …) are part of the public surface. `new` is the generation command.
 
 `--quiet`, `--verbose`, `--dry-run`, and `--force` are **intentionally deferred** — not part of the current contract.
+
+`--preset` and `--config` **cannot** be combined (rejected with a clear error). ForgeConfig field defaults would make merge precedence ambiguous; keep one non-interactive source of truth.
 
 ## Destination behavior
 
@@ -88,15 +92,69 @@ Error: destination already exists and is not empty: /path/to/my-api
 ```
 
 ```text
-Error: invalid Forge configuration
-  architecture: Input should be 'simple', 'modular-monolith' or 'clean'
+Error: unknown preset 'fastapi-prod'.
+Available presets:
+  fastapi-postgres
+  fastapi-postgres-clean
+  flask-postgres
+  django-postgres
+```
+
+```text
+Error: --preset and --config cannot be used together.
 ```
 
 Domain and config exceptions are translated at the CLI boundary; validation rules are not duplicated just for formatting.
 
 ## Success output
 
-After generation, Forge prints project name, location, a short stack summary from the resolved `GenerationPlan`, and next steps (from plan metadata — not hard-coded framework conditionals in the CLI).
+After generation, Forge prints project name, location, optional preset title, a short stack summary from the resolved `GenerationPlan`, and next steps (from plan metadata — not hard-coded framework conditionals in the CLI).
+
+## Presets
+
+A **preset** is a named composition of valid **explicit user choices**. It is not a generator and does not own templates or resolution.
+
+```text
+--preset ID
+    ↓
+Preset catalog
+    ↓
+ProjectDefinition   (same model as interactive / config)
+    ↓
+resolve_plan()
+    ↓
+GenerationPlan → generator
+```
+
+Presets do **not** store resolved facts (`migration_system`, `rest_framework`, implied ORM, dependencies, commands). Those remain owned by `resolve_plan()`.
+
+### Available presets
+
+| ID | Stack |
+|----|--------|
+| `fastapi-postgres` | FastAPI + Modular Monolith + PostgreSQL + Alembic + Docker |
+| `fastapi-postgres-clean` | FastAPI + Clean Architecture + PostgreSQL + Alembic + Docker |
+| `flask-postgres` | Flask + Modular Monolith + PostgreSQL + Alembic + Docker |
+| `django-postgres` | Django + Modular Monolith + PostgreSQL + Docker (ORM / migrations / DRF implied) |
+
+### Usage
+
+```bash
+forge new my-api --preset fastapi-postgres
+forge new my-api -p django-postgres
+```
+
+- Project **name is required** on the CLI (`forge new <name> --preset …`). Presets do not own the project name.
+- Generation is fully non-interactive.
+- Unknown preset ids fail with a list of available presets.
+
+### Input modes (mutually exclusive non-interactive sources)
+
+| Mode | Command | Prompts? |
+|------|---------|----------|
+| Interactive | `forge new [NAME]` | Yes |
+| Preset | `forge new NAME --preset ID` | No |
+| Config | `forge new [NAME] --config FILE` | No |
 
 ## Configuration-driven generation
 
@@ -188,5 +246,5 @@ Architecture questions are independent of framework. Framework implications are 
 |------|--------|
 | Interactive | **Implemented** |
 | Configuration (`--config`) | **Implemented** (YAML) |
-| Presets | Planned |
+| Presets (`--preset`) | **Implemented** (small curated catalog) |
 | `--dry-run` | Intentionally deferred |

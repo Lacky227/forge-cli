@@ -53,7 +53,11 @@ def print_definition(definition: ProjectDefinition) -> None:
     console.print()
 
 
-def print_generation_result(result: GenerationResult) -> None:
+def print_generation_result(
+    result: GenerationResult,
+    *,
+    preset_title: str | None = None,
+) -> None:
     """Print a concise success summary from the resolved plan."""
     console.print()
     console.print(
@@ -62,6 +66,10 @@ def print_generation_result(result: GenerationResult) -> None:
     console.print()
     console.print("[bold]Location:[/bold]")
     console.print(f"  {_format_location(result.destination)}")
+    if preset_title:
+        console.print()
+        console.print("[bold]Preset:[/bold]")
+        console.print(f"  {preset_title}")
     console.print()
     console.print("[bold]Stack:[/bold]")
     for line in _stack_lines(result):
