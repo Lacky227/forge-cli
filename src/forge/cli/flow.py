@@ -156,8 +156,9 @@ def _collect_capabilities(
 ) -> Capabilities:
     """Ask only user-selectable capability questions.
 
-    Framework-implied details (Django ORM, Django migrations, DRF, FastAPI's
-    SQLAlchemy) are not stored here — ``resolve_plan`` fills them in.
+    Framework-implied details (Django ORM/migrations/DRF; SQLAlchemy for
+    FastAPI/Flask when a database is selected) are not stored here —
+    ``resolve_plan`` fills them in. Flask does not imply a database.
     """
     database = False
     database_engine: str | None = None
@@ -185,6 +186,7 @@ def _collect_capabilities(
                 "[dim](required for REST API)[/dim]"
             )
     elif catalog.supports_database(framework):
+        # FastAPI / Flask: database is optional; SQLAlchemy only when enabled.
         database = _confirm("Include a database?", default=True)
         if database:
             database_engine = _select(

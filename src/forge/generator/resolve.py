@@ -23,6 +23,8 @@ _SQLALCHEMY_ORM = "sqlalchemy"
 _DJANGO_ORM = "django-orm"
 _ALEMBIC = "alembic"
 _DJANGO_MIGRATIONS = "django"
+# Frameworks that use SQLAlchemy + optional Alembic when a database is selected.
+_SQLALCHEMY_FRAMEWORKS = frozenset({"fastapi", "flask"})
 
 
 def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
@@ -77,7 +79,7 @@ def _assert_generatable(definition: ProjectDefinition) -> None:
             f"{definition.language.value}/{definition.framework}/"
             f"{definition.project_type.value}/"
             f"{definition.architecture.value}.\n"
-            "Currently supported: Python FastAPI or Django REST API "
+            "Currently supported: Python FastAPI, Django, or Flask REST API "
             "(simple or modular-monolith)."
         )
 
@@ -98,10 +100,11 @@ def _assert_capability_coherence(definition: ProjectDefinition) -> None:
             "Use Django ORM (and Django migrations) instead."
         )
 
-    if caps.orm == _DJANGO_ORM and framework == "fastapi":
+    if caps.orm == _DJANGO_ORM and framework in _SQLALCHEMY_FRAMEWORKS:
         raise GenerationError(
             "Cannot generate this project:\n\n"
-            "FastAPI with Django ORM is not a supported combination.\n"
+            f"{catalog.FRAMEWORK_LABELS.get(framework, framework)} with "
+            "Django ORM is not a supported combination.\n"
             "Use SQLAlchemy (and Alembic) instead."
         )
 
@@ -115,7 +118,7 @@ def _assert_capability_coherence(definition: ProjectDefinition) -> None:
                 "Use Django ORM and Django migrations."
             )
 
-    if caps.migrations and framework == "fastapi":
+    if caps.migrations and framework in _SQLALCHEMY_FRAMEWORKS:
         if caps.orm is not None and caps.orm != _SQLALCHEMY_ORM:
             raise GenerationError(
                 "Cannot generate this project:\n\n"
@@ -179,7 +182,7 @@ def _resolve_migration_system(
             )
         return _DJANGO_MIGRATIONS
 
-    if definition.framework == "fastapi":
+    if definition.framework in _SQLALCHEMY_FRAMEWORKS:
         if not caps.migrations:
             return None
         if orm != _SQLALCHEMY_ORM:
@@ -201,6 +204,8 @@ def _resolve_dependencies(
         runtime, dev = _fastapi_dependencies(features)
     elif definition.framework == "django":
         runtime, dev = _django_dependencies(features)
+    elif definition.framework == "flask":
+        runtime, dev = _flask_dependencies(features)
     else:
         raise GenerationError(
             "Cannot generate this project:\n\n"
@@ -265,6 +270,31 @@ def _django_dependencies(
     return runtime, dev
 
 
+def _flask_dependencies(
+    features: GenerationFeatures,
+) -> tuple[list[str], list[str]]:
+    """Flask is intentionally minimal — persistence deps only when selected."""
+    runtime: list[str] = [
+        "flask>=3.0",
+        "python-dotenv>=1.0",
+    ]
+    if features.database:
+        if features.orm == _SQLALCHEMY_ORM:
+            runtime.append("sqlalchemy>=2.0")
+        if features.postgresql:
+            runtime.append("psycopg[binary]>=3.2")
+        if features.migration_system == _ALEMBIC:
+            runtime.append("alembic>=1.14")
+
+    dev: list[str] = []
+    if features.testing:
+        dev.append("pytest>=8")
+    if features.linting:
+        dev.append("ruff>=0.8")
+
+    return runtime, dev
+
+
 def _database_url_example(definition: ProjectDefinition, package_name: str) -> str:
     caps = definition.capabilities
     if not caps.database:
@@ -278,6 +308,7 @@ def _database_url_example(definition: ProjectDefinition, package_name: str) -> s
         if caps.database_engine == "sqlite":
             return "sqlite:///db.sqlite3"
         return ""
+    # FastAPI / Flask (SQLAlchemy)
     if caps.database_engine == "postgresql":
         return (
             "postgresql+psycopg://postgres:postgres@localhost:5432/"
@@ -315,6 +346,19 @@ def _commands_and_entry(
         )
         check_command = "uv run python manage.py check"
         return entry_file, app_module, run_command, migrate_command, check_command
+
+    if definition.framework == "flask":
+        entry_file = f"src/{package_name}/__init__.py"
+        app_module = f"{package_name}:create_app"
+        run_command = (
+            f"uv run flask --app {package_name}:create_app run --debug"
+        )
+        migrate_command = (
+            "uv run alembic upgrade head"
+            if features.migration_system == _ALEMBIC
+            else None
+        )
+        return entry_file, app_module, run_command, migrate_command, None
 
     entry_file = f"src/{package_name}/main.py"
     return entry_file, f"{package_name}.main:app", f"uv run {entry_file}", None, None

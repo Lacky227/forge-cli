@@ -19,7 +19,7 @@ uv run forge --version
 |---------|----------|
 | `forge new [NAME]` | Interview → generate `./<name>` |
 
-Non-empty destinations are refused. Unsupported frameworks fail during **resolution** before writes.
+Non-empty destinations are refused. Unsupported combinations fail during **resolution** before writes.
 
 ## Adaptive questioning
 
@@ -27,10 +27,11 @@ Non-empty destinations are refused. Unsupported frameworks fail during **resolut
 
 Users think in terms of *what they are building*, not which internal implementation classes Forge uses.
 
-- Framework options depend on language + project type (FastAPI, Django, …)
+- Framework options depend on language + project type (FastAPI, Django, Flask, …)
 - **FastAPI:** optional database → engine → Alembic confirm; SQLAlchemy is implied (dim note)
+- **Flask:** optional database → engine → Alembic confirm; SQLAlchemy is implied when a DB is selected (dim note). No Django-style forced infrastructure.
 - **Django (REST API):** database engine only; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
-- Docker / pytest / Ruff are explicit confirms for both
+- Docker / pytest / Ruff are explicit confirms for all three
 
 Framework implications are applied in `resolve_plan`, not by stuffing implied fields into `ProjectDefinition` during the interview.
 
@@ -42,5 +43,5 @@ Shows framework, architecture, capabilities, and next steps (framework-specific 
 
 | Mode | Status |
 |------|--------|
-| Interactive | **Implemented** (FastAPI + Django) |
+| Interactive | **Implemented** (FastAPI + Django + Flask) |
 | Presets / `--config` | Planned |

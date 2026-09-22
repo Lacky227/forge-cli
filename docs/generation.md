@@ -12,9 +12,9 @@ Invalid combinations fail in `resolve_plan` before directories are created.
 
 Examples of invalid **explicit** combinations:
 
-- unsupported framework
+- unsupported framework / architecture
 - Django + SQLAlchemy
-- FastAPI + Django ORM
+- FastAPI or Flask + Django ORM
 - Alembic without SQLAlchemy / migrations without a database
 
 Framework-implied capabilities (Django ORM, Django migrations, DRF) are resolved internally and do not need to appear on `ProjectDefinition`.
@@ -30,6 +30,17 @@ Framework-implied capabilities (Django ORM, Django migrations, DRF) are resolved
 | Migrations (user choice) | migration system → Alembic |
 | pytest / Ruff / Docker | as selected |
 
+### Flask
+
+| Selection | Resolved into GenerationPlan |
+|-----------|------------------------------|
+| Baseline | Flask, `python-dotenv` (no ORM unless asked) |
+| Database | ORM → SQLAlchemy; URL + optional `psycopg` |
+| Migrations (user choice) | migration system → Alembic |
+| pytest / Ruff / Docker | as selected |
+
+Flask does not imply persistence infrastructure. No database → no SQLAlchemy, no driver, no Alembic.
+
 ### Django
 
 | Selection | Resolved into GenerationPlan |
@@ -43,11 +54,13 @@ Framework-implied capabilities (Django ORM, Django migrations, DRF) are resolved
 
 ### Dependency policy
 
-Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are deduplicated.
+Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are deduplicated. FastAPI and Flask share the SQLAlchemy / Alembic / `psycopg` strategy when persistence is selected.
 
 ### Validation expectation
 
 **FastAPI:** `uv sync` → `pytest` → `ruff` (Alembic/Docker as applicable).
+
+**Flask:** `uv sync` → `pytest` → `ruff` (Alembic/Docker as applicable); health via Flask test client.
 
 **Django:** `uv sync` → `python manage.py check` → `migrate` → `pytest` → `ruff` (Compose config when Docker selected).
 

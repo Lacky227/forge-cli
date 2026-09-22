@@ -1,0 +1,6 @@
+from flask import Blueprint
+
+from {{ package_name }}.api.routes import health
+
+api_bp = Blueprint("api", __name__)
+api_bp.register_blueprint(health.bp)

@@ -76,6 +76,11 @@ GENERATABLE: frozenset[tuple[str, str, str]] = frozenset(
             "django",
             ProjectType.REST_API.value,
         ),
+        (
+            Language.PYTHON.value,
+            "flask",
+            ProjectType.REST_API.value,
+        ),
     }
 )
 

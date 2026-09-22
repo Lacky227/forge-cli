@@ -158,14 +158,14 @@ def test_generate_django_modular(tmp_path: Path) -> None:
 
 
 def test_django_invalid_fails_before_fs(tmp_path: Path) -> None:
-    definition = ProjectDefinition(
-        name="flask-app",
+    definition = ProjectDefinition.model_construct(
+        name="future-app",
         language=Language.PYTHON,
         project_type=ProjectType.REST_API,
-        framework="flask",
-        architecture=ArchitectureStyle.SIMPLE,
+        framework="django",
+        architecture=ArchitectureStyle.CLEAN,
         capabilities=Capabilities(testing=True, linting=False),
     )
     with pytest.raises(GenerationError, match="Cannot generate"):
         generate_project(definition, base_dir=tmp_path)
-    assert not (tmp_path / "flask-app").exists()
+    assert not (tmp_path / "future-app").exists()
