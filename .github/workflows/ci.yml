@@ -55,8 +55,8 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           dist = Path("dist")
-          wheels = list(dist.glob("forge_cli-*.whl"))
-          sdists = list(dist.glob("forge_cli-*.tar.gz"))
+          wheels = list(dist.glob("forge_scaffolder-*.whl"))
+          sdists = list(dist.glob("forge_scaffolder-*.tar.gz"))
           assert wheels, f"no wheel in {list(dist.iterdir())}"
           assert sdists, f"no sdist in {list(dist.iterdir())}"
           print("artifacts:", *(p.name for p in wheels + sdists))
@@ -67,10 +67,13 @@ jobs:
           python - <<'PY'
           import zipfile
           from pathlib import Path
-          wheels = list(Path("dist").glob("forge_cli-*.whl"))
+          wheels = list(Path("dist").glob("forge_scaffolder-*.whl"))
           assert len(wheels) == 1, wheels
           with zipfile.ZipFile(wheels[0]) as zf:
               names = zf.namelist()
+              metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
+          assert "Name: forge-scaffolder" in metadata
+          assert "Version: 0.1.1" in metadata
           templates = [n for n in names if n.startswith("forge/templates/python/")]
           assert templates, "missing forge/templates/python in wheel"
           for framework in ("fastapi", "django", "flask"):

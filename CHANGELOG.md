@@ -7,9 +7,21 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-22
+
+Packaging rename for first PyPI publication.
+
+### Changed
+
+- PyPI distribution name is now **`forge-scaffolder`** (the previous intended name `forge-cli` is already occupied on PyPI by an unrelated project)
+- Console script remains **`forge`**; Python import package remains **`forge`**; GitHub repository remains **`Lacky227/forge-cli`**
+- Prepares / contains the first PyPI publication under the new distribution name
+
+The existing GitHub release **`v0.1.0`** remains the previous release and was not published to PyPI.
+
 ## [0.1.0] - 2026-09-22
 
-First public development release of the Forge CLI (`forge-cli`).
+First public development release of the Forge CLI (`forge-cli` as the then-intended distribution name; GitHub release `v0.1.0`).
 
 ### Added
 

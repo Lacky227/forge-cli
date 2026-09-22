@@ -2,7 +2,7 @@
 
 Cross-platform CLI for interactively designing and generating application project architectures.
 
-**Status:** first public development release **`0.1.0`** (`forge-cli`). Generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Supports interactive / `--preset` / YAML `--config` generation and `forge plan` inspection.
+**Status:** public development release **`0.1.1`** (`forge-scaffolder` on PyPI). Generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Supports interactive / `--preset` / YAML `--config` generation and `forge plan` inspection.
 
 **Requires:** Python **3.11+** (tested on 3.11, 3.12, 3.13)
 
@@ -16,21 +16,31 @@ Cross-platform CLI for interactively designing and generating application projec
 
 ## Install
 
-The package is **release-ready** (wheel/sdist build + clean-install smoke), but **not published to PyPI yet**.
+```bash
+uv tool install forge-scaffolder
+# or: pip install forge-scaffolder
+forge --version
+forge new my-api --preset fastapi-postgres
+```
+
+Naming:
+
+| Role | Name |
+|------|------|
+| PyPI distribution | **`forge-scaffolder`** |
+| Console script | **`forge`** |
+| Python package | **`forge`** |
+| GitHub repository | [Lacky227/forge-cli](https://github.com/Lacky227/forge-cli) |
 
 Build and install from this repository:
 
 ```bash
 uv sync
 uv build
-uv pip install dist/forge_cli-*.whl   # or: pip install dist/forge_cli-*.whl
+uv pip install dist/forge_scaffolder-*.whl   # or: pip install dist/forge_scaffolder-*.whl
 forge --version
 forge new my-api --preset fastapi-postgres
 ```
-
-Distribution name: **`forge-cli`**. Console script: **`forge`**.
-
-When published, installation is expected to be `pip install forge-cli` / `uv add forge-cli` under that same distribution name.
 
 ## Quick start (development checkout)
 
@@ -78,7 +88,7 @@ uv run pytest
 
 ## Versioning
 
-`0.1.0` is the first public development release. See the versioning policy in [docs/development.md](docs/development.md).
+`0.1.1` is the current public development release (PyPI distribution `forge-scaffolder`). See the versioning policy in [docs/development.md](docs/development.md).
 
 ## License
 

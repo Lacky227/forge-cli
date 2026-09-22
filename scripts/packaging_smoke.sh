@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Build forge-cli, install the wheel into a clean venv *outside* the repo,
+# Build forge-scaffolder, install the wheel into a clean venv *outside* the repo,
 # and prove generation uses packaged templates (not the source tree).
+# Console script remains ``forge``; import package remains ``forge``.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,7 +11,7 @@ echo "==> Building distributions"
 rm -rf dist
 uv build
 
-WHEEL="$(ls dist/forge_cli-*.whl | head -n1)"
+WHEEL="$(ls dist/forge_scaffolder-*.whl | head -n1)"
 if [[ -z "${WHEEL}" ]]; then
   echo "ERROR: no wheel found in dist/" >&2
   exit 1
@@ -26,6 +27,13 @@ from pathlib import Path
 wheel = Path("${WHEEL}")
 with zipfile.ZipFile(wheel) as zf:
     names = zf.namelist()
+    metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
+assert "Name: forge-scaffolder" in metadata, metadata
+assert "Version: 0.1.1" in metadata, metadata
+assert (
+    "License-Expression: GPL-3.0-only" in metadata
+    or "License: GPL-3.0-only" in metadata
+), metadata
 templates = [n for n in names if n.startswith("forge/templates/python/")]
 assert templates, "wheel missing forge/templates/python/"
 # Spot-check frameworks
@@ -38,6 +46,7 @@ for frag in (
 # Must not ship tests or local smoke trees inside the package
 assert not any(n.startswith("forge/tests/") for n in names)
 assert not any(".smoke" in n for n in names)
+assert not any(".cursor" in n for n in names)
 print(f"    templates in wheel: {len(templates)}")
 PY
 
@@ -69,6 +78,10 @@ from pathlib import Path
 
 print(f"    forge package: {Path(forge.__file__).resolve()}")
 print(f"    forge version: {forge.__version__}")
+assert forge.__version__ == "0.1.1", forge.__version__
+from importlib.metadata import metadata
+meta = metadata("forge-scaffolder")
+assert meta["Name"] == "forge-scaffolder"
 root = render.templates_root()
 print(f"    templates_root: {root}")
 repo = Path("${ROOT}").resolve()
@@ -80,7 +93,7 @@ assert "site-packages" in str(root) or "forge/templates" in str(root).replace("\
 PY
 
 echo "==> CLI smoke"
-forge --version
+forge --version | grep -F "forge 0.1.1"
 forge --help >/dev/null
 forge new --help >/dev/null
 
