@@ -43,8 +43,8 @@ dependencies = [
 Homepage = "https://github.com/Lacky227/forge-cli"
 Repository = "https://github.com/Lacky227/forge-cli"
 Issues = "https://github.com/Lacky227/forge-cli/issues"
-Documentation = "https://github.com/Lacky227/forge-cli/tree/main/docs"
-Changelog = "https://github.com/Lacky227/forge-cli/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/Lacky227/forge-cli/tree/master/docs"
+Changelog = "https://github.com/Lacky227/forge-cli/blob/master/CHANGELOG.md"
 
 [project.scripts]
 forge = "forge.cli.app:main"
