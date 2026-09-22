@@ -2,7 +2,7 @@
 
 Cross-platform CLI for interactively designing and generating application project architectures.
 
-**Status:** first public development release **`0.1.0`** (`forge-cli`). Generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Supports interactive, `--preset`, and YAML `--config` generation.
+**Status:** first public development release **`0.1.0`** (`forge-cli`). Generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Supports interactive / `--preset` / YAML `--config` generation and `forge plan` inspection.
 
 **Requires:** Python **3.11+** (tested on 3.11, 3.12, 3.13)
 
@@ -82,7 +82,7 @@ uv run pytest
 
 ## License
 
-**Not chosen yet.** A `LICENSE` file and SPDX metadata will be added once a license is selected. Until then, treat usage/redistribution terms as undefined for a public release.
+GPL-3.0-only. See [`LICENSE`](LICENSE).
 
 ## Repository
 

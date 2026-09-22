@@ -114,6 +114,8 @@ GenerationPlan    = resolved implementation
 - Config export / round-trip tooling
 - Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator
 - Whether preset + config merging is ever worth the precedence complexity (currently rejected)
-- License / SPDX identifier for a public release (no LICENSE file yet — required before PyPI)
 - Author / maintainer contact metadata for PyPI
 - Whether and when to publish `forge-cli` to PyPI
+- Whether generated projects should inherit Forge's GPL-3.0-only license (they do **not** automatically; decision not made)
+
+Forge itself is licensed **GPL-3.0-only** (see [`LICENSE`](../LICENSE)).

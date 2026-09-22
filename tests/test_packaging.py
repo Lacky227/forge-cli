@@ -50,6 +50,11 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     assert len(wheels) == 1, wheels
     with zipfile.ZipFile(wheels[0]) as zf:
         names = zf.namelist()
+        metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
+    assert (
+        "License-Expression: GPL-3.0-only" in metadata
+        or "License: GPL-3.0-only" in metadata
+    )
     templates = [n for n in names if n.startswith("forge/templates/python/")]
     assert len(templates) >= 50
     assert any("fastapi" in n for n in templates)

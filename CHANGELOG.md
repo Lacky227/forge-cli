@@ -7,10 +7,7 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
 
 ## [Unreleased]
 
-### Added
-
-- `forge plan` — inspect the resolved `GenerationPlan` from `--preset` or `--config` without generating files
-- Official generation compatibility matrix (`forge.core.compatibility`) with structural and executable smoke coverage
+## [0.1.0] - 2026-09-22
 
 First public development release of the Forge CLI (`forge-cli`).
 
@@ -21,8 +18,11 @@ First public development release of the Forge CLI (`forge-cli`).
 - Architecture layouts: **Simple**, **Modular Monolith**, and **Clean Architecture**
 - Non-interactive YAML generation via `forge new --config`
 - Curated stack presets via `forge new --preset` (e.g. `fastapi-postgres`)
+- `forge plan` — inspect the resolved `GenerationPlan` from `--preset` or `--config` without generating files
+- Official generation compatibility matrix (`forge.core.compatibility`) with structural and executable smoke coverage
 - Packaged CLI distribution with Jinja templates included in the wheel
 - CI for Python 3.11–3.13 plus packaging smoke validation
+- Licensed under GPL-3.0-only
 
 ### Architecture
 
