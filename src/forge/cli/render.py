@@ -12,6 +12,7 @@ from rich.text import Text
 from forge.core import catalog
 from forge.core.definition import ProjectDefinition
 from forge.generator.engine import GenerationResult
+from forge.generator.plan import GenerationPlan
 
 console = Console()
 
@@ -78,6 +79,30 @@ def print_generation_result(
     console.print("[bold]Next steps:[/bold]")
     for step in result.next_steps():
         console.print(f"  [cyan]{step}[/cyan]")
+    console.print()
+
+
+def print_generation_plan(plan: GenerationPlan) -> None:
+    """Print a resolved GenerationPlan without generating files."""
+    console.print()
+    console.print(
+        Panel(
+            Text("Resolved from ProjectDefinition → resolve_plan()", style="dim"),
+            title="[bold]Forge Generation Plan[/bold]",
+            border_style="cyan",
+            padding=(0, 2),
+            expand=False,
+        )
+    )
+    for section in plan.summary_sections():
+        console.print()
+        console.print(f"[bold]{section.title}[/bold]")
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column(style="dim", justify="right")
+        table.add_column()
+        for label, value in section.rows:
+            table.add_row(f"{label}:", value)
+        console.print(table)
     console.print()
 
 

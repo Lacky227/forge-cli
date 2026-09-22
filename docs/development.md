@@ -30,11 +30,12 @@ uv run forge --help
 uv run forge --version
 uv run forge new my-api
 uv run forge new my-api --preset fastapi-postgres
+uv run forge plan --preset fastapi-postgres
 uv run forge new --config forge.yaml
 uv run pytest
 ```
 
-Public CLI contract (help, version, config, presets, errors, cancellation): `tests/test_cli.py`, `tests/test_presets.py`.
+Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`.
 See [cli.md](./cli.md) for the full command surface, presets, and destination/exit behavior.
 
 ### Packaging and distribution

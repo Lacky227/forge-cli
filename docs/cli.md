@@ -19,6 +19,10 @@ uv run forge new my-api
 uv run forge new my-api --preset fastapi-postgres
 uv run forge new --config forge.yaml
 uv run forge new my-api --config forge.yaml
+uv run forge plan --help
+uv run forge plan --preset fastapi-postgres
+uv run forge plan --config forge.yaml
+uv run forge plan my-api --config forge.yaml
 ```
 
 | Command | Behavior |
@@ -28,8 +32,10 @@ uv run forge new my-api --config forge.yaml
 | `forge new [NAME]` | Interactive interview → generate `./<name>` |
 | `forge new NAME --preset ID` | Expand preset → `ProjectDefinition` → generate (no prompts) |
 | `forge new [NAME] --config FILE` | Load YAML config (no prompts) → generate |
+| `forge plan --preset ID` | Resolve and display `GenerationPlan` (no filesystem writes) |
+| `forge plan [NAME] --config FILE` | Same for YAML; name precedence matches `forge new` |
 
-No additional subcommands (`init`, `generate`, `doctor`, …) are part of the public surface. `new` is the generation command.
+`new` generates projects. `plan` only inspects the resolved plan. Do not add unrelated subcommands.
 
 `--quiet`, `--verbose`, `--dry-run`, and `--force` are **intentionally deferred** — not part of the current contract.
 
@@ -110,6 +116,32 @@ Domain and config exceptions are translated at the CLI boundary; validation rule
 
 After generation, Forge prints project name, location, optional preset title, a short stack summary from the resolved `GenerationPlan`, and next steps (from plan metadata — not hard-coded framework conditionals in the CLI).
 
+## `forge plan`
+
+Inspect the resolved `GenerationPlan` **without generating files**.
+
+```text
+--preset / --config
+        ↓
+ProjectDefinition
+        ↓
+resolve_plan()
+        ↓
+GenerationPlan  →  Rich summary (no writes)
+```
+
+```bash
+forge plan --preset fastapi-postgres
+forge plan --config forge.yaml
+forge plan my-api --config forge.yaml
+```
+
+- Requires `--preset` or `--config` (not interactive in this release).
+- `--preset` and `--config` cannot be combined.
+- With `--preset` and no CLI name, the plan uses the display name `project` (nothing is written to disk).
+- With `--config`, name precedence matches `forge new`.
+- Framework-implied values (ORM, migration system, DRF, commands, dependencies) come from `GenerationPlan`, not from re-reading the definition in the CLI.
+
 ## Presets
 
 A **preset** is a named composition of valid **explicit user choices**. It is not a generator and does not own templates or resolution.
@@ -155,6 +187,8 @@ forge new my-api -p django-postgres
 | Interactive | `forge new [NAME]` | Yes |
 | Preset | `forge new NAME --preset ID` | No |
 | Config | `forge new [NAME] --config FILE` | No |
+| Plan (preset) | `forge plan --preset ID` | No |
+| Plan (config) | `forge plan [NAME] --config FILE` | No |
 
 ## Configuration-driven generation
 
@@ -247,4 +281,5 @@ Architecture questions are independent of framework. Framework implications are 
 | Interactive | **Implemented** |
 | Configuration (`--config`) | **Implemented** (YAML) |
 | Presets (`--preset`) | **Implemented** (small curated catalog) |
+| Plan inspection (`forge plan`) | **Implemented** (non-interactive; `--preset` / `--config`) |
 | `--dry-run` | Intentionally deferred |

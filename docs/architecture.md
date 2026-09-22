@@ -27,10 +27,11 @@ Builds a **`ProjectDefinition`** from interactive prompts, configuration, or a n
 ```text
 Interactive prompts ─┐
 YAML (--config)      ├→ ProjectDefinition → resolve_plan() → GenerationPlan
-Preset (--preset)    ─┘
+Preset (--preset)    ─┘                                      ├→ generator (forge new)
+                                                             └→ Rich summary (forge plan)
 ```
 
-All input paths share the same domain model and generation pipeline. A preset is **not** a generator: it expands to a `ProjectDefinition` and does not bypass validation, resolution, or templates.
+All input paths share the same domain model and resolution pipeline. `forge plan` stops after `resolve_plan` and never writes a project. A preset is **not** a generator: it expands to a `ProjectDefinition` and does not bypass validation, resolution, or templates.
 
 ### Project Definition / Configuration
 

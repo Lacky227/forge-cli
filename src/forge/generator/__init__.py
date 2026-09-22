@@ -6,7 +6,7 @@ from forge.generator.engine import (
     generate_project,
 )
 from forge.generator.errors import GenerationError
-from forge.generator.plan import GenerationFeatures, GenerationPlan
+from forge.generator.plan import GenerationFeatures, GenerationPlan, PlanSummarySection
 from forge.generator.resolve import resolve_plan
 
 __all__ = [
@@ -14,6 +14,7 @@ __all__ = [
     "GenerationFeatures",
     "GenerationPlan",
     "GenerationResult",
+    "PlanSummarySection",
     "generate_from_plan",
     "generate_project",
     "resolve_plan",

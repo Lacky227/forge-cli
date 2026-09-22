@@ -5,7 +5,11 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows the versioning policy in [docs/development.md](docs/development.md).
 
-## [0.1.0] - 2026-09-22
+## [Unreleased]
+
+### Added
+
+- `forge plan` — inspect the resolved `GenerationPlan` from `--preset` or `--config` without generating files
 
 First public development release of the Forge CLI (`forge-cli`).
 

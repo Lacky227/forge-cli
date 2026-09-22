@@ -51,6 +51,7 @@ Follow the generated project README for framework-specific run commands.
 - **Interactive:** `forge new [NAME]` — adaptive prompts only for choices that affect the project
 - **YAML:** `forge new [NAME] --config forge.yaml` — fully non-interactive
 - **Preset:** `forge new NAME --preset fastapi-postgres` — curated stack; no prompts
+- **Plan:** `forge plan --preset fastapi-postgres` — show resolved `GenerationPlan` without writing files
 
 `--preset` and `--config` cannot be combined. Details: [docs/cli.md](docs/cli.md).
 
