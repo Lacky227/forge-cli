@@ -17,8 +17,10 @@ Keep docs useful and small. Update authoritative documents when behavior changes
 ## Technology
 
 ```text
-Python >= 3.11 · uv · Typer · Rich · questionary · Pydantic v2 · Jinja2 · PyYAML · pytest
+Python >= 3.11 · uv · Typer · Rich · questionary · Pydantic v2 · Jinja2 · PyYAML · pytest · hatchling
 ```
+
+Supported interpreters: **3.11, 3.12, 3.13** (`requires-python = ">=3.11"`).
 
 ### Run
 
@@ -34,6 +36,29 @@ uv run pytest
 
 Public CLI contract (help, version, config, presets, errors, cancellation): `tests/test_cli.py`, `tests/test_presets.py`.
 See [cli.md](./cli.md) for the full command surface, presets, and destination/exit behavior.
+
+### Packaging and distribution
+
+Distribution name: **`forge-cli`**. Entry point: **`forge`**.
+
+Jinja templates live at the repository root (`templates/`) for editable development. Hatch **force-includes** them into the wheel as `forge/templates/`, so an installed package is self-contained. `forge.generator.render.templates_root()` resolves:
+
+1. `FORGE_TEMPLATES_ROOT` (override)
+2. Packaged `forge/templates` (installed wheel)
+3. Repository `templates/` next to `pyproject.toml` (editable checkout only)
+
+```bash
+# Build wheel + sdist
+uv build
+
+# Clean-install smoke (venv outside the repo; generates FastAPI/Django/Flask projects)
+bash scripts/packaging_smoke.sh
+
+# Packaging-focused pytest (builds wheels; skipped by default via addopts)
+uv run pytest -m packaging
+```
+
+Do not publish to PyPI from this workflow yet. CI runs the test matrix and the packaging smoke on every push/PR.
 
 ### Import boundaries
 
@@ -70,3 +95,6 @@ GenerationPlan    = resolved implementation
 - Config export / round-trip tooling
 - Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator
 - Whether preset + config merging is ever worth the precedence complexity (currently rejected)
+- License / SPDX identifier for a public release (no LICENSE file yet)
+- Project homepage / repository URLs for PyPI metadata
+- Whether and when to publish `forge-cli` to PyPI

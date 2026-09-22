@@ -22,29 +22,55 @@ _DB_ONLY_DIR_NAMES = frozenset({"persistence"})
 
 
 def templates_root() -> Path:
-    """Resolve the templates directory (source checkout or packaged wheel)."""
+    """Resolve the templates directory for installed or development layouts.
+
+    Resolution order:
+
+    1. ``FORGE_TEMPLATES_ROOT`` (explicit override)
+    2. Packaged data at ``forge/templates`` (wheel force-include / adjacent to
+       the installed package)
+    3. Development checkout: ``<repo>/templates`` next to ``pyproject.toml``
+
+    Parent directories are not scanned generically — that would risk picking up
+    unrelated ``templates/`` trees and false positives during packaging tests.
+    """
     override = os.environ.get("FORGE_TEMPLATES_ROOT")
     if override:
-        path = Path(override)
+        path = Path(override).expanduser()
         if not path.is_dir():
             raise GenerationError(
                 f"FORGE_TEMPLATES_ROOT is not a directory: {override}"
             )
         return path.resolve()
 
+    # Installed wheel / sdist: hatch force-includes repo templates → forge/templates
     packaged = Path(__file__).resolve().parent.parent / "templates"
     if (packaged / "python").is_dir():
         return packaged
 
+    # Editable / source checkout: src/forge/generator/render.py → repo root
     for parent in Path(__file__).resolve().parents:
+        pyproject = parent / "pyproject.toml"
         candidate = parent / "templates"
-        if (candidate / "python").is_dir():
+        if (
+            pyproject.is_file()
+            and (candidate / "python").is_dir()
+            and _looks_like_forge_pyproject(pyproject)
+        ):
             return candidate.resolve()
 
     raise GenerationError(
-        "Cannot locate Forge templates. Expected templates/python/… "
-        "next to the package or at the repository root."
+        "Cannot locate Forge templates. Expected forge/templates/python/… "
+        "in the installed package, or templates/python/… at the repository root."
     )
+
+
+def _looks_like_forge_pyproject(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return 'name = "forge-cli"' in text
 
 
 def create_env(template_dir: Path) -> Environment:

@@ -4,7 +4,23 @@ Cross-platform CLI for interactively designing and generating application projec
 
 **Status:** generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Supports interactive, `--preset`, and YAML `--config` generation.
 
-## Quick start
+**Requires:** Python **3.11+**
+
+## Install (from a built wheel)
+
+PyPI publishing is not set up yet. Build and install locally:
+
+```bash
+uv sync
+uv build
+uv pip install dist/forge_cli-*.whl   # or: pip install dist/forge_cli-*.whl
+forge --version
+forge new my-api --preset fastapi-postgres
+```
+
+Distribution name: **`forge-cli`**. Console script: **`forge`**.
+
+## Development quick start
 
 ```bash
 uv sync
@@ -27,16 +43,17 @@ Follow the generated README for framework-specific run commands.
 |----------|----------|
 | [docs/product.md](docs/product.md) | Product definition, principles, scope |
 | [docs/architecture.md](docs/architecture.md) | Resolution, GenerationPlan, frameworks |
-| [docs/cli.md](docs/cli.md) | Interactive CLI and YAML configuration |
+| [docs/cli.md](docs/cli.md) | Interactive CLI, presets, and YAML configuration |
 | [docs/generation.md](docs/generation.md) | Generated-project quality |
-| [docs/development.md](docs/development.md) | Toolchain and workflow |
+| [docs/development.md](docs/development.md) | Toolchain, packaging, and workflow |
 
 ## Layout
 
 ```text
 src/forge/cli/
-src/forge/core/          # ProjectDefinition, YAML config → definition
+src/forge/core/          # ProjectDefinition, YAML config, presets
 src/forge/generator/     # resolve → GenerationPlan → render
-templates/python/{fastapi,django,flask}/{simple,modular-monolith,clean}/
+templates/               # Jinja templates (packaged as forge/templates in the wheel)
 tests/
+scripts/packaging_smoke.sh
 ```

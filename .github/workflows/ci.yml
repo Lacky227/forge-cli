@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --all-groups
+
+      - name: Run test suite
+        run: uv run pytest -q --tb=short
+
+  package:
+    name: Build and packaging smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --all-groups
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Assert artifacts exist
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          dist = Path("dist")
+          wheels = list(dist.glob("forge_cli-*.whl"))
+          sdists = list(dist.glob("forge_cli-*.tar.gz"))
+          assert wheels, f"no wheel in {list(dist.iterdir())}"
+          assert sdists, f"no sdist in {list(dist.iterdir())}"
+          print("artifacts:", *(p.name for p in wheels + sdists))
+          PY
+
+      - name: Verify wheel templates
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          wheels = list(Path("dist").glob("forge_cli-*.whl"))
+          assert len(wheels) == 1, wheels
+          with zipfile.ZipFile(wheels[0]) as zf:
+              names = zf.namelist()
+          templates = [n for n in names if n.startswith("forge/templates/python/")]
+          assert templates, "missing forge/templates/python in wheel"
+          for framework in ("fastapi", "django", "flask"):
+              assert any(f"/{framework}/" in n for n in templates), framework
+          print(f"templates packaged: {len(templates)}")
+          PY
+
+      - name: Pytest packaging markers
+        run: uv run pytest -q -m packaging --tb=short
+
+      - name: Packaging smoke (clean install)
+        run: bash scripts/packaging_smoke.sh

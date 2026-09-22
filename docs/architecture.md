@@ -81,6 +81,8 @@ templates/python/{fastapi,django,flask}/{simple,modular-monolith,clean}/
 
 Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters.
 
+In the built wheel, the same tree is installed as ``forge/templates/`` (Hatch force-include). Runtime resolution is handled by ``forge.generator.render.templates_root()``.
+
 ## What generates today
 
 | Framework \\ Architecture | Simple | Modular Monolith | Clean |
