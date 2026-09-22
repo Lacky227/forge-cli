@@ -115,8 +115,22 @@ def test_unsupported_framework(tmp_path: Path) -> None:
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(testing=True, linting=False),
     )
-    with pytest.raises(GenerationError, match="not implemented"):
+    with pytest.raises(GenerationError, match="Cannot generate this project"):
         generate_project(definition, base_dir=tmp_path)
+
+
+def test_invalid_plan_fails_before_filesystem(tmp_path: Path) -> None:
+    definition = ProjectDefinition(
+        name="django-app",
+        language=Language.PYTHON,
+        project_type=ProjectType.REST_API,
+        framework="django",
+        architecture=ArchitectureStyle.SIMPLE,
+        capabilities=Capabilities(testing=True, linting=False),
+    )
+    with pytest.raises(GenerationError):
+        generate_project(definition, base_dir=tmp_path)
+    assert not (tmp_path / "django-app").exists()
 
 
 def test_next_steps_include_fastapi_dev(tmp_path: Path) -> None:

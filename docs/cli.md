@@ -30,7 +30,7 @@ uv run forge new my-api
 
 Generation refuses an existing **non-empty** destination. There is no `--force` yet.
 
-Unsupported combinations (e.g. Django) produce a clear generation error after the interview.
+Unsupported combinations (e.g. Django) fail during **resolution** before any project files are written.
 
 ## Generation result
 

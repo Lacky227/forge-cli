@@ -19,7 +19,7 @@ uv run fastapi dev src/my_api/main.py
 | Document | Contents |
 |----------|----------|
 | [docs/product.md](docs/product.md) | Product definition, principles, scope, non-goals |
-| [docs/architecture.md](docs/architecture.md) | Architecture, `ProjectDefinition`, generator, templates |
+| [docs/architecture.md](docs/architecture.md) | Architecture, resolution, GenerationPlan, generator |
 | [docs/cli.md](docs/cli.md) | Interactive CLI, commands |
 | [docs/generation.md](docs/generation.md) | Quality requirements for generated projects |
 | [docs/development.md](docs/development.md) | Toolchain and development workflow |
@@ -29,7 +29,7 @@ uv run fastapi dev src/my_api/main.py
 ```text
 src/forge/cli/         # Typer + questionary + Rich
 src/forge/core/        # ProjectDefinition (no UI deps)
-src/forge/generator/   # Jinja2 generation engine
+src/forge/generator/   # resolve → GenerationPlan → Jinja/filesystem
 templates/python/fastapi/
 tests/                 # Forge's own tests
 ```

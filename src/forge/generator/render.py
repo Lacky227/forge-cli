@@ -1,4 +1,4 @@
-"""Locate and render Jinja2 project templates."""
+"""Locate and render Jinja2 project templates from a GenerationPlan."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
-from forge.generator.context import TemplateContext
 from forge.generator.errors import GenerationError
+from forge.generator.plan import GenerationPlan
 
 _PACKAGE_DIR_TOKEN = "__package__"
 _TEMPLATE_SUFFIX = ".j2"
@@ -63,34 +63,35 @@ def iter_template_files(template_dir: Path) -> Iterator[Path]:
             yield path
 
 
-def should_emit(relative: Path, context: TemplateContext) -> bool:
-    """Skip capability-specific template paths when the capability is off."""
+def should_emit(relative: Path, plan: GenerationPlan) -> bool:
+    """Skip capability-specific template paths using resolved features."""
+    features = plan.features
     parts = set(relative.parts)
     name = relative.name
 
-    if name in _DOCKER_FILES and not context.docker:
+    if name in _DOCKER_FILES and not features.docker:
         return False
-    if "migrations" in parts and not context.migrations:
+    if "migrations" in parts and not features.migrations:
         return False
-    if name.startswith("alembic") and not context.migrations:
+    if name.startswith("alembic") and not features.migrations:
         return False
-    if "tests" in parts and not context.testing:
+    if "tests" in parts and not features.testing:
         return False
-    if name == ".env.example.j2" and not (context.database or context.docker):
+    if name == ".env.example.j2" and not features.env_example:
         return False
-    if name in _DB_ONLY_FILES and not context.database:
+    if name in _DB_ONLY_FILES and not features.database:
         return False
-    if "models" in parts and not context.database:
+    if "models" in parts and not features.database:
         return False
     return True
 
 
-def output_relative_path(relative: Path, context: TemplateContext) -> Path:
+def output_relative_path(relative: Path, plan: GenerationPlan) -> Path:
     """Map a template-relative path to the destination-relative path."""
     parts: list[str] = []
     for part in relative.parts:
         if part == _PACKAGE_DIR_TOKEN:
-            parts.append(context.package_name)
+            parts.append(plan.package_name)
         else:
             parts.append(part)
     out = Path(*parts) if parts else Path()
@@ -102,7 +103,7 @@ def output_relative_path(relative: Path, context: TemplateContext) -> Path:
 def render_tree(
     template_dir: Path,
     destination: Path,
-    context: TemplateContext,
+    plan: GenerationPlan,
 ) -> list[Path]:
     """Render all templates under ``template_dir`` into ``destination``."""
     if not template_dir.is_dir():
@@ -110,21 +111,20 @@ def render_tree(
 
     env = create_env(template_dir)
     written: list[Path] = []
-    jinja_ctx = context.as_jinja_dict()
+    jinja_ctx = plan.as_jinja_dict()
 
     for source in iter_template_files(template_dir):
         relative = source.relative_to(template_dir)
-        if not should_emit(relative, context):
+        if not should_emit(relative, plan):
             continue
 
-        target_rel = output_relative_path(relative, context)
+        target_rel = output_relative_path(relative, plan)
         target = destination / target_rel
         target.parent.mkdir(parents=True, exist_ok=True)
 
         if source.name.endswith(_TEMPLATE_SUFFIX):
             template_name = relative.as_posix()
             content = env.get_template(template_name).render(**jinja_ctx)
-            # Preserve intentionally empty files (e.g. versions/.gitkeep via j2)
             target.write_text(content, encoding="utf-8")
         else:
             target.write_bytes(source.read_bytes())

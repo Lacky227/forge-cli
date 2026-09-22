@@ -1,16 +1,16 @@
-"""Generation engine: ProjectDefinition → filesystem project."""
+"""Generation engine: ProjectDefinition → GenerationPlan → filesystem."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from forge.core import catalog
 from forge.core.definition import ProjectDefinition
-from forge.core.naming import resolve_destination, to_package_name
-from forge.generator.context import TemplateContext, template_subdir
+from forge.core.naming import resolve_destination
 from forge.generator.errors import GenerationError
+from forge.generator.plan import GenerationPlan
 from forge.generator.render import render_tree, templates_root
+from forge.generator.resolve import resolve_plan
 
 
 @dataclass(frozen=True)
@@ -18,28 +18,35 @@ class GenerationResult:
     """Outcome of a successful generation."""
 
     destination: Path
-    definition: ProjectDefinition
-    package_name: str
+    plan: GenerationPlan
     files_written: tuple[str, ...] = field(default_factory=tuple)
 
     @property
+    def definition(self) -> ProjectDefinition:
+        return self.plan.definition
+
+    @property
+    def package_name(self) -> str:
+        return self.plan.package_name
+
+    @property
     def entry_file(self) -> str:
-        return f"src/{self.package_name}/main.py"
+        return self.plan.entry_file
 
     def next_steps(self) -> list[str]:
         steps = [
             f"cd {self.destination.name}",
             "uv sync",
         ]
-        caps = self.definition.capabilities
-        if caps.database and caps.database_engine == "postgresql" and caps.docker:
+        features = self.plan.features
+        if features.postgresql and features.docker:
             steps.append("docker compose up -d db")
-        if caps.migrations:
+        if features.migrations:
             steps.append("uv run alembic upgrade head")
-        steps.append(f"uv run fastapi dev {self.entry_file}")
-        if caps.testing:
+        steps.append(self.plan.run_command)
+        if features.testing:
             steps.append("uv run pytest")
-        if caps.linting:
+        if features.linting:
             steps.append("uv run ruff check .")
         return steps
 
@@ -50,18 +57,25 @@ def generate_project(
     base_dir: Path | None = None,
     destination: Path | None = None,
 ) -> GenerationResult:
-    """Materialize a project from ``definition``.
+    """Resolve ``definition``, then materialize the project on disk.
 
-    Creates ``./<name>`` under ``base_dir`` (cwd by default) unless
-    ``destination`` is provided. Refuses to overwrite an existing path.
+    Resolution runs first so invalid combinations fail before any writes.
     """
-    _assert_supported(definition)
+    plan = resolve_plan(definition)
+    return generate_from_plan(plan, base_dir=base_dir, destination=destination)
 
-    package_name = to_package_name(definition.name)
+
+def generate_from_plan(
+    plan: GenerationPlan,
+    *,
+    base_dir: Path | None = None,
+    destination: Path | None = None,
+) -> GenerationResult:
+    """Write a project from an already-resolved plan."""
     target = (
         destination.resolve()
         if destination is not None
-        else resolve_destination(definition.name, base_dir=base_dir)
+        else resolve_destination(plan.definition.name, base_dir=base_dir)
     )
 
     if target.exists():
@@ -72,41 +86,20 @@ def generate_project(
         if target.is_file():
             raise GenerationError(f"destination exists as a file: {target}")
 
-    context = TemplateContext.from_definition(definition)
-    template_dir = templates_root() / template_subdir(definition)
-
+    template_dir = templates_root() / plan.template_subdir
     target.mkdir(parents=True, exist_ok=True)
     try:
-        written = render_tree(template_dir, target, context)
+        written = render_tree(template_dir, target, plan)
     except Exception:
-        # Best-effort cleanup of a failed partial tree we created
         if target.is_dir() and target.exists():
             _safe_rmtree(target)
         raise
 
     return GenerationResult(
         destination=target,
-        definition=definition,
-        package_name=package_name,
+        plan=plan,
         files_written=tuple(sorted(p.as_posix() for p in written)),
     )
-
-
-def _assert_supported(definition: ProjectDefinition) -> None:
-    if not catalog.is_generatable(
-        definition.language,
-        definition.framework,
-        definition.project_type,
-        definition.architecture,
-    ):
-        raise GenerationError(
-            "Generation is not implemented yet for "
-            f"{definition.language.value}/{definition.framework}/"
-            f"{definition.project_type.value}/"
-            f"{definition.architecture.value}. "
-            "Currently supported: Python FastAPI REST API "
-            "(simple or modular-monolith)."
-        )
 
 
 def _safe_rmtree(path: Path) -> None:

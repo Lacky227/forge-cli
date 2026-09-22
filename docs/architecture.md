@@ -11,94 +11,93 @@ CLI / User Interaction
         ↓
 Project Definition / Configuration
         ↓
-Generation Engine
+Resolution → GenerationPlan
         ↓
-Templates (Jinja2)
+Generator (filesystem + Jinja2)
         ↓
 Generated Project
 ```
 
-Architecture resolution remains a thin catalog of supported combinations today, not a separate plugin runtime.
-
 ### CLI / User Interaction
 
-**Current:** `forge.cli` — Typer commands, questionary prompts, Rich presentation.
+**Current:** `forge.cli` — Typer, questionary, Rich.
 
-Owns prompts, flags, and display. Collects user intent into a **normalized `ProjectDefinition`**, then calls the generation engine. Must not embed template or filesystem generation logic. Future non-interactive paths (`forge new --config …`) will feed the same definition model.
+Owns prompts and display. Builds a **`ProjectDefinition`**, then calls `generate_project`. Must not embed framework dependency maps, template selection, or filesystem generation. Adaptive option lists come from `forge.core.catalog` (what can be asked), not from generation code.
 
 ### Project Definition / Configuration
 
 **Current:** `forge.core.definition.ProjectDefinition` (Pydantic).
 
-Validated description of what to build. Generation consumes this definition—not prompt transcripts or UI state. Importable without CLI/UI libraries.
+User choices only: language, project type, framework, architecture, capabilities. No terminal/UI concepts. Importable without CLI libraries.
 
-### Generation Engine
+### Resolution
 
-**Current:** `forge.generator` — `generate_project(definition) → GenerationResult`.
+**Current:** `forge.generator.resolve.resolve_plan(definition) → GenerationPlan`.
 
-Responsibilities:
+Turns choices into generation instructions **before any filesystem writes**:
 
-- reject unsupported language/framework/architecture combinations
-- normalize package names and resolve a safe destination path
-- refuse non-empty destinations (no silent overwrite)
-- select the template tree from the definition
-- render Jinja2 templates and write files
-- return a concise result (path, next steps)
+- reject unsupported or incoherent combinations (clear `GenerationError`)
+- normalize package naming
+- select template subdirectory
+- resolve capability → features (database engine flags, migrations, docker, …)
+- resolve runtime/dev dependency lists (framework-specific mapping)
+- compute template presentation values (example `DATABASE_URL`, run command, labels)
 
-The CLI must not contain `if framework == "fastapi": copy…` branches.
+### GenerationPlan
 
-### Templates / Generators
+**Current:** `forge.generator.plan.GenerationPlan`.
 
-**Current:** Jinja2 templates under repository `templates/`, selected as:
+The generator consumes this object. It should not re-decide “is PostgreSQL enabled?” or “which packages does FastAPI need?” from raw CLI answers.
 
-```text
-templates/<language>/<framework>/<architecture>/
-```
+Includes:
 
-First implemented path:
+- reference to the original `ProjectDefinition`
+- `package_name`, `template_subdir`
+- `GenerationFeatures` (explicit generation implications)
+- `runtime_dependencies` / `dev_dependencies`
+- `database_url_example`, `entry_file`, `app_module`, `run_command`
+- display labels
+
+### Generator
+
+**Current:** `forge.generator.engine` + `render`.
+
+- `generate_project(definition)` → `resolve_plan` then `generate_from_plan`
+- destination safety (no silent overwrite of non-empty paths)
+- Jinja2 render from `plan.as_jinja_dict()`
+- capability-gated file emission via resolved `features`
+
+### Templates
+
+**Current:** `templates/<language>/<framework>/<architecture>/`
+
+Templates primarily **present** plan data. Dependency lists come from the plan (`runtime_dependencies` / `dev_dependencies`), not from framework `if` trees inside Jinja. Simple presentation conditionals (README sections, optional config blocks) are fine.
 
 ```text
 templates/python/fastapi/simple/
 templates/python/fastapi/modular-monolith/
 ```
 
-Template paths use `__package__/` as a placeholder directory renamed to the Python package name. Capability-specific files (Docker, Alembic, tests, database modules) are omitted when not selected.
-
-Packaging includes templates into the wheel via hatchling `force-include` (`templates` → `forge/templates`). At runtime, `forge.generator.render.templates_root()` resolves either the packaged copy or the repo `templates/` directory.
+`__package__/` is rewritten to the resolved package name.
 
 ### Generated Project
 
-**Current for Python + FastAPI + REST API:** a runnable uv-compatible project. Quality bar: [generation.md](./generation.md).
+Python FastAPI REST API (Simple / Modular Monolith). Quality bar: [generation.md](./generation.md).
 
 ## Package layout (current)
 
 ```text
 src/forge/
-├── cli/                 # Typer + questionary + Rich
-├── core/                # ProjectDefinition, catalog, naming
-└── generator/           # generation engine + Jinja rendering
-templates/
-└── python/fastapi/
-    ├── simple/
-    └── modular-monolith/
-tests/                   # Forge's own tests (not generated-project tests)
-```
-
-## ProjectDefinition
-
-```text
-ProjectDefinition
-├── name
-├── language
-├── project_type
-├── framework
-├── architecture
-└── capabilities
-    ├── database / database_engine / orm
-    ├── migrations   # Alembic when true
-    ├── docker
-    ├── testing      # pytest
-    └── linting      # Ruff
+├── cli/
+├── core/                 # ProjectDefinition, catalog, naming
+└── generator/
+    ├── plan.py           # GenerationPlan / GenerationFeatures
+    ├── resolve.py        # resolve_plan()
+    ├── engine.py         # generate_project / generate_from_plan
+    ├── render.py         # Jinja + filesystem
+    └── errors.py
+templates/python/fastapi/
+tests/
 ```
 
 ## What generates today
@@ -107,36 +106,16 @@ ProjectDefinition
 |-------------|--------|
 | Python · FastAPI · REST API · Simple | **Supported** |
 | Python · FastAPI · REST API · Modular Monolith | **Supported** |
-| Django / Flask / CLI / Worker / Clean Architecture | Catalog may offer some; **generation not implemented** (clear error) |
+| Other frameworks / Clean Architecture | Not generated (fails in `resolve_plan`) |
 
-## Architecture styles (FastAPI)
-
-- **Simple** — flat package: `main.py`, `config.py`, optional `database.py` / `models.py`
-- **Modular Monolith** — layered package: `api/routes`, `core`, `models`, `schemas`, `repositories`, `services`
-
-The architecture choice changes the generated layout; it is not cosmetic.
+Adding a second framework should mean: catalog entries + resolver mapping + templates — **not** new CLI conditionals or plugin infrastructure.
 
 ## Destination and naming
 
-- `forge new my-api` creates `./my-api` under the current working directory
-- Project names reject path separators / traversal
-- Python package name: `my-api` → `my_awesome_api` style via `to_package_name()`
-- Existing non-empty destinations raise `GenerationError`
+- `forge new my-api` → `./my-api`
+- Path traversal rejected; package name via `to_package_name()`
+- Non-empty destinations raise `GenerationError`
 
 ## Presets / plugins
 
-Still planned. No plugin marketplace, remote templates, or preset system in this release.
-
-## Repository structure
-
-```text
-forge-cli/
-├── docs/
-├── .cursor/rules/
-├── src/forge/
-├── templates/
-├── tests/
-├── pyproject.toml
-├── uv.lock
-└── README.md
-```
+Still planned. No plugin manager or remote template system.

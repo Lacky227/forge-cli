@@ -4,12 +4,12 @@ Guidance for implementing Forge.
 
 ## Documentation philosophy
 
-Keep documentation **useful and small**. Update authoritative docs in the same task when behavior changes. Do not create progress reports, diaries, or duplicate architecture docs.
+Keep documentation **useful and small**. Update authoritative docs in the same task when behavior changes.
 
 | Document | Role |
 |----------|------|
 | [product.md](./product.md) | Product definition, principles, scope, non-goals |
-| [architecture.md](./architecture.md) | Layers, package layout, generator, templates |
+| [architecture.md](./architecture.md) | Layers, resolution, plan, generator, templates |
 | [cli.md](./cli.md) | UX, commands, prompt stack |
 | [generation.md](./generation.md) | Generated-project quality bar |
 | [development.md](./development.md) | Workflow, toolchain, how to run |
@@ -28,16 +28,8 @@ Keep documentation **useful and small**. Update authoritative docs in the same t
 
 ```text
 Python >= 3.11
-uv
-Typer
-Rich
-questionary
-Pydantic v2
-Jinja2
-pytest (dev)
+uv · Typer · Rich · questionary · Pydantic v2 · Jinja2 · pytest (dev)
 ```
-
-PyYAML is still unused (no config-file mode yet).
 
 ### Run Forge locally
 
@@ -50,29 +42,36 @@ uv run pytest
 ### Import boundaries
 
 ```text
-forge.cli        → forge.core, forge.generator
-forge.generator  → forge.core
-forge.core       → (no cli / generator / UI libs)
+forge.cli         → forge.core, forge.generator
+forge.generator   → forge.core
+forge.core        → (no cli / UI libs)
 ```
 
-### Templates
+### Generation flow for contributors
 
-- Source of truth: repository `templates/`
-- Selected by `language/framework/architecture`
-- Rendered only by `forge.generator`, never by CLI prompt handlers
+```text
+ProjectDefinition
+    → resolve_plan()      # forge.generator.resolve
+    → GenerationPlan
+    → generate_from_plan()  # filesystem + Jinja
+```
+
+- Put framework/capability → dependency and feature mapping in **resolve**, not the CLI.
+- Keep Jinja templates presentational; pass resolved dependency lists from the plan.
+- Do not add a plugin manager for the next framework—add resolver mapping + templates.
 
 ### Generated dependency policy
 
-Minimum lower bounds in generated `pyproject.toml`; no upper pins by default. Prefer `uv`-friendly packaging (hatchling, `src/` layout).
+Minimum lower bounds in generated `pyproject.toml`; selected by the resolver.
 
 ## Open decisions
 
 - Public `--config` format and UX
 - PyPI distribution name long-term
 - Django / Flask / Clean Architecture generators
-- Whether `fastapi[standard]` vs slimmer FastAPI + uvicorn pins is preferable long-term
-- Plugin declaration model beyond the concrete catalog
+- Slimmer FastAPI dependency set vs `fastapi[standard]`
+- How far to data-drive catalog vs small resolver functions per framework
 
 ## Git discipline
 
-Do not stage, commit, or push unless a human explicitly asks. Suggest one coherent GitFlow-style commit message per completed change.
+Do not stage, commit, or push unless a human explicitly asks.

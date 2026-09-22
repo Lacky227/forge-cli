@@ -16,60 +16,59 @@ A generated project should:
 - include Docker / Alembic when selected—and they must be wired, not empty stubs
 - include a README that matches the actual generated commands and layout
 
-## Current FastAPI generator
+## Resolution before generation
 
-For Python FastAPI REST APIs, Forge generates projects that support (when selected):
+Invalid combinations fail in `resolve_plan` **before** directories are created.
 
-| Capability | Integration |
-|------------|-------------|
-| PostgreSQL / SQLite | `DATABASE_URL` via pydantic-settings |
-| SQLAlchemy | engine + session helpers |
-| Alembic | `alembic.ini` + `migrations/env.py` using app metadata/settings |
-| pytest | `tests/test_health.py` (no DB required for smoke test) |
-| Ruff | `[tool.ruff]` in `pyproject.toml` |
-| Docker | `Dockerfile` + `docker-compose.yml` (Postgres service when PostgreSQL selected) |
+Examples:
+
+- unsupported framework/architecture
+- Alembic without a SQLAlchemy-compatible ORM/database setup
+
+## Capability implications (FastAPI)
+
+Resolved centrally in `forge.generator.resolve` (not in the CLI):
+
+| Selection | Generation implications |
+|-----------|-------------------------|
+| FastAPI baseline | `fastapi[standard]`, `pydantic-settings`, app entrypoint |
+| PostgreSQL | `psycopg`, `DATABASE_URL`, Compose `db` service when Docker on |
+| SQLite | SQLite `DATABASE_URL` (no Postgres driver) |
+| SQLAlchemy | `sqlalchemy`, database session/models wiring |
+| Alembic | `alembic`, `alembic.ini`, `migrations/` |
+| pytest | `pytest`/`httpx`, `tests/` |
+| Ruff | `ruff` + `[tool.ruff]` |
+| Docker | `Dockerfile`, `docker-compose.yml` |
 
 ### Dependency policy
 
-Generated `pyproject.toml` uses **minimum lower bounds** (e.g. `fastapi[standard]>=0.115`, `sqlalchemy>=2.0`) without upper pins unless a known incompatibility requires one. Projects are intended to work with `uv sync`.
+Minimum lower bounds, no upper pins by default. Lists are produced by the resolver and rendered into `pyproject.toml`.
 
 ### Validation expectation
-
-After generation, a typical check path is:
 
 ```text
 uv sync → uv run pytest → uv run ruff check .
 ```
 
-With database + Alembic (example SQLite): `uv run alembic upgrade head`.
+Alembic (e.g. SQLite): `uv run alembic upgrade head`.
 
-Docker Compose files should be valid (`docker compose config`). Live container checks depend on the local Docker daemon and free ports.
+Docker: `docker compose config` (live containers optional; not required for Forge’s own tests).
 
 ## Reflect user choices
 
-Do not emit Docker, Alembic, SQLAlchemy, or Ruff when the user did not select them.
+Do not emit Docker, Alembic, SQLAlchemy, or Ruff when not selected.
 
 ## Working integrations
 
 Selected features must be integrated, not merely mentioned.
 
-**Bad:** empty `db/` folders and a README saying “add SQLAlchemy later.”
-
-**Good:** FastAPI + PostgreSQL + SQLAlchemy + Alembic yields settings, session wiring, migration env, and `.env.example` that fit together.
-
 ## Proportional structure
 
-Simple vs modular layouts must differ meaningfully. Avoid microservices, brokers, or deep interface trees unless selections justify them.
-
-## Maintainability
-
-Generated code should be readable by humans who never used Forge. Prefer clear names, conventional layouts, and minimal magic.
+Simple vs modular layouts must differ meaningfully.
 
 ## Forge tests vs generated tests
 
 | Suite | Location | Purpose |
 |-------|----------|---------|
-| Forge tests | `tests/` in this repository | Generator contracts, naming, CLI/domain |
-| Generated tests | `tests/` inside each generated project | Smoke tests for that application |
-
-Do not conflate the two.
+| Forge tests | `tests/` here | Resolution, generator contracts, domain |
+| Generated tests | inside each generated project | Application smoke tests |
