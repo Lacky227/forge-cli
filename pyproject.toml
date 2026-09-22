@@ -10,6 +10,7 @@ dependencies = [
     "questionary>=2",
     "pydantic>=2",
     "jinja2>=3.1.6",
+    "pyyaml>=6.0.3",
 ]
 
 [project.scripts]
@@ -28,6 +29,7 @@ packages = ["src/forge"]
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.pytest.ini_options]

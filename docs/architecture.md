@@ -20,9 +20,17 @@ Generated Project
 
 ### CLI / User Interaction
 
-**Current:** `forge.cli` — Typer, questionary, Rich.
+**Current:** `forge.cli` — Typer, questionary, Rich, optional YAML via `--config`.
 
-Builds a **`ProjectDefinition`**, then calls `generate_project`. Adaptive option lists come from `forge.core.catalog`. The CLI asks only questions that change the result; framework-implied details are never presented as false choices. Generation semantics live in the resolver.
+Builds a **`ProjectDefinition`** either interactively or from configuration, then calls `generate_project`. Adaptive option lists come from `forge.core.catalog`. Generation semantics live in the resolver.
+
+```text
+Interactive prompts ─┐
+                     ├→ ProjectDefinition → resolve_plan() → GenerationPlan
+YAML (--config)     ─┘
+```
+
+Both input paths share the same domain model and generation pipeline.
 
 ### Project Definition / Configuration
 
@@ -150,4 +158,9 @@ tests/
 
 ## Destination and naming
 
-Unchanged: `./<name>`, path-safe names, `to_package_name()`, no silent overwrite.
+Project name → `./<name>` under the process working directory.
+
+- Names are path-safe directory identifiers (no separators / traversal).
+- Package import name via `to_package_name()`.
+- Empty destinations may be reused; non-empty destinations are refused (no silent overwrite, no `--force`).
+- See [cli.md](./cli.md) for the public destination contract.

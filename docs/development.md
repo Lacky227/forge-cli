@@ -17,23 +17,29 @@ Keep docs useful and small. Update authoritative documents when behavior changes
 ## Technology
 
 ```text
-Python >= 3.11 · uv · Typer · Rich · questionary · Pydantic v2 · Jinja2 · pytest
+Python >= 3.11 · uv · Typer · Rich · questionary · Pydantic v2 · Jinja2 · PyYAML · pytest
 ```
 
 ### Run
 
 ```bash
 uv sync
+uv run forge --help
+uv run forge --version
 uv run forge new my-api
+uv run forge new --config forge.yaml
 uv run pytest
 ```
+
+Public CLI contract (help, version, config path, errors, cancellation): `tests/test_cli.py`.
+See [cli.md](./cli.md) for the full command surface and destination/exit behavior.
 
 ### Import boundaries
 
 ```text
 forge.cli → forge.core, forge.generator
 forge.generator → forge.core
-forge.core → (no UI)
+forge.core → (no UI; may load YAML config → ProjectDefinition)
 ```
 
 ### Adding a framework
@@ -55,9 +61,10 @@ GenerationPlan    = resolved implementation
 
 ## Open decisions
 
-- `--config` format
 - CLI / Worker generators
 - Slimmer FastAPI dependency set
 - Whether Django should ever support a non-REST project type without DRF
 - Whether Flask should ever offer an ORM other than SQLAlchemy
 - How far Clean Architecture persistence demos should go beyond a session/port boundary
+- Config export / round-trip tooling
+- Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator

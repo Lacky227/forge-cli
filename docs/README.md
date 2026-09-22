@@ -6,7 +6,7 @@ Authoritative product and engineering docs for Forge.
 |----------|----------|
 | [product.md](./product.md) | What Forge is, principles, scope, non-goals |
 | [architecture.md](./architecture.md) | Layers, resolution, framework × architecture matrix |
-| [cli.md](./cli.md) | Interactive CLI, adaptive prompts |
+| [cli.md](./cli.md) | Interactive CLI and YAML `--config` |
 | [generation.md](./generation.md) | Generated-project quality bar |
 | [development.md](./development.md) | Toolchain, workflow, adding frameworks |
 

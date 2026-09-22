@@ -8,7 +8,7 @@ Coherent layout, correct dependencies, wired integrations, runnable entrypoint, 
 
 ## Resolution before generation
 
-Invalid combinations fail in `resolve_plan` before directories are created.
+Invalid combinations fail in `resolve_plan` before directories are created. The same checks apply to interactive choices and YAML `--config` input after mapping to `ProjectDefinition`.
 
 Examples of invalid **explicit** combinations:
 

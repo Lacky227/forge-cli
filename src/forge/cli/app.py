@@ -16,11 +16,16 @@ from forge.cli.render import (
     print_error,
     print_generation_result,
 )
+from forge.core.config import ConfigError, definition_from_config
 from forge.generator import GenerationError, generate_project
 
 app = typer.Typer(
     name="forge",
-    help="Interactively design and generate application architectures.",
+    help=(
+        "Design and generate application architectures.\n\n"
+        "Run [bold]forge new[/bold] to create a project interactively, "
+        "or pass [bold]--config[/bold] for non-interactive generation."
+    ),
     no_args_is_help=True,
     add_completion=False,
     rich_markup_mode="rich",
@@ -44,22 +49,57 @@ def root(
         help="Show version and exit.",
     ),
 ) -> None:
-    """Forge — build your architecture."""
+    """Forge — build your architecture.
+
+    Running [bold]forge[/bold] with no command shows this help.
+    """
 
 
 @app.command("new")
 def new_command(
     name: str | None = typer.Argument(
         None,
-        help="Project name. Creates ./<name>. Prompted if omitted.",
+        help=(
+            "Project directory name under the current working directory "
+            "(creates [bold]./<name>[/bold]). "
+            "Prompted if omitted unless [bold]--config[/bold] provides a name."
+        ),
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help=(
+            "YAML config file. Skips interactive prompts "
+            "(required fields must be present)."
+        ),
+        show_default=False,
     ),
 ) -> None:
-    """Interview for a project definition and generate the project."""
-    print_banner()
+    """Generate a project interactively or from a YAML configuration file.
+
+    Interactive mode asks only questions that affect the generated project.
+    With [bold]--config[/bold], generation is fully non-interactive.
+    """
     try:
-        definition = run_new_flow(name=name)
+        _run_new(name=name, config=config)
     except FlowCancelled:
         print_cancelled()
+        raise typer.Exit(code=1) from None
+    except KeyboardInterrupt:
+        print_cancelled()
+        raise typer.Exit(code=1) from None
+
+
+def _run_new(*, name: str | None, config: Path | None) -> None:
+    print_banner()
+    try:
+        if config is not None:
+            definition = definition_from_config(config, cli_name=name)
+        else:
+            definition = run_new_flow(name=name)
+    except ConfigError as exc:
+        print_error(str(exc))
         raise typer.Exit(code=1) from None
     except ValidationError as exc:
         print_error(_format_validation_error(exc))
@@ -73,6 +113,9 @@ def new_command(
     try:
         result = generate_project(definition, base_dir=Path.cwd())
     except GenerationError as exc:
+        print_error(str(exc))
+        raise typer.Exit(code=1) from None
+    except ValueError as exc:
         print_error(str(exc))
         raise typer.Exit(code=1) from None
 

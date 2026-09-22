@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -52,70 +54,69 @@ def print_definition(definition: ProjectDefinition) -> None:
 
 
 def print_generation_result(result: GenerationResult) -> None:
-    definition = result.definition
-    features = result.plan.features
-    caps = definition.capabilities
-    lines = Text()
-    lines.append("✓ ", style="bold green")
-    lines.append(definition.name, style="bold")
-    lines.append("\n\n")
-    lines.append(
-        catalog.FRAMEWORK_LABELS.get(definition.framework, definition.framework)
-    )
-    lines.append("\n")
-    lines.append(catalog.ARCHITECTURE_LABELS[definition.architecture])
-    lines.append("\n")
-
-    extras: list[str] = []
-    if features.database and caps.database_engine:
-        extras.append(
-            catalog.DATABASE_ENGINE_LABELS.get(
-                caps.database_engine, caps.database_engine
-            )
-        )
-        if features.orm == "django-orm":
-            extras.append("Django ORM")
-        elif features.orm == "sqlalchemy":
-            extras.append("SQLAlchemy")
-        elif features.orm:
-            extras.append(features.orm)
-        if features.migration_system == "django":
-            extras.append("Django migrations")
-        elif features.migration_system == "alembic":
-            extras.append("Alembic")
-    if features.rest_framework:
-        extras.append("DRF")
-    if features.docker:
-        extras.append("Docker")
-    if features.testing:
-        extras.append("pytest")
-    if features.linting:
-        extras.append("Ruff")
-    if extras:
-        lines.append(" · ".join(extras), style="dim")
-
+    """Print a concise success summary from the resolved plan."""
+    console.print()
     console.print(
-        Panel(
-            lines,
-            title="[bold]Project created[/bold]",
-            border_style="green",
-            padding=(1, 2),
-            expand=False,
-        )
+        f"[bold green]✓[/bold green] Created [bold]{result.definition.name}[/bold]"
     )
+    console.print()
+    console.print("[bold]Location:[/bold]")
+    console.print(f"  {_format_location(result.destination)}")
+    console.print()
+    console.print("[bold]Stack:[/bold]")
+    for line in _stack_lines(result):
+        console.print(f"  {line}")
     console.print()
     console.print("[bold]Next steps:[/bold]")
-    console.print()
     for step in result.next_steps():
         console.print(f"  [cyan]{step}[/cyan]")
     console.print()
 
 
 def print_cancelled() -> None:
-    console.print(
-        "\n[yellow]Cancelled.[/yellow] No project was created.\n"
-    )
+    console.print("\n[yellow]Cancelled.[/yellow]\n")
 
 
 def print_error(message: str) -> None:
     console.print(f"\n[red]Error:[/red] {message}\n")
+
+
+def _format_location(destination: Path) -> str:
+    resolved = destination.resolve()
+    try:
+        relative = resolved.relative_to(Path.cwd().resolve())
+    except ValueError:
+        return str(resolved)
+    text = relative.as_posix()
+    return f"./{text}" if text != "." else "."
+
+
+def _stack_lines(result: GenerationResult) -> list[str]:
+    """Human-readable stack summary derived from the GenerationPlan."""
+    plan = result.plan
+    features = plan.features
+    caps = result.definition.capabilities
+    lines = [plan.framework_label, plan.architecture_label]
+
+    if features.database and caps.database_engine:
+        lines.append(
+            catalog.DATABASE_ENGINE_LABELS.get(
+                caps.database_engine, caps.database_engine
+            )
+        )
+    if features.orm == "django-orm":
+        lines.append("Django ORM")
+    elif features.orm == "sqlalchemy":
+        lines.append("SQLAlchemy")
+    elif features.orm:
+        lines.append(features.orm)
+
+    if features.migration_system == "django":
+        lines.append("Django migrations")
+    elif features.migration_system == "alembic":
+        lines.append("Alembic")
+
+    if features.rest_framework:
+        lines.append("Django REST Framework")
+
+    return lines
