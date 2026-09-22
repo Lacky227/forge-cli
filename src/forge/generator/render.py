@@ -70,7 +70,7 @@ def _looks_like_forge_pyproject(path: Path) -> bool:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return False
-    return 'name = "forge-cli"' in text
+    return 'name = "forge-scaffolder"' in text
 
 
 def create_env(template_dir: Path) -> Environment:

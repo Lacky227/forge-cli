@@ -40,7 +40,12 @@ See [cli.md](./cli.md) for the full command surface, presets, and destination/ex
 
 ### Packaging and distribution
 
-Distribution name: **`forge-cli`**. Entry point: **`forge`**.
+| Role | Name |
+|------|------|
+| PyPI distribution | **`forge-scaffolder`** |
+| Console script / entry point | **`forge`** |
+| Python import package | **`forge`** |
+| GitHub repository | [Lacky227/forge-cli](https://github.com/Lacky227/forge-cli) |
 
 Jinja templates live at the repository root (`templates/`) for editable development. Hatch **force-includes** them into the wheel as `forge/templates/`, so an installed package is self-contained. `forge.generator.render.templates_root()` resolves:
 
@@ -62,13 +67,11 @@ uv run pytest -m packaging
 uv run pytest -m generation_smoke
 ```
 
-Do not publish to PyPI from this workflow yet. CI runs the test matrix and the packaging/generation smoke on every push/PR.
-
 Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com/Lacky227/forge-cli).
 
 ### Versioning
 
-Current version: **`0.1.0`** — first public development release of the Forge CLI.
+Current version: **`0.1.1`** — public development release; PyPI distribution **`forge-scaffolder`**.
 
 | Version | Meaning |
 |---------|---------|
@@ -115,7 +118,6 @@ GenerationPlan    = resolved implementation
 - Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator
 - Whether preset + config merging is ever worth the precedence complexity (currently rejected)
 - Author / maintainer contact metadata for PyPI
-- Whether and when to publish `forge-cli` to PyPI
 - Whether generated projects should inherit Forge's GPL-3.0-only license (they do **not** automatically; decision not made)
 
 Forge itself is licensed **GPL-3.0-only** (see [`LICENSE`](../LICENSE)).

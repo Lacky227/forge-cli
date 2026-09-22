@@ -18,6 +18,9 @@ import pytest
 from forge.generator.render import templates_root
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DIST_NAME = "forge-scaffolder"
+DIST_VERSION = "0.1.1"
+WHEEL_GLOB = "forge_scaffolder-*.whl"
 
 
 def test_templates_root_resolves_python_tree() -> None:
@@ -46,15 +49,18 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    wheels = list(dist.glob("forge_cli-*.whl"))
+    wheels = list(dist.glob(WHEEL_GLOB))
     assert len(wheels) == 1, wheels
     with zipfile.ZipFile(wheels[0]) as zf:
         names = zf.namelist()
         metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
+    assert f"Name: {DIST_NAME}" in metadata
+    assert f"Version: {DIST_VERSION}" in metadata
     assert (
         "License-Expression: GPL-3.0-only" in metadata
         or "License: GPL-3.0-only" in metadata
     )
+    assert any(n.endswith("licenses/LICENSE") or n.endswith("/LICENSE") for n in names)
     templates = [n for n in names if n.startswith("forge/templates/python/")]
     assert len(templates) >= 50
     assert any("fastapi" in n for n in templates)
@@ -62,6 +68,7 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     assert any("flask" in n for n in templates)
     assert not any(n.startswith("tests/") for n in names)
     assert not any(".cursor" in n for n in names)
+    assert not any(".smoke" in n for n in names)
 
 
 @pytest.mark.packaging
@@ -69,7 +76,7 @@ def test_clean_wheel_install_generates_outside_repo(tmp_path: Path) -> None:
     """Install the wheel into a venv outside the checkout and generate a project.
 
     This is the anti-false-positive check: generation must work with only the
-    packaged ``forge/templates`` tree available.
+    packaged ``forge/templates`` tree available. Console script stays ``forge``.
     """
     # Work entirely under tmp_path (pytest's temp root is outside the repo).
     assert REPO_ROOT.resolve() not in tmp_path.resolve().parents
@@ -83,7 +90,7 @@ def test_clean_wheel_install_generates_outside_repo(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    wheel = next(dist.glob("forge_cli-*.whl"))
+    wheel = next(dist.glob(WHEEL_GLOB))
 
     venv = tmp_path / "venv"
     subprocess.run(["uv", "venv", str(venv)], check=True, capture_output=True)
@@ -110,6 +117,19 @@ def test_clean_wheel_install_generates_outside_repo(tmp_path: Path) -> None:
     assert "site-packages" in loc.replace("\\", "/")
     assert str(REPO_ROOT / "src") not in loc
 
+    dist_meta = subprocess.check_output(
+        [
+            str(python),
+            "-c",
+            (
+                "from importlib.metadata import version, metadata; "
+                f"print(metadata({DIST_NAME!r})['Name'], version({DIST_NAME!r}))"
+            ),
+        ],
+        text=True,
+    ).strip()
+    assert dist_meta == f"{DIST_NAME} {DIST_VERSION}"
+
     gen_dir = tmp_path / "gen"
     gen_dir.mkdir()
     env = {**os.environ, "PATH": str(forge_bin.parent) + os.pathsep + os.environ.get("PATH", "")}
@@ -119,7 +139,7 @@ def test_clean_wheel_install_generates_outside_repo(tmp_path: Path) -> None:
     version = subprocess.check_output(
         [str(forge_bin), "--version"], cwd=gen_dir, env=env, text=True
     ).strip()
-    assert version.startswith("forge ")
+    assert version == f"forge {DIST_VERSION}"
 
     subprocess.run(
         [str(forge_bin), "new", "wheel-api", "--preset", "fastapi-postgres"],
