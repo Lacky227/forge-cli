@@ -25,7 +25,6 @@ def _fastapi_definition(
     caps = Capabilities(
         database=database,
         database_engine=engine if database else None,
-        orm="sqlalchemy" if database else None,
         migrations=migrations and database,
         docker=docker,
         testing=testing,

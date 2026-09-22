@@ -1,7 +1,8 @@
 """Adaptive interactive flow → ProjectDefinition.
 
 Uses questionary for prompts. Domain validation lives in ProjectDefinition;
-this module only asks relevant questions and maps answers to the model.
+framework implications live in ``resolve_plan``. This module only asks
+questions that affect the generated project.
 """
 
 from __future__ import annotations
@@ -153,13 +154,18 @@ def _collect_capabilities(
     framework: str,
     project_type: ProjectType,
 ) -> Capabilities:
+    """Ask only user-selectable capability questions.
+
+    Framework-implied details (Django ORM, Django migrations, DRF, FastAPI's
+    SQLAlchemy) are not stored here — ``resolve_plan`` fills them in.
+    """
     database = False
     database_engine: str | None = None
-    orm: str | None = None
     migrations = False
 
     if framework == "django":
-        # Django REST API projects always use Django ORM + Django migrations.
+        # Database engine is the only data-store choice; ORM/migrations/DRF
+        # are implied by Django REST API and resolved later.
         database = True
         database_engine = _select(
             "Database engine",
@@ -171,8 +177,6 @@ def _collect_capabilities(
                 for engine in catalog.DATABASE_ENGINES
             ],
         )
-        orm = catalog.default_orm_for(framework)
-        migrations = True
         _console.print("[dim]ORM:[/dim] Django ORM")
         _console.print("[dim]Migrations:[/dim] Django migrations")
         if project_type is ProjectType.REST_API:
@@ -193,10 +197,13 @@ def _collect_capabilities(
                     for engine in catalog.DATABASE_ENGINES
                 ],
             )
-            orm = catalog.default_orm_for(framework)
-            if orm:
+            implied_orm = catalog.default_orm_for(framework)
+            if implied_orm:
+                label = (
+                    "SQLAlchemy" if implied_orm == "sqlalchemy" else implied_orm
+                )
                 _console.print(
-                    f"[dim]ORM:[/dim] {orm} "
+                    f"[dim]ORM:[/dim] {label} "
                     f"[dim](selected for "
                     f"{catalog.FRAMEWORK_LABELS.get(framework, framework)})[/dim]"
                 )
@@ -213,7 +220,6 @@ def _collect_capabilities(
     return Capabilities(
         database=database,
         database_engine=database_engine,
-        orm=orm,
         migrations=migrations,
         docker=docker,
         testing=testing,

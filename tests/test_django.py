@@ -20,6 +20,11 @@ def _django(
     testing: bool = True,
     linting: bool = True,
 ) -> ProjectDefinition:
+    """Django REST API definition with only explicit user choices.
+
+    ORM, migrations, and DRF are framework-implied and resolved by
+    ``resolve_plan`` — they are intentionally absent from Capabilities.
+    """
     return ProjectDefinition(
         name=name,
         language=Language.PYTHON,
@@ -29,8 +34,6 @@ def _django(
         capabilities=Capabilities(
             database=True,
             database_engine=engine,
-            orm="django-orm",
-            migrations=True,
             docker=docker,
             testing=testing,
             linting=linting,
@@ -38,10 +41,21 @@ def _django(
     )
 
 
-def test_resolve_django_sqlite() -> None:
+def test_django_definition_has_no_implied_implementation_fields() -> None:
+    definition = _django()
+    assert definition.capabilities.orm is None
+    assert definition.capabilities.migrations is False
+    assert definition.capabilities.database is True
+    assert definition.capabilities.database_engine == "sqlite"
+
+
+def test_resolve_django_rest_implies_orm_migrations_drf() -> None:
     plan = resolve_plan(_django())
-    assert plan.template_subdir.as_posix() == "python/django/simple"
+    assert plan.features.orm == "django-orm"
+    assert plan.features.migration_system == "django"
+    assert plan.features.migrations is True
     assert plan.features.rest_framework is True
+    assert plan.template_subdir.as_posix() == "python/django/simple"
     assert plan.features.sqlite is True
     assert plan.primary_app == "core"
     assert "django>=5.0" in plan.runtime_dependencies
@@ -108,6 +122,12 @@ def test_reject_fastapi_with_django_orm() -> None:
     )
     with pytest.raises(GenerationError, match="Django ORM"):
         resolve_plan(definition)
+
+
+def test_django_dependencies_have_no_duplicates() -> None:
+    plan = resolve_plan(_django(engine="postgresql", docker=True))
+    assert len(plan.runtime_dependencies) == len(set(plan.runtime_dependencies))
+    assert len(plan.dev_dependencies) == len(set(plan.dev_dependencies))
 
 
 def test_generate_django_simple(tmp_path: Path) -> None:

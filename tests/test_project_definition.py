@@ -20,7 +20,7 @@ def test_valid_fastapi_definition() -> None:
         capabilities=Capabilities(
             database=True,
             database_engine="postgresql",
-            orm="sqlalchemy",
+            migrations=True,
             docker=True,
             testing=True,
         ),
@@ -28,6 +28,25 @@ def test_valid_fastapi_definition() -> None:
     assert definition.name == "my-api"
     assert definition.framework == "fastapi"
     assert definition.capabilities.database_engine == "postgresql"
+    assert definition.capabilities.orm is None
+
+
+def test_valid_django_definition_without_orm_field() -> None:
+    """Django REST intent does not require ORM/migrations on the definition."""
+    definition = ProjectDefinition(
+        name="web",
+        language=Language.PYTHON,
+        project_type=ProjectType.REST_API,
+        framework="django",
+        architecture=ArchitectureStyle.SIMPLE,
+        capabilities=Capabilities(
+            database=True,
+            database_engine="postgresql",
+            docker=True,
+        ),
+    )
+    assert definition.capabilities.orm is None
+    assert definition.capabilities.migrations is False
 
 
 def test_cli_project_skips_complex_architecture() -> None:

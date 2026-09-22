@@ -18,7 +18,9 @@ def _fastapi(
     docker: bool = True,
     testing: bool = True,
     linting: bool = True,
+    orm: str | None = None,
 ) -> ProjectDefinition:
+    """Build a FastAPI definition with only explicit user choices by default."""
     return ProjectDefinition(
         name="demo-api",
         language=Language.PYTHON,
@@ -28,7 +30,7 @@ def _fastapi(
         capabilities=Capabilities(
             database=database,
             database_engine=engine if database else None,
-            orm="sqlalchemy" if database else None,
+            orm=orm,
             migrations=migrations and database,
             docker=docker,
             testing=testing,
@@ -44,6 +46,8 @@ def test_resolve_fastapi_postgres_stack() -> None:
     assert plan.features.database is True
     assert plan.features.postgresql is True
     assert plan.features.migrations is True
+    assert plan.features.orm == "sqlalchemy"
+    assert plan.features.migration_system == "alembic"
     assert "fastapi[standard]>=0.115" in plan.runtime_dependencies
     assert "sqlalchemy>=2.0" in plan.runtime_dependencies
     assert "psycopg[binary]>=3.2" in plan.runtime_dependencies
@@ -65,6 +69,8 @@ def test_resolve_sqlite_has_no_psycopg() -> None:
 def test_resolve_no_database_omits_db_deps() -> None:
     plan = resolve_plan(_fastapi(database=False, migrations=False, docker=False))
     assert plan.features.database is False
+    assert plan.features.orm is None
+    assert plan.features.migration_system is None
     joined = " ".join(plan.runtime_dependencies)
     assert "sqlalchemy" not in joined
     assert "alembic" not in joined
@@ -110,3 +116,19 @@ def test_resolve_rejects_migrations_without_sqlalchemy_orm() -> None:
     )
     with pytest.raises(GenerationError, match="Django ORM"):
         resolve_plan(definition)
+
+
+def test_fastapi_definition_omits_implied_orm() -> None:
+    """ProjectDefinition stores Alembic choice, not a required ORM field."""
+    definition = _fastapi()
+    assert definition.capabilities.orm is None
+    assert definition.capabilities.migrations is True
+    plan = resolve_plan(definition)
+    assert plan.features.orm == "sqlalchemy"
+    assert plan.features.migration_system == "alembic"
+
+
+def test_dependencies_have_no_duplicates() -> None:
+    plan = resolve_plan(_fastapi())
+    assert len(plan.runtime_dependencies) == len(set(plan.runtime_dependencies))
+    assert len(plan.dev_dependencies) == len(set(plan.dev_dependencies))

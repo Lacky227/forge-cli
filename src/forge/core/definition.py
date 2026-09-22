@@ -1,4 +1,9 @@
-"""Normalized project definition — CLI-independent domain model."""
+"""Normalized project definition — CLI-independent domain model.
+
+``ProjectDefinition`` captures **explicit user intent** only. Framework-implied
+implementation details (ORM, migration system, REST framework package) are
+resolved later into a ``GenerationPlan``.
+"""
 
 from __future__ import annotations
 
@@ -14,9 +19,14 @@ _NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
 
 
 class Capabilities(BaseModel):
-    """Optional features selected for the project.
+    """Explicit user-facing capability choices.
 
-    Absence means “not selected,” not a missing requirement for generation.
+    Absence means “not selected.” Framework-implied details such as which ORM
+    or migration system a stack uses belong on ``GenerationPlan``, not here.
+
+    ``orm`` is optional and reserved for programmatic/config paths that state
+    an ORM explicitly. The interactive CLI leaves it unset so the resolver
+    can imply it. If set, it must be compatible with the framework.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -24,6 +34,8 @@ class Capabilities(BaseModel):
     database: bool = False
     database_engine: str | None = None
     orm: str | None = None
+    # FastAPI: user chooses Alembic. Django: ignored; resolver enables Django
+    # migrations whenever a database is present.
     migrations: bool = False
     docker: bool = False
     testing: bool = True
@@ -106,8 +118,10 @@ class ProjectDefinition(BaseModel):
                     "database_engine must be one of: "
                     + ", ".join(catalog.DATABASE_ENGINES)
                 )
+            # Explicit ORM override must match the framework; omission is fine
+            # and is resolved into GenerationPlan.
             expected_orm = catalog.default_orm_for(self.framework)
-            if expected_orm and caps.orm != expected_orm:
+            if caps.orm is not None and expected_orm and caps.orm != expected_orm:
                 raise ValueError(
                     f"orm must be {expected_orm!r} when using {self.framework!r} "
                     "with a database"
@@ -123,7 +137,11 @@ class ProjectDefinition(BaseModel):
         return self
 
     def to_display_dict(self) -> dict[str, Any]:
-        """Human-oriented summary values for CLI display."""
+        """Human-oriented summary of explicit choices (plus implied labels).
+
+        Implied ORM / migration / API labels are derived for readability only;
+        they are not stored as independent user decisions on this model.
+        """
         caps = self.capabilities
         rows: dict[str, Any] = {
             "Name": self.name,
@@ -140,25 +158,30 @@ class ProjectDefinition(BaseModel):
                 if caps.database
                 else "No"
             ),
-            "ORM": caps.orm or "—",
-            "Migrations": _migrations_label(self.framework, caps),
             "Docker": "Yes" if caps.docker else "No",
             "Testing": "Yes" if caps.testing else "No",
             "Linting": "Ruff" if caps.linting else "No",
         }
-        if not caps.database:
-            rows.pop("ORM")
-            rows.pop("Migrations")
+        if caps.database:
+            implied_orm = caps.orm or catalog.default_orm_for(self.framework)
+            rows["ORM"] = _orm_display(implied_orm)
+            rows["Migrations"] = _migrations_display(self.framework, caps)
         if self.framework == "django" and self.project_type is ProjectType.REST_API:
             rows["API"] = "Django REST Framework"
         return rows
 
 
-def _migrations_label(framework: str, caps: Capabilities) -> str:
-    if not caps.migrations:
-        return "No"
+def _orm_display(orm: str | None) -> str:
+    if orm == "django-orm":
+        return "Django ORM"
+    if orm == "sqlalchemy":
+        return "SQLAlchemy"
+    return orm or "—"
+
+
+def _migrations_display(framework: str, caps: Capabilities) -> str:
     if framework == "django":
         return "Django"
-    if caps.orm == "sqlalchemy":
+    if caps.migrations:
         return "Alembic"
-    return "Yes"
+    return "No"

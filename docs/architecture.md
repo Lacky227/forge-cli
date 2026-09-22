@@ -9,9 +9,9 @@ Python is the **first** ecosystem, not a core assumption of the product.
 ```text
 CLI / User Interaction
         ↓
-Project Definition / Configuration
+Project Definition / Configuration   ← explicit user intent
         ↓
-Resolution → GenerationPlan
+Resolution → GenerationPlan          ← resolved implementation
         ↓
 Generator (filesystem + Jinja2)
         ↓
@@ -22,36 +22,44 @@ Generated Project
 
 **Current:** `forge.cli` — Typer, questionary, Rich.
 
-Builds a **`ProjectDefinition`**, then calls `generate_project`. Adaptive option lists come from `forge.core.catalog`. Framework-specific prompts (e.g. Alembic vs Django migrations) stay presentation-only; generation semantics live in the resolver.
+Builds a **`ProjectDefinition`**, then calls `generate_project`. Adaptive option lists come from `forge.core.catalog`. The CLI asks only questions that change the result; framework-implied details are never presented as false choices. Generation semantics live in the resolver.
 
 ### Project Definition / Configuration
 
 **Current:** `forge.core.definition.ProjectDefinition`.
 
-User choices: language, project type, framework, architecture, capabilities (`database`, `orm`, `migrations`, `docker`, `testing`, `linting`).
+**Explicit user intent only:** language, project type, framework, architecture, and selectable capabilities (`database` / `database_engine`, optional Alembic for FastAPI, `docker`, `testing`, `linting`).
 
-ORM/migration meaning is framework-specific and resolved later:
+Framework-implied implementation details are **not** required on the definition:
 
-| Framework | ORM | Migrations |
-|-----------|-----|------------|
-| FastAPI | SQLAlchemy | Alembic |
-| Django | Django ORM | Django migrations |
+| User chooses | Resolver implies |
+|--------------|------------------|
+| FastAPI + database | SQLAlchemy |
+| FastAPI + migrations | Alembic |
+| Django + REST API + database | Django ORM, Django migrations, DRF |
+
+An optional `capabilities.orm` exists for programmatic/config paths that state an ORM explicitly; the interactive CLI leaves it unset. If set, it must be compatible with the framework.
 
 ### Resolution
 
 **Current:** `forge.generator.resolve.resolve_plan(definition) → GenerationPlan`.
 
-- reject unsupported / incoherent combinations before filesystem writes
+- reject unsupported / incoherent **explicit** combinations before filesystem writes
 - normalize package naming and template path
-- resolve features (including `rest_framework` for Django REST API)
-- resolve runtime/dev dependencies per framework
+- resolve framework implications (ORM, migration system, `rest_framework`)
+- resolve runtime/dev dependencies per framework (deduplicated)
 - compute run / migrate / check commands
 
 Framework resolution is dispatched inside the resolver (FastAPI vs Django functions)—not a plugin system.
 
 ### GenerationPlan
 
-Includes definition reference, package/template paths, `GenerationFeatures`, dependency lists, entry/run/migrate/check commands, labels, and `primary_app` (Django).
+Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `rest_framework`), dependency lists, entry/run/migrate/check commands, labels, and `primary_app` (Django).
+
+```text
+ProjectDefinition = what the user asked for
+GenerationPlan    = what Forge resolved that request into
+```
 
 ### Generator / Templates
 
@@ -72,7 +80,7 @@ Templates present plan data. Django uses conventional `manage.py` + `src/config`
 
 ### Django decisions
 
-- **REST API ⇒ Django REST Framework** — DRF is required to satisfy the REST API project type; resolved as `features.rest_framework` (not a separate interactive toggle).
+- **REST API ⇒ Django REST Framework** — DRF is required to satisfy the REST API project type; resolved as `features.rest_framework` (not a user toggle).
 - **Simple** — `src/config` + one app `src/core`
 - **Modular Monolith** — `src/config` + domain apps under `src/apps/` (starts with `apps.core`)
 - Database always selected for Django REST API (SQLite or PostgreSQL)

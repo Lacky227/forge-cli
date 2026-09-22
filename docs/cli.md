@@ -25,14 +25,18 @@ Non-empty destinations are refused. Unsupported frameworks fail during **resolut
 
 **Ask only questions that affect the generated project.**
 
+Users think in terms of *what they are building*, not which internal implementation classes Forge uses.
+
 - Framework options depend on language + project type (FastAPI, Django, …)
-- **FastAPI:** optional database → engine → Alembic confirm; ORM implied (SQLAlchemy)
-- **Django (REST API):** database engine only; Django ORM + Django migrations + DRF implied (shown as dim notes, not false choices)
+- **FastAPI:** optional database → engine → Alembic confirm; SQLAlchemy is implied (dim note)
+- **Django (REST API):** database engine only; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for both
+
+Framework implications are applied in `resolve_plan`, not by stuffing implied fields into `ProjectDefinition` during the interview.
 
 ## Generation result
 
-Shows framework, architecture, capabilities, and next steps (framework-specific run/migrate commands).
+Shows framework, architecture, capabilities, and next steps (framework-specific run/migrate commands). Resolved details (ORM, migration system, DRF) appear in the success summary from the `GenerationPlan`.
 
 ## Interaction modes
 

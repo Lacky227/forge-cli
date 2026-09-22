@@ -10,38 +10,40 @@ Coherent layout, correct dependencies, wired integrations, runnable entrypoint, 
 
 Invalid combinations fail in `resolve_plan` before directories are created.
 
-Examples:
+Examples of invalid **explicit** combinations:
 
 - unsupported framework
 - Django + SQLAlchemy
 - FastAPI + Django ORM
-- Alembic without SQLAlchemy / Django migrations without Django ORM
+- Alembic without SQLAlchemy / migrations without a database
+
+Framework-implied capabilities (Django ORM, Django migrations, DRF) are resolved internally and do not need to appear on `ProjectDefinition`.
 
 ## Capability implications
 
 ### FastAPI
 
-| Selection | Implications |
-|-----------|--------------|
+| Selection | Resolved into GenerationPlan |
+|-----------|------------------------------|
 | Baseline | `fastapi[standard]`, `pydantic-settings` |
-| PostgreSQL / SQLite | SQLAlchemy URL + optional `psycopg` |
-| Migrations | Alembic |
-| pytest / Ruff / Docker | as before |
+| Database | ORM → SQLAlchemy; URL + optional `psycopg` |
+| Migrations (user choice) | migration system → Alembic |
+| pytest / Ruff / Docker | as selected |
 
 ### Django
 
-| Selection | Implications |
-|-----------|--------------|
+| Selection | Resolved into GenerationPlan |
+|-----------|------------------------------|
 | Baseline | Django, `python-dotenv`, `manage.py`, `config` settings |
-| REST API | **Django REST Framework**, `GET /api/health/` |
-| PostgreSQL / SQLite | Django `DATABASES` (env-aware) |
-| Migrations | Django (`makemigrations` / `migrate`) — not Alembic |
+| REST API | REST → Django REST Framework, `GET /api/health/` |
+| Database engine | ORM → Django ORM; `DATABASES` (env-aware) |
+| (implied) | migration system → Django (`makemigrations` / `migrate`) |
 | pytest | `pytest-django` |
 | Ruff / Docker | configured when selected |
 
 ### Dependency policy
 
-Minimum lower bounds; lists come from the resolver into `pyproject.toml`.
+Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are deduplicated.
 
 ### Validation expectation
 

@@ -53,6 +53,7 @@ def print_definition(definition: ProjectDefinition) -> None:
 
 def print_generation_result(result: GenerationResult) -> None:
     definition = result.definition
+    features = result.plan.features
     caps = definition.capabilities
     lines = Text()
     lines.append("✓ ", style="bold green")
@@ -66,28 +67,29 @@ def print_generation_result(result: GenerationResult) -> None:
     lines.append("\n")
 
     extras: list[str] = []
-    if caps.database and caps.database_engine:
+    if features.database and caps.database_engine:
         extras.append(
             catalog.DATABASE_ENGINE_LABELS.get(
                 caps.database_engine, caps.database_engine
             )
         )
-        if caps.orm:
-            extras.append(caps.orm)
-        if caps.migrations:
-            if definition.framework == "django":
-                extras.append("Django migrations")
-            elif caps.orm == "sqlalchemy":
-                extras.append("Alembic")
-            else:
-                extras.append("migrations")
-    if definition.framework == "django" and "API" in definition.to_display_dict():
+        if features.orm == "django-orm":
+            extras.append("Django ORM")
+        elif features.orm == "sqlalchemy":
+            extras.append("SQLAlchemy")
+        elif features.orm:
+            extras.append(features.orm)
+        if features.migration_system == "django":
+            extras.append("Django migrations")
+        elif features.migration_system == "alembic":
+            extras.append("Alembic")
+    if features.rest_framework:
         extras.append("DRF")
-    if caps.docker:
+    if features.docker:
         extras.append("Docker")
-    if caps.testing:
+    if features.testing:
         extras.append("pytest")
-    if caps.linting:
+    if features.linting:
         extras.append("Ruff")
     if extras:
         lines.append(" · ".join(extras), style="dim")

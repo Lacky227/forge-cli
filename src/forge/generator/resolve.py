@@ -1,8 +1,11 @@
 """Resolve a ProjectDefinition into a GenerationPlan.
 
-Centralizes framework/capability → generation implications. Does not touch
-the filesystem. Raises GenerationError for unsupported or incompatible
-combinations before generation begins.
+Centralizes framework implications and capability → generation mapping.
+Does not touch the filesystem. Raises GenerationError for unsupported or
+incompatible combinations before generation begins.
+
+``ProjectDefinition`` = explicit user intent.
+``GenerationPlan`` = resolved implementation (ORM, migrations, deps, …).
 """
 
 from __future__ import annotations
@@ -18,6 +21,8 @@ from forge.generator.plan import GenerationFeatures, GenerationPlan
 
 _SQLALCHEMY_ORM = "sqlalchemy"
 _DJANGO_ORM = "django-orm"
+_ALEMBIC = "alembic"
+_DJANGO_MIGRATIONS = "django"
 
 
 def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
@@ -30,7 +35,7 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
     runtime_deps, dev_deps = _resolve_dependencies(definition, features)
     database_url = _database_url_example(definition, package_name)
     entry_file, app_module, run_command, migrate_command, check_command = (
-        _commands_and_entry(definition, package_name)
+        _commands_and_entry(definition, features, package_name)
     )
     primary_app = _primary_app(definition)
 
@@ -78,52 +83,57 @@ def _assert_generatable(definition: ProjectDefinition) -> None:
 
 
 def _assert_capability_coherence(definition: ProjectDefinition) -> None:
+    """Validate explicit user choices against framework constraints.
+
+    Framework-implied values are applied in ``_resolve_features``; this step
+    only rejects incoherent *explicit* combinations (e.g. Django + SQLAlchemy).
+    """
     caps = definition.capabilities
     framework = definition.framework
 
-    if framework == "django" and caps.orm == _SQLALCHEMY_ORM:
+    if caps.orm == _SQLALCHEMY_ORM and framework == "django":
         raise GenerationError(
             "Cannot generate this project:\n\n"
             "Django with SQLAlchemy is not a supported combination.\n"
             "Use Django ORM (and Django migrations) instead."
         )
 
-    if framework == "fastapi" and caps.orm == _DJANGO_ORM:
+    if caps.orm == _DJANGO_ORM and framework == "fastapi":
         raise GenerationError(
             "Cannot generate this project:\n\n"
             "FastAPI with Django ORM is not a supported combination.\n"
             "Use SQLAlchemy (and Alembic) instead."
         )
 
-    if caps.migrations:
-        if not caps.database:
-            raise GenerationError(
-                "Cannot generate this project:\n\n"
-                "Migrations require a compatible database/ORM configuration."
-            )
-        if framework == "fastapi" and caps.orm != _SQLALCHEMY_ORM:
-            raise GenerationError(
-                "Cannot generate this project:\n\n"
-                "Alembic requires SQLAlchemy. "
-                f"Selected ORM is {caps.orm!r}."
-            )
-        if framework == "django" and caps.orm != _DJANGO_ORM:
-            raise GenerationError(
-                "Cannot generate this project:\n\n"
-                "Django migrations require Django ORM. "
-                f"Selected ORM is {caps.orm!r}."
-            )
-        if framework == "django" and caps.orm == _SQLALCHEMY_ORM:
+    if caps.migrations and framework == "django":
+        # Django migrations are implied; an explicit migrations=True is fine.
+        # Reject only when an incompatible ORM was also stated.
+        if caps.orm == _SQLALCHEMY_ORM:
             raise GenerationError(
                 "Cannot generate this project:\n\n"
                 "Django does not use Alembic/SQLAlchemy in Forge. "
                 "Use Django ORM and Django migrations."
             )
 
+    if caps.migrations and framework == "fastapi":
+        if caps.orm is not None and caps.orm != _SQLALCHEMY_ORM:
+            raise GenerationError(
+                "Cannot generate this project:\n\n"
+                "Alembic requires SQLAlchemy. "
+                f"Selected ORM is {caps.orm!r}."
+            )
+        if not caps.database:
+            raise GenerationError(
+                "Cannot generate this project:\n\n"
+                "Migrations require a compatible database/ORM configuration."
+            )
+
 
 def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
     caps = definition.capabilities
     engine = caps.database_engine
+    orm = _resolve_orm(definition)
+    migration_system = _resolve_migration_system(definition, orm)
     rest_framework = (
         definition.framework == "django"
         and definition.project_type is ProjectType.REST_API
@@ -132,12 +142,55 @@ def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
         database=caps.database,
         postgresql=caps.database and engine == "postgresql",
         sqlite=caps.database and engine == "sqlite",
-        migrations=caps.migrations,
+        migrations=migration_system is not None,
         docker=caps.docker,
         testing=caps.testing,
         linting=caps.linting,
+        orm=orm,
+        migration_system=migration_system,
         rest_framework=rest_framework,
     )
+
+
+def _resolve_orm(definition: ProjectDefinition) -> str | None:
+    caps = definition.capabilities
+    if not caps.database:
+        return None
+    if caps.orm is not None:
+        return caps.orm
+    return catalog.default_orm_for(definition.framework)
+
+
+def _resolve_migration_system(
+    definition: ProjectDefinition,
+    orm: str | None,
+) -> str | None:
+    """Map framework + explicit choices to a concrete migration implementation."""
+    caps = definition.capabilities
+    if not caps.database or orm is None:
+        return None
+
+    if definition.framework == "django":
+        if orm != _DJANGO_ORM:
+            raise GenerationError(
+                "Cannot generate this project:\n\n"
+                "Django migrations require Django ORM. "
+                f"Selected ORM is {orm!r}."
+            )
+        return _DJANGO_MIGRATIONS
+
+    if definition.framework == "fastapi":
+        if not caps.migrations:
+            return None
+        if orm != _SQLALCHEMY_ORM:
+            raise GenerationError(
+                "Cannot generate this project:\n\n"
+                "Alembic requires SQLAlchemy. "
+                f"Selected ORM is {orm!r}."
+            )
+        return _ALEMBIC
+
+    return None
 
 
 def _resolve_dependencies(
@@ -145,27 +198,41 @@ def _resolve_dependencies(
     features: GenerationFeatures,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if definition.framework == "fastapi":
-        return _fastapi_dependencies(features)
-    if definition.framework == "django":
-        return _django_dependencies(features)
-    raise GenerationError(
-        "Cannot generate this project:\n\n"
-        f"No dependency mapping for framework {definition.framework!r}."
-    )
+        runtime, dev = _fastapi_dependencies(features)
+    elif definition.framework == "django":
+        runtime, dev = _django_dependencies(features)
+    else:
+        raise GenerationError(
+            "Cannot generate this project:\n\n"
+            f"No dependency mapping for framework {definition.framework!r}."
+        )
+    return _dedupe(runtime), _dedupe(dev)
+
+
+def _dedupe(items: list[str]) -> tuple[str, ...]:
+    """Preserve order while removing duplicate dependency declarations."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return tuple(out)
 
 
 def _fastapi_dependencies(
     features: GenerationFeatures,
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
+) -> tuple[list[str], list[str]]:
     runtime: list[str] = [
         "fastapi[standard]>=0.115",
         "pydantic-settings>=2.0",
     ]
     if features.database:
-        runtime.append("sqlalchemy>=2.0")
+        if features.orm == _SQLALCHEMY_ORM:
+            runtime.append("sqlalchemy>=2.0")
         if features.postgresql:
             runtime.append("psycopg[binary]>=3.2")
-        if features.migrations:
+        if features.migration_system == _ALEMBIC:
             runtime.append("alembic>=1.14")
 
     dev: list[str] = []
@@ -174,12 +241,12 @@ def _fastapi_dependencies(
     if features.linting:
         dev.append("ruff>=0.8")
 
-    return tuple(runtime), tuple(dev)
+    return runtime, dev
 
 
 def _django_dependencies(
     features: GenerationFeatures,
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
+) -> tuple[list[str], list[str]]:
     runtime: list[str] = [
         "django>=5.0",
         "python-dotenv>=1.0",
@@ -195,7 +262,7 @@ def _django_dependencies(
     if features.linting:
         dev.append("ruff>=0.8")
 
-    return tuple(runtime), tuple(dev)
+    return runtime, dev
 
 
 def _database_url_example(definition: ProjectDefinition, package_name: str) -> str:
@@ -209,7 +276,7 @@ def _database_url_example(definition: ProjectDefinition, package_name: str) -> s
                 f"{package_name}"
             )
         if caps.database_engine == "sqlite":
-            return f"sqlite:///db.sqlite3"
+            return "sqlite:///db.sqlite3"
         return ""
     if caps.database_engine == "postgresql":
         return (
@@ -223,6 +290,7 @@ def _database_url_example(definition: ProjectDefinition, package_name: str) -> s
 
 def _commands_and_entry(
     definition: ProjectDefinition,
+    features: GenerationFeatures,
     package_name: str,
 ) -> tuple[str, str, str, str | None, str | None]:
     if definition.framework == "fastapi":
@@ -231,7 +299,7 @@ def _commands_and_entry(
         run_command = f"uv run fastapi dev {entry_file}"
         migrate_command = (
             "uv run alembic upgrade head"
-            if definition.capabilities.migrations
+            if features.migration_system == _ALEMBIC
             else None
         )
         return entry_file, app_module, run_command, migrate_command, None
@@ -242,7 +310,7 @@ def _commands_and_entry(
         run_command = "uv run python manage.py runserver"
         migrate_command = (
             "uv run python manage.py migrate"
-            if definition.capabilities.migrations
+            if features.migration_system == _DJANGO_MIGRATIONS
             else None
         )
         check_command = "uv run python manage.py check"

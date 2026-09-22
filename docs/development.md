@@ -39,12 +39,19 @@ forge.core → (no UI)
 ### Adding a framework
 
 1. Catalog + `GENERATABLE` entries
-2. Resolver mapping (deps, features, commands) in `forge.generator.resolve`
+2. Resolver mapping (deps, features, implied ORM/migrations/REST) in `forge.generator.resolve`
 3. Templates under `templates/<language>/<framework>/<architecture>/`
-4. Adaptive CLI prompts (only relevant questions)
+4. Adaptive CLI prompts (only user-selectable questions; leave implications to the resolver)
 5. Tests + generated-project smoke validation
 
 Do not add a plugin manager for the next framework.
+
+Keep the distinction:
+
+```text
+ProjectDefinition = explicit user intent
+GenerationPlan    = resolved implementation
+```
 
 ## Open decisions
 

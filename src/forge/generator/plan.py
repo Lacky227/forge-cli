@@ -10,7 +10,11 @@ from forge.core.definition import ProjectDefinition
 
 @dataclass(frozen=True)
 class GenerationFeatures:
-    """Explicit generation implications of selected capabilities."""
+    """Resolved implementation implications of a ProjectDefinition.
+
+    Includes both explicit user choices (docker, testing, …) and
+    framework-implied facts (orm, migration_system, rest_framework).
+    """
 
     database: bool
     postgresql: bool
@@ -19,6 +23,9 @@ class GenerationFeatures:
     docker: bool
     testing: bool
     linting: bool
+    # Framework-implied / resolved implementation details
+    orm: str | None = None
+    migration_system: str | None = None  # "alembic" | "django" | None
     # REST API stacks may enable a framework-native API layer (e.g. DRF).
     rest_framework: bool = False
 
@@ -68,8 +75,9 @@ class GenerationPlan:
             "framework_label": self.framework_label,
             "database": features.database,
             "database_engine": definition.capabilities.database_engine,
-            "orm": definition.capabilities.orm,
+            "orm": features.orm,
             "migrations": features.migrations,
+            "migration_system": features.migration_system,
             "docker": features.docker,
             "testing": features.testing,
             "linting": features.linting,
