@@ -85,6 +85,16 @@ class ProjectDefinition(BaseModel):
             )
 
         caps = self.capabilities
+        if (
+            self.framework == "django"
+            and self.project_type is ProjectType.REST_API
+            and not caps.database
+        ):
+            raise ValueError(
+                "Django REST API projects require a database "
+                "(SQLite or PostgreSQL)"
+            )
+
         if caps.database:
             if not catalog.supports_database(self.framework):
                 raise ValueError(
@@ -131,7 +141,7 @@ class ProjectDefinition(BaseModel):
                 else "No"
             ),
             "ORM": caps.orm or "—",
-            "Migrations": "Alembic" if caps.migrations else "No",
+            "Migrations": _migrations_label(self.framework, caps),
             "Docker": "Yes" if caps.docker else "No",
             "Testing": "Yes" if caps.testing else "No",
             "Linting": "Ruff" if caps.linting else "No",
@@ -139,4 +149,16 @@ class ProjectDefinition(BaseModel):
         if not caps.database:
             rows.pop("ORM")
             rows.pop("Migrations")
+        if self.framework == "django" and self.project_type is ProjectType.REST_API:
+            rows["API"] = "Django REST Framework"
         return rows
+
+
+def _migrations_label(framework: str, caps: Capabilities) -> str:
+    if not caps.migrations:
+        return "No"
+    if framework == "django":
+        return "Django"
+    if caps.orm == "sqlalchemy":
+        return "Alembic"
+    return "Yes"

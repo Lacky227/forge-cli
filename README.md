@@ -2,7 +2,7 @@
 
 Cross-platform CLI for interactively designing and generating application project architectures.
 
-**Status:** first vertical slice — generates runnable **Python FastAPI** projects (Simple / Modular Monolith) from an interactive interview.
+**Status:** generates runnable **Python FastAPI** and **Django** REST API projects (Simple / Modular Monolith).
 
 ## Quick start
 
@@ -11,25 +11,27 @@ uv sync
 uv run forge new my-api
 cd my-api
 uv sync
-uv run fastapi dev src/my_api/main.py
 ```
+
+Follow the generated README for framework-specific run commands.
 
 ## Documentation
 
 | Document | Contents |
 |----------|----------|
-| [docs/product.md](docs/product.md) | Product definition, principles, scope, non-goals |
-| [docs/architecture.md](docs/architecture.md) | Architecture, resolution, GenerationPlan, generator |
-| [docs/cli.md](docs/cli.md) | Interactive CLI, commands |
-| [docs/generation.md](docs/generation.md) | Quality requirements for generated projects |
-| [docs/development.md](docs/development.md) | Toolchain and development workflow |
+| [docs/product.md](docs/product.md) | Product definition, principles, scope |
+| [docs/architecture.md](docs/architecture.md) | Resolution, GenerationPlan, frameworks |
+| [docs/cli.md](docs/cli.md) | Interactive CLI |
+| [docs/generation.md](docs/generation.md) | Generated-project quality |
+| [docs/development.md](docs/development.md) | Toolchain and workflow |
 
 ## Layout
 
 ```text
-src/forge/cli/         # Typer + questionary + Rich
-src/forge/core/        # ProjectDefinition (no UI deps)
-src/forge/generator/   # resolve → GenerationPlan → Jinja/filesystem
+src/forge/cli/
+src/forge/core/
+src/forge/generator/     # resolve → GenerationPlan → render
 templates/python/fastapi/
-tests/                 # Forge's own tests
+templates/python/django/
+tests/
 ```

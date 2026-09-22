@@ -138,7 +138,7 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
             )
         )
 
-    capabilities = _collect_capabilities(framework)
+    capabilities = _collect_capabilities(framework, project_type)
     return ProjectDefinition(
         name=name,
         language=language,
@@ -149,13 +149,38 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
     )
 
 
-def _collect_capabilities(framework: str) -> Capabilities:
+def _collect_capabilities(
+    framework: str,
+    project_type: ProjectType,
+) -> Capabilities:
     database = False
     database_engine: str | None = None
     orm: str | None = None
     migrations = False
 
-    if catalog.supports_database(framework):
+    if framework == "django":
+        # Django REST API projects always use Django ORM + Django migrations.
+        database = True
+        database_engine = _select(
+            "Database engine",
+            [
+                Choice(
+                    title=catalog.DATABASE_ENGINE_LABELS[engine],
+                    value=engine,
+                )
+                for engine in catalog.DATABASE_ENGINES
+            ],
+        )
+        orm = catalog.default_orm_for(framework)
+        migrations = True
+        _console.print("[dim]ORM:[/dim] Django ORM")
+        _console.print("[dim]Migrations:[/dim] Django migrations")
+        if project_type is ProjectType.REST_API:
+            _console.print(
+                "[dim]API:[/dim] Django REST Framework "
+                "[dim](required for REST API)[/dim]"
+            )
+    elif catalog.supports_database(framework):
         database = _confirm("Include a database?", default=True)
         if database:
             database_engine = _select(
@@ -172,7 +197,8 @@ def _collect_capabilities(framework: str) -> Capabilities:
             if orm:
                 _console.print(
                     f"[dim]ORM:[/dim] {orm} "
-                    f"[dim](selected for {catalog.FRAMEWORK_LABELS.get(framework, framework)})[/dim]"
+                    f"[dim](selected for "
+                    f"{catalog.FRAMEWORK_LABELS.get(framework, framework)})[/dim]"
                 )
             migrations = _confirm("Include Alembic migrations?", default=True)
     else:

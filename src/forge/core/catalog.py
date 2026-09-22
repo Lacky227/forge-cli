@@ -71,6 +71,11 @@ GENERATABLE: frozenset[tuple[str, str, str]] = frozenset(
             "fastapi",
             ProjectType.REST_API.value,
         ),
+        (
+            Language.PYTHON.value,
+            "django",
+            ProjectType.REST_API.value,
+        ),
     }
 )
 

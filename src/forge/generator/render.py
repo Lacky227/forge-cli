@@ -66,12 +66,13 @@ def iter_template_files(template_dir: Path) -> Iterator[Path]:
 def should_emit(relative: Path, plan: GenerationPlan) -> bool:
     """Skip capability-specific template paths using resolved features."""
     features = plan.features
-    parts = set(relative.parts)
+    parts = relative.parts
     name = relative.name
 
     if name in _DOCKER_FILES and not features.docker:
         return False
-    if "migrations" in parts and not features.migrations:
+    # Project-level Alembic tree only (not Django app migrations packages).
+    if parts and parts[0] == "migrations" and not features.migrations:
         return False
     if name.startswith("alembic") and not features.migrations:
         return False
@@ -81,7 +82,7 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
         return False
     if name in _DB_ONLY_FILES and not features.database:
         return False
-    if "models" in parts and not features.database:
+    if "models" in parts and name != "models.py.j2" and not features.database:
         return False
     return True
 

@@ -75,7 +75,14 @@ def print_generation_result(result: GenerationResult) -> None:
         if caps.orm:
             extras.append(caps.orm)
         if caps.migrations:
-            extras.append("Alembic")
+            if definition.framework == "django":
+                extras.append("Django migrations")
+            elif caps.orm == "sqlalchemy":
+                extras.append("Alembic")
+            else:
+                extras.append("migrations")
+    if definition.framework == "django" and "API" in definition.to_display_dict():
+        extras.append("DRF")
     if caps.docker:
         extras.append("Docker")
     if caps.testing:

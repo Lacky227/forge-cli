@@ -41,8 +41,8 @@ class GenerationResult:
         features = self.plan.features
         if features.postgresql and features.docker:
             steps.append("docker compose up -d db")
-        if features.migrations:
-            steps.append("uv run alembic upgrade head")
+        if self.plan.migrate_command:
+            steps.append(self.plan.migrate_command)
         steps.append(self.plan.run_command)
         if features.testing:
             steps.append("uv run pytest")

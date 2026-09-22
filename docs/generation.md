@@ -1,74 +1,56 @@
 # Generated project quality
 
-“Generated successfully” means more than files appearing on disk. The output should be a **usable starting point for a real project**.
+“Generated successfully” means a **usable starting point for a real project**.
 
 ## Quality bar
 
-A generated project should:
-
-- have a coherent directory structure for the chosen stack and architecture
-- declare dependencies correctly for selected capabilities only
-- wire configuration so selected components connect
-- **start successfully** (or document minimal steps if a local service is required)
-- expose the expected entry point
-- include `.env.example` when database/Docker config is needed (never commit secrets as `.env`)
-- include pytest and/or Ruff when selected
-- include Docker / Alembic when selected—and they must be wired, not empty stubs
-- include a README that matches the actual generated commands and layout
+Coherent layout, correct dependencies, wired integrations, runnable entrypoint, `.env.example` when needed, pytest/Ruff/Docker/migrations when selected, README matching real commands.
 
 ## Resolution before generation
 
-Invalid combinations fail in `resolve_plan` **before** directories are created.
+Invalid combinations fail in `resolve_plan` before directories are created.
 
 Examples:
 
-- unsupported framework/architecture
-- Alembic without a SQLAlchemy-compatible ORM/database setup
+- unsupported framework
+- Django + SQLAlchemy
+- FastAPI + Django ORM
+- Alembic without SQLAlchemy / Django migrations without Django ORM
 
-## Capability implications (FastAPI)
+## Capability implications
 
-Resolved centrally in `forge.generator.resolve` (not in the CLI):
+### FastAPI
 
-| Selection | Generation implications |
-|-----------|-------------------------|
-| FastAPI baseline | `fastapi[standard]`, `pydantic-settings`, app entrypoint |
-| PostgreSQL | `psycopg`, `DATABASE_URL`, Compose `db` service when Docker on |
-| SQLite | SQLite `DATABASE_URL` (no Postgres driver) |
-| SQLAlchemy | `sqlalchemy`, database session/models wiring |
-| Alembic | `alembic`, `alembic.ini`, `migrations/` |
-| pytest | `pytest`/`httpx`, `tests/` |
-| Ruff | `ruff` + `[tool.ruff]` |
-| Docker | `Dockerfile`, `docker-compose.yml` |
+| Selection | Implications |
+|-----------|--------------|
+| Baseline | `fastapi[standard]`, `pydantic-settings` |
+| PostgreSQL / SQLite | SQLAlchemy URL + optional `psycopg` |
+| Migrations | Alembic |
+| pytest / Ruff / Docker | as before |
+
+### Django
+
+| Selection | Implications |
+|-----------|--------------|
+| Baseline | Django, `python-dotenv`, `manage.py`, `config` settings |
+| REST API | **Django REST Framework**, `GET /api/health/` |
+| PostgreSQL / SQLite | Django `DATABASES` (env-aware) |
+| Migrations | Django (`makemigrations` / `migrate`) — not Alembic |
+| pytest | `pytest-django` |
+| Ruff / Docker | configured when selected |
 
 ### Dependency policy
 
-Minimum lower bounds, no upper pins by default. Lists are produced by the resolver and rendered into `pyproject.toml`.
+Minimum lower bounds; lists come from the resolver into `pyproject.toml`.
 
 ### Validation expectation
 
-```text
-uv sync → uv run pytest → uv run ruff check .
-```
+**FastAPI:** `uv sync` → `pytest` → `ruff` (Alembic/Docker as applicable).
 
-Alembic (e.g. SQLite): `uv run alembic upgrade head`.
+**Django:** `uv sync` → `python manage.py check` → `migrate` → `pytest` → `ruff` (Compose config when Docker selected).
 
-Docker: `docker compose config` (live containers optional; not required for Forge’s own tests).
-
-## Reflect user choices
-
-Do not emit Docker, Alembic, SQLAlchemy, or Ruff when not selected.
-
-## Working integrations
-
-Selected features must be integrated, not merely mentioned.
-
-## Proportional structure
-
-Simple vs modular layouts must differ meaningfully.
+Live PostgreSQL containers are optional and environment-dependent.
 
 ## Forge tests vs generated tests
 
-| Suite | Location | Purpose |
-|-------|----------|---------|
-| Forge tests | `tests/` here | Resolution, generator contracts, domain |
-| Generated tests | inside each generated project | Application smoke tests |
+Forge tests live in this repo’s `tests/`. Generated app tests live inside each generated project.

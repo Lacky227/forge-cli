@@ -22,100 +22,70 @@ Generated Project
 
 **Current:** `forge.cli` — Typer, questionary, Rich.
 
-Owns prompts and display. Builds a **`ProjectDefinition`**, then calls `generate_project`. Must not embed framework dependency maps, template selection, or filesystem generation. Adaptive option lists come from `forge.core.catalog` (what can be asked), not from generation code.
+Builds a **`ProjectDefinition`**, then calls `generate_project`. Adaptive option lists come from `forge.core.catalog`. Framework-specific prompts (e.g. Alembic vs Django migrations) stay presentation-only; generation semantics live in the resolver.
 
 ### Project Definition / Configuration
 
-**Current:** `forge.core.definition.ProjectDefinition` (Pydantic).
+**Current:** `forge.core.definition.ProjectDefinition`.
 
-User choices only: language, project type, framework, architecture, capabilities. No terminal/UI concepts. Importable without CLI libraries.
+User choices: language, project type, framework, architecture, capabilities (`database`, `orm`, `migrations`, `docker`, `testing`, `linting`).
+
+ORM/migration meaning is framework-specific and resolved later:
+
+| Framework | ORM | Migrations |
+|-----------|-----|------------|
+| FastAPI | SQLAlchemy | Alembic |
+| Django | Django ORM | Django migrations |
 
 ### Resolution
 
 **Current:** `forge.generator.resolve.resolve_plan(definition) → GenerationPlan`.
 
-Turns choices into generation instructions **before any filesystem writes**:
+- reject unsupported / incoherent combinations before filesystem writes
+- normalize package naming and template path
+- resolve features (including `rest_framework` for Django REST API)
+- resolve runtime/dev dependencies per framework
+- compute run / migrate / check commands
 
-- reject unsupported or incoherent combinations (clear `GenerationError`)
-- normalize package naming
-- select template subdirectory
-- resolve capability → features (database engine flags, migrations, docker, …)
-- resolve runtime/dev dependency lists (framework-specific mapping)
-- compute template presentation values (example `DATABASE_URL`, run command, labels)
+Framework resolution is dispatched inside the resolver (FastAPI vs Django functions)—not a plugin system.
 
 ### GenerationPlan
 
-**Current:** `forge.generator.plan.GenerationPlan`.
+Includes definition reference, package/template paths, `GenerationFeatures`, dependency lists, entry/run/migrate/check commands, labels, and `primary_app` (Django).
 
-The generator consumes this object. It should not re-decide “is PostgreSQL enabled?” or “which packages does FastAPI need?” from raw CLI answers.
-
-Includes:
-
-- reference to the original `ProjectDefinition`
-- `package_name`, `template_subdir`
-- `GenerationFeatures` (explicit generation implications)
-- `runtime_dependencies` / `dev_dependencies`
-- `database_url_example`, `entry_file`, `app_module`, `run_command`
-- display labels
-
-### Generator
-
-**Current:** `forge.generator.engine` + `render`.
-
-- `generate_project(definition)` → `resolve_plan` then `generate_from_plan`
-- destination safety (no silent overwrite of non-empty paths)
-- Jinja2 render from `plan.as_jinja_dict()`
-- capability-gated file emission via resolved `features`
-
-### Templates
-
-**Current:** `templates/<language>/<framework>/<architecture>/`
-
-Templates primarily **present** plan data. Dependency lists come from the plan (`runtime_dependencies` / `dev_dependencies`), not from framework `if` trees inside Jinja. Simple presentation conditionals (README sections, optional config blocks) are fine.
+### Generator / Templates
 
 ```text
-templates/python/fastapi/simple/
-templates/python/fastapi/modular-monolith/
+templates/python/fastapi/{simple,modular-monolith}/
+templates/python/django/{simple,modular-monolith}/
 ```
 
-`__package__/` is rewritten to the resolved package name.
-
-### Generated Project
-
-Python FastAPI REST API (Simple / Modular Monolith). Quality bar: [generation.md](./generation.md).
-
-## Package layout (current)
-
-```text
-src/forge/
-├── cli/
-├── core/                 # ProjectDefinition, catalog, naming
-└── generator/
-    ├── plan.py           # GenerationPlan / GenerationFeatures
-    ├── resolve.py        # resolve_plan()
-    ├── engine.py         # generate_project / generate_from_plan
-    ├── render.py         # Jinja + filesystem
-    └── errors.py
-templates/python/fastapi/
-tests/
-```
+Templates present plan data. Django uses conventional `manage.py` + `src/config` + apps; FastAPI keeps its ASGI package layout.
 
 ## What generates today
 
 | Combination | Status |
 |-------------|--------|
-| Python · FastAPI · REST API · Simple | **Supported** |
-| Python · FastAPI · REST API · Modular Monolith | **Supported** |
-| Other frameworks / Clean Architecture | Not generated (fails in `resolve_plan`) |
+| Python · FastAPI · REST API · Simple / Modular | **Supported** |
+| Python · Django · REST API · Simple / Modular | **Supported** |
+| Flask / CLI / Worker / Clean Architecture | Not generated |
 
-Adding a second framework should mean: catalog entries + resolver mapping + templates — **not** new CLI conditionals or plugin infrastructure.
+### Django decisions
+
+- **REST API ⇒ Django REST Framework** — DRF is required to satisfy the REST API project type; resolved as `features.rest_framework` (not a separate interactive toggle).
+- **Simple** — `src/config` + one app `src/core`
+- **Modular Monolith** — `src/config` + domain apps under `src/apps/` (starts with `apps.core`)
+- Database always selected for Django REST API (SQLite or PostgreSQL)
+- No SQLAlchemy / Alembic for Django
+
+## Package layout
+
+```text
+src/forge/{cli,core,generator}/
+templates/python/{fastapi,django}/
+tests/
+```
 
 ## Destination and naming
 
-- `forge new my-api` → `./my-api`
-- Path traversal rejected; package name via `to_package_name()`
-- Non-empty destinations raise `GenerationError`
-
-## Presets / plugins
-
-Still planned. No plugin manager or remote template system.
+Unchanged: `./<name>`, path-safe names, `to_package_name()`, no silent overwrite.

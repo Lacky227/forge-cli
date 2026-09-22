@@ -80,10 +80,10 @@ def test_resolve_modular_template_path() -> None:
 
 def test_resolve_rejects_unsupported_framework() -> None:
     definition = ProjectDefinition(
-        name="django-app",
+        name="flask-app",
         language=Language.PYTHON,
         project_type=ProjectType.REST_API,
-        framework="django",
+        framework="flask",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(testing=True, linting=False),
     )
@@ -92,8 +92,6 @@ def test_resolve_rejects_unsupported_framework() -> None:
 
 
 def test_resolve_rejects_migrations_without_sqlalchemy_orm() -> None:
-    # Bypass ProjectDefinition validators by constructing then mutating via model_copy
-    # is not possible on frozen model with validators — use model_construct carefully.
     definition = ProjectDefinition.model_construct(
         name="broken",
         language=Language.PYTHON,
@@ -110,5 +108,5 @@ def test_resolve_rejects_migrations_without_sqlalchemy_orm() -> None:
             linting=False,
         ),
     )
-    with pytest.raises(GenerationError, match="Alembic requires SQLAlchemy"):
+    with pytest.raises(GenerationError, match="Django ORM"):
         resolve_plan(definition)

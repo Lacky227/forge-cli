@@ -108,10 +108,10 @@ def test_refuses_nonempty_destination(tmp_path: Path) -> None:
 
 def test_unsupported_framework(tmp_path: Path) -> None:
     definition = ProjectDefinition(
-        name="django-app",
+        name="flask-app",
         language=Language.PYTHON,
         project_type=ProjectType.REST_API,
-        framework="django",
+        framework="flask",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(testing=True, linting=False),
     )
@@ -121,16 +121,16 @@ def test_unsupported_framework(tmp_path: Path) -> None:
 
 def test_invalid_plan_fails_before_filesystem(tmp_path: Path) -> None:
     definition = ProjectDefinition(
-        name="django-app",
+        name="flask-app",
         language=Language.PYTHON,
         project_type=ProjectType.REST_API,
-        framework="django",
+        framework="flask",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(testing=True, linting=False),
     )
     with pytest.raises(GenerationError):
         generate_project(definition, base_dir=tmp_path)
-    assert not (tmp_path / "django-app").exists()
+    assert not (tmp_path / "flask-app").exists()
 
 
 def test_next_steps_include_fastapi_dev(tmp_path: Path) -> None:

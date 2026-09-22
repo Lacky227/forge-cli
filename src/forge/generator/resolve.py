@@ -12,11 +12,12 @@ from pathlib import Path
 from forge.core import catalog
 from forge.core.definition import ProjectDefinition
 from forge.core.naming import to_package_name
+from forge.core.types import ArchitectureStyle, ProjectType
 from forge.generator.errors import GenerationError
 from forge.generator.plan import GenerationFeatures, GenerationPlan
 
-# Alembic is only wired for SQLAlchemy-backed stacks today.
-_ALEMBIC_COMPATIBLE_ORMS = frozenset({"sqlalchemy"})
+_SQLALCHEMY_ORM = "sqlalchemy"
+_DJANGO_ORM = "django-orm"
 
 
 def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
@@ -28,8 +29,10 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
     features = _resolve_features(definition)
     runtime_deps, dev_deps = _resolve_dependencies(definition, features)
     database_url = _database_url_example(definition, package_name)
-    entry_file = f"src/{package_name}/main.py"
-    app_module = f"{package_name}.main:app"
+    entry_file, app_module, run_command, migrate_command, check_command = (
+        _commands_and_entry(definition, package_name)
+    )
+    primary_app = _primary_app(definition)
 
     return GenerationPlan(
         definition=definition,
@@ -45,11 +48,14 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
         database_url_example=database_url,
         app_module=app_module,
         entry_file=entry_file,
-        run_command=_run_command(definition, entry_file),
+        run_command=run_command,
         architecture_label=catalog.ARCHITECTURE_LABELS[definition.architecture],
         framework_label=catalog.FRAMEWORK_LABELS.get(
             definition.framework, definition.framework
         ),
+        migrate_command=migrate_command,
+        check_command=check_command,
+        primary_app=primary_app,
     )
 
 
@@ -66,38 +72,62 @@ def _assert_generatable(definition: ProjectDefinition) -> None:
             f"{definition.language.value}/{definition.framework}/"
             f"{definition.project_type.value}/"
             f"{definition.architecture.value}.\n"
-            "Currently supported: Python FastAPI REST API "
+            "Currently supported: Python FastAPI or Django REST API "
             "(simple or modular-monolith)."
         )
 
 
 def _assert_capability_coherence(definition: ProjectDefinition) -> None:
     caps = definition.capabilities
+    framework = definition.framework
+
+    if framework == "django" and caps.orm == _SQLALCHEMY_ORM:
+        raise GenerationError(
+            "Cannot generate this project:\n\n"
+            "Django with SQLAlchemy is not a supported combination.\n"
+            "Use Django ORM (and Django migrations) instead."
+        )
+
+    if framework == "fastapi" and caps.orm == _DJANGO_ORM:
+        raise GenerationError(
+            "Cannot generate this project:\n\n"
+            "FastAPI with Django ORM is not a supported combination.\n"
+            "Use SQLAlchemy (and Alembic) instead."
+        )
 
     if caps.migrations:
         if not caps.database:
             raise GenerationError(
                 "Cannot generate this project:\n\n"
-                "Alembic requires a compatible database/ORM configuration."
+                "Migrations require a compatible database/ORM configuration."
             )
-        if caps.orm not in _ALEMBIC_COMPATIBLE_ORMS:
+        if framework == "fastapi" and caps.orm != _SQLALCHEMY_ORM:
             raise GenerationError(
                 "Cannot generate this project:\n\n"
                 "Alembic requires SQLAlchemy. "
                 f"Selected ORM is {caps.orm!r}."
             )
-
-    if caps.database and definition.framework == "django" and caps.orm == "sqlalchemy":
-        # Defensive: ProjectDefinition normally prevents this; keep resolve strict.
-        raise GenerationError(
-            "Cannot generate this project:\n\n"
-            "Django with SQLAlchemy is not a supported combination."
-        )
+        if framework == "django" and caps.orm != _DJANGO_ORM:
+            raise GenerationError(
+                "Cannot generate this project:\n\n"
+                "Django migrations require Django ORM. "
+                f"Selected ORM is {caps.orm!r}."
+            )
+        if framework == "django" and caps.orm == _SQLALCHEMY_ORM:
+            raise GenerationError(
+                "Cannot generate this project:\n\n"
+                "Django does not use Alembic/SQLAlchemy in Forge. "
+                "Use Django ORM and Django migrations."
+            )
 
 
 def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
     caps = definition.capabilities
     engine = caps.database_engine
+    rest_framework = (
+        definition.framework == "django"
+        and definition.project_type is ProjectType.REST_API
+    )
     return GenerationFeatures(
         database=caps.database,
         postgresql=caps.database and engine == "postgresql",
@@ -106,6 +136,7 @@ def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
         docker=caps.docker,
         testing=caps.testing,
         linting=caps.linting,
+        rest_framework=rest_framework,
     )
 
 
@@ -113,14 +144,10 @@ def _resolve_dependencies(
     definition: ProjectDefinition,
     features: GenerationFeatures,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Map framework + features to package constraints.
-
-    Dependency selection is framework-specific and lives here—not in the CLI
-    and not as business logic inside Jinja templates.
-    """
     if definition.framework == "fastapi":
         return _fastapi_dependencies(features)
-
+    if definition.framework == "django":
+        return _django_dependencies(features)
     raise GenerationError(
         "Cannot generate this project:\n\n"
         f"No dependency mapping for framework {definition.framework!r}."
@@ -150,9 +177,39 @@ def _fastapi_dependencies(
     return tuple(runtime), tuple(dev)
 
 
+def _django_dependencies(
+    features: GenerationFeatures,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    runtime: list[str] = [
+        "django>=5.0",
+        "python-dotenv>=1.0",
+    ]
+    if features.rest_framework:
+        runtime.append("djangorestframework>=3.15")
+    if features.postgresql:
+        runtime.append("psycopg[binary]>=3.2")
+
+    dev: list[str] = []
+    if features.testing:
+        dev.extend(["pytest>=8", "pytest-django>=4.8"])
+    if features.linting:
+        dev.append("ruff>=0.8")
+
+    return tuple(runtime), tuple(dev)
+
+
 def _database_url_example(definition: ProjectDefinition, package_name: str) -> str:
     caps = definition.capabilities
     if not caps.database:
+        return ""
+    if definition.framework == "django":
+        if caps.database_engine == "postgresql":
+            return (
+                "postgres://postgres:postgres@localhost:5432/"
+                f"{package_name}"
+            )
+        if caps.database_engine == "sqlite":
+            return f"sqlite:///db.sqlite3"
         return ""
     if caps.database_engine == "postgresql":
         return (
@@ -164,8 +221,40 @@ def _database_url_example(definition: ProjectDefinition, package_name: str) -> s
     return ""
 
 
-def _run_command(definition: ProjectDefinition, entry_file: str) -> str:
+def _commands_and_entry(
+    definition: ProjectDefinition,
+    package_name: str,
+) -> tuple[str, str, str, str | None, str | None]:
     if definition.framework == "fastapi":
-        return f"uv run fastapi dev {entry_file}"
-    # Placeholder for future frameworks — resolve already rejects unsupported ones.
-    return f"uv run {entry_file}"
+        entry_file = f"src/{package_name}/main.py"
+        app_module = f"{package_name}.main:app"
+        run_command = f"uv run fastapi dev {entry_file}"
+        migrate_command = (
+            "uv run alembic upgrade head"
+            if definition.capabilities.migrations
+            else None
+        )
+        return entry_file, app_module, run_command, migrate_command, None
+
+    if definition.framework == "django":
+        entry_file = "manage.py"
+        app_module = "config.asgi:application"
+        run_command = "uv run python manage.py runserver"
+        migrate_command = (
+            "uv run python manage.py migrate"
+            if definition.capabilities.migrations
+            else None
+        )
+        check_command = "uv run python manage.py check"
+        return entry_file, app_module, run_command, migrate_command, check_command
+
+    entry_file = f"src/{package_name}/main.py"
+    return entry_file, f"{package_name}.main:app", f"uv run {entry_file}", None, None
+
+
+def _primary_app(definition: ProjectDefinition) -> str | None:
+    if definition.framework != "django":
+        return None
+    if definition.architecture is ArchitectureStyle.MODULAR_MONOLITH:
+        return "apps.core"
+    return "core"
