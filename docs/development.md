@@ -60,6 +60,21 @@ uv run pytest -m packaging
 
 Do not publish to PyPI from this workflow yet. CI runs the test matrix and the packaging smoke on every push/PR.
 
+Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com/Lacky227/forge-cli).
+
+### Versioning
+
+Current version: **`0.1.0`** — first public development release of the Forge CLI.
+
+| Version | Meaning |
+|---------|---------|
+| `0.x` | Public development releases |
+| `0.1.x` | Backwards-compatible fixes and small improvements |
+| `0.2.0` | Meaningful new capabilities or intentional public-interface changes |
+| `1.0.0` | Stable public CLI / domain contract |
+
+Record user-facing changes in [CHANGELOG.md](../CHANGELOG.md). Do not introduce automated semantic-release tooling for routine work.
+
 ### Import boundaries
 
 ```text
@@ -95,6 +110,6 @@ GenerationPlan    = resolved implementation
 - Config export / round-trip tooling
 - Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator
 - Whether preset + config merging is ever worth the precedence complexity (currently rejected)
-- License / SPDX identifier for a public release (no LICENSE file yet)
-- Project homepage / repository URLs for PyPI metadata
+- License / SPDX identifier for a public release (no LICENSE file yet — required before PyPI)
+- Author / maintainer contact metadata for PyPI
 - Whether and when to publish `forge-cli` to PyPI

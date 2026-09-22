@@ -8,6 +8,8 @@ Authoritative product and engineering docs for Forge.
 | [architecture.md](./architecture.md) | Layers, resolution, framework × architecture matrix |
 | [cli.md](./cli.md) | Interactive CLI, presets, and YAML `--config` |
 | [generation.md](./generation.md) | Generated-project quality bar |
-| [development.md](./development.md) | Toolchain, packaging, workflow, adding frameworks |
+| [development.md](./development.md) | Toolchain, packaging, versioning, workflow |
+| [../CHANGELOG.md](../CHANGELOG.md) | Release notes |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Contributor setup and expectations |
 
 Update these documents when behavior or architecture changes.
