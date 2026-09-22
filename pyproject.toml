@@ -79,7 +79,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 addopts = "-m 'not packaging'"
 markers = [
     "packaging: build/install smoke tests (slower; may build wheels)",

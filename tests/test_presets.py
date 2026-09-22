@@ -18,6 +18,7 @@ from forge.core.presets import (
 )
 from forge.core.types import ArchitectureStyle
 from forge.generator import generate_project, resolve_plan
+from tests.cli_testing import invoke_cli, plain_output
 
 runner = CliRunner()
 
@@ -172,10 +173,11 @@ def test_cli_preset_requires_name(
 
 
 def test_cli_help_mentions_preset() -> None:
-    result = runner.invoke(app, ["new", "--help"])
+    result = invoke_cli(app, ["new", "--help"])
+    output = plain_output(result)
     assert result.exit_code == 0
-    assert "--preset" in result.output
-    assert "-p" in result.output
+    assert "--preset" in output
+    assert "-p" in output
 
 
 def test_generate_fastapi_preset(tmp_path: Path) -> None:

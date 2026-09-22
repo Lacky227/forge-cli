@@ -13,6 +13,7 @@ from forge.cli.app import app
 from forge.cli.flow import FlowCancelled
 from forge.core.definition import Capabilities, ProjectDefinition
 from forge.core.types import ArchitectureStyle, Language, ProjectType
+from tests.cli_testing import invoke_cli, plain_output
 
 runner = CliRunner()
 
@@ -44,33 +45,55 @@ architecture: simple
 
 
 def test_forge_help() -> None:
-    result = runner.invoke(app, ["--help"])
+    result = invoke_cli(app, ["--help"])
+    output = plain_output(result)
     assert result.exit_code == 0
-    assert "Design and generate" in result.output
-    assert "new" in result.output
-    assert "--version" in result.output
+    assert "Design and generate" in output
+    assert "new" in output
+    assert "--version" in output
+
+
+def test_help_option_names_readable_under_forced_color() -> None:
+    """Regression: Rich may ANSI-split ``--`` when FORCE_COLOR is set (CI)."""
+    colored_env = {
+        "FORCE_COLOR": "1",
+        "CLICOLOR_FORCE": "1",
+        "TERM": "xterm-256color",
+        "NO_COLOR": "",
+    }
+    root = runner.invoke(app, ["--help"], env=colored_env, color=True)
+    assert root.exit_code == 0
+    assert "--version" in plain_output(root)
+
+    new = runner.invoke(app, ["new", "--help"], env=colored_env, color=True)
+    text = plain_output(new)
+    assert new.exit_code == 0
+    assert "--config" in text
+    assert "--preset" in text
 
 
 def test_forge_new_help() -> None:
-    result = runner.invoke(app, ["new", "--help"])
+    result = invoke_cli(app, ["new", "--help"])
+    output = plain_output(result)
     assert result.exit_code == 0
-    assert "--config" in result.output
-    assert "-c" in result.output
-    assert "YAML" in result.output or "config" in result.output.lower()
+    assert "--config" in output
+    assert "-c" in output
+    assert "YAML" in output or "config" in output.lower()
 
 
 def test_forge_version() -> None:
-    result = runner.invoke(app, ["--version"])
+    result = invoke_cli(app, ["--version"])
     assert result.exit_code == 0
-    assert f"forge {__version__}" in result.output
-    assert result.output.strip() == f"forge {__version__}"
+    assert f"forge {__version__}" in plain_output(result)
+    assert plain_output(result).strip() == f"forge {__version__}"
 
 
 def test_forge_no_args_shows_help() -> None:
-    result = runner.invoke(app, [])
+    result = invoke_cli(app, [])
+    output = plain_output(result)
     assert result.exit_code == 2
-    assert "Usage:" in result.output
-    assert "new" in result.output
+    assert "Usage:" in output
+    assert "new" in output
 
 
 def test_config_generation_no_prompt(

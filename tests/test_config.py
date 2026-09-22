@@ -11,6 +11,7 @@ from forge.cli.app import app
 from forge.core.config import ConfigError, definition_from_config, load_forge_config
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 from forge.generator import generate_project, resolve_plan
+from tests.cli_testing import invoke_cli, plain_output
 
 runner = CliRunner()
 
@@ -282,9 +283,9 @@ docker: false
 
 
 def test_cli_help_mentions_config() -> None:
-    result = runner.invoke(app, ["new", "--help"])
+    result = invoke_cli(app, ["new", "--help"])
     assert result.exit_code == 0
-    assert "--config" in result.output
+    assert "--config" in plain_output(result)
 
 
 def test_generate_from_fastapi_config(tmp_path: Path) -> None:
