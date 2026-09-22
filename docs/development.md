@@ -57,9 +57,12 @@ bash scripts/packaging_smoke.sh
 
 # Packaging-focused pytest (builds wheels; skipped by default via addopts)
 uv run pytest -m packaging
+
+# Generation smoke (uv sync + framework check/pytest/ruff; SQLite / no-db cases)
+uv run pytest -m generation_smoke
 ```
 
-Do not publish to PyPI from this workflow yet. CI runs the test matrix and the packaging smoke on every push/PR.
+Do not publish to PyPI from this workflow yet. CI runs the test matrix and the packaging/generation smoke on every push/PR.
 
 Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com/Lacky227/forge-cli).
 

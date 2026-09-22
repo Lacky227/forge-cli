@@ -80,7 +80,8 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
-addopts = "-m 'not packaging'"
+addopts = "-m 'not packaging and not generation_smoke'"
 markers = [
     "packaging: build/install smoke tests (slower; may build wheels)",
+    "generation_smoke: generate + uv sync + framework/pytest/ruff (slower)",
 ]

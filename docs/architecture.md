@@ -86,6 +86,9 @@ In the built wheel, the same tree is installed as ``forge/templates/`` (Hatch fo
 
 ## What generates today
 
+See the **official generation compatibility matrix** in [generation.md](./generation.md)
+(`forge.core.compatibility.SUPPORTED_GENERATION_CASES`).
+
 | Framework \\ Architecture | Simple | Modular Monolith | Clean |
 |---------------------------|--------|------------------|-------|
 | FastAPI | **Supported** | **Supported** | **Supported** |

@@ -81,5 +81,8 @@ jobs:
       - name: Pytest packaging markers
         run: uv run pytest -q -m packaging --tb=short
 
+      - name: Pytest generation smoke
+        run: uv run pytest -q -m generation_smoke --tb=short
+
       - name: Packaging smoke (clean install)
         run: bash scripts/packaging_smoke.sh

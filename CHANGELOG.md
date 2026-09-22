@@ -10,6 +10,7 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
 ### Added
 
 - `forge plan` — inspect the resolved `GenerationPlan` from `--preset` or `--config` without generating files
+- Official generation compatibility matrix (`forge.core.compatibility`) with structural and executable smoke coverage
 
 First public development release of the Forge CLI (`forge-cli`).
 
