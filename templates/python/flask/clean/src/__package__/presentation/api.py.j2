@@ -1,0 +1,11 @@
+from flask import Blueprint, jsonify
+
+from {{ package_name }}.application.health import get_health_status
+
+bp = Blueprint("api", __name__)
+
+
+@bp.get("/api/health")
+def health():
+    status = get_health_status()
+    return jsonify({"status": status.status})

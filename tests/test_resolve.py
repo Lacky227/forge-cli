@@ -88,9 +88,9 @@ def test_resolve_rejects_unsupported_framework() -> None:
     definition = ProjectDefinition.model_construct(
         name="future-app",
         language=Language.PYTHON,
-        project_type=ProjectType.REST_API,
+        project_type=ProjectType.WORKER,
         framework="fastapi",
-        architecture=ArchitectureStyle.CLEAN,
+        architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(testing=True, linting=False),
     )
     with pytest.raises(GenerationError, match="Cannot generate this project"):

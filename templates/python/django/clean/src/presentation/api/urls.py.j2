@@ -1,0 +1,7 @@
+from django.urls import path
+
+from presentation.api import views
+
+urlpatterns = [
+    path("health/", views.health),
+]

@@ -80,7 +80,7 @@ def _assert_generatable(definition: ProjectDefinition) -> None:
             f"{definition.project_type.value}/"
             f"{definition.architecture.value}.\n"
             "Currently supported: Python FastAPI, Django, or Flask REST API "
-            "(simple or modular-monolith)."
+            "(simple, modular-monolith, or clean)."
         )
 
 
@@ -367,6 +367,9 @@ def _commands_and_entry(
 def _primary_app(definition: ProjectDefinition) -> str | None:
     if definition.framework != "django":
         return None
+    if definition.architecture is ArchitectureStyle.CLEAN:
+        # Django models live in the infrastructure persistence package.
+        return "infrastructure.persistence"
     if definition.architecture is ArchitectureStyle.MODULAR_MONOLITH:
         return "apps.core"
     return "core"

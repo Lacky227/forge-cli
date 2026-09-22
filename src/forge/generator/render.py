@@ -15,7 +15,10 @@ _PACKAGE_DIR_TOKEN = "__package__"
 _TEMPLATE_SUFFIX = ".j2"
 
 _DOCKER_FILES = frozenset({"Dockerfile.j2", "docker-compose.yml.j2"})
-_DB_ONLY_FILES = frozenset({"database.py.j2", "models.py.j2", "base.py.j2"})
+_DB_ONLY_FILES = frozenset(
+    {"database.py.j2", "models.py.j2", "base.py.j2", "ports.py.j2"}
+)
+_DB_ONLY_DIR_NAMES = frozenset({"persistence"})
 
 
 def templates_root() -> Path:
@@ -83,6 +86,8 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
     if name in _DB_ONLY_FILES and not features.database:
         return False
     if "models" in parts and name != "models.py.j2" and not features.database:
+        return False
+    if any(part in _DB_ONLY_DIR_NAMES for part in parts) and not features.database:
         return False
     return True
 

@@ -1,0 +1,10 @@
+"""SQLAlchemy declarative base.
+
+Import model modules from Alembic's ``env.py`` so metadata stays complete.
+"""
+
+from sqlalchemy.orm import DeclarativeBase
+
+
+class Base(DeclarativeBase):
+    pass

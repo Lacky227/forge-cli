@@ -16,5 +16,4 @@ class Language(StrEnum):
 class ArchitectureStyle(StrEnum):
     SIMPLE = "simple"
     MODULAR_MONOLITH = "modular-monolith"
-    # Reserved for a future generator path — not offered for REST API yet.
     CLEAN = "clean"

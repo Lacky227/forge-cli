@@ -2,7 +2,7 @@
 
 Cross-platform CLI for interactively designing and generating application project architectures.
 
-**Status:** generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects (Simple / Modular Monolith).
+**Status:** generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts.
 
 ## Quick start
 
@@ -31,8 +31,6 @@ Follow the generated README for framework-specific run commands.
 src/forge/cli/
 src/forge/core/
 src/forge/generator/     # resolve → GenerationPlan → render
-templates/python/fastapi/
-templates/python/django/
-templates/python/flask/
+templates/python/{fastapi,django,flask}/{simple,modular-monolith,clean}/
 tests/
 ```

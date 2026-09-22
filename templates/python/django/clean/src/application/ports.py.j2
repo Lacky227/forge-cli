@@ -1,0 +1,22 @@
+"""Persistence ports used by application use cases.
+
+Concrete Django ORM adapters live in ``infrastructure.persistence``.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+
+class UnitOfWork(Protocol):
+    """Coordinates persistence work for a use case."""
+
+    def commit(self) -> None:
+        ...
+
+    def rollback(self) -> None:
+        ...
+
+    @property
+    def connection(self) -> Any:
+        ...

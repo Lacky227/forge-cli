@@ -109,9 +109,9 @@ def test_unsupported_framework(tmp_path: Path) -> None:
     definition = ProjectDefinition.model_construct(
         name="future-app",
         language=Language.PYTHON,
-        project_type=ProjectType.REST_API,
+        project_type=ProjectType.WORKER,
         framework="fastapi",
-        architecture=ArchitectureStyle.CLEAN,
+        architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(testing=True, linting=False),
     )
     with pytest.raises(GenerationError, match="Cannot generate this project"):
@@ -122,9 +122,9 @@ def test_invalid_plan_fails_before_filesystem(tmp_path: Path) -> None:
     definition = ProjectDefinition.model_construct(
         name="future-app",
         language=Language.PYTHON,
-        project_type=ProjectType.REST_API,
+        project_type=ProjectType.WORKER,
         framework="fastapi",
-        architecture=ArchitectureStyle.CLEAN,
+        architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(testing=True, linting=False),
     )
     with pytest.raises(GenerationError):

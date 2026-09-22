@@ -28,12 +28,13 @@ Non-empty destinations are refused. Unsupported combinations fail during **resol
 Users think in terms of *what they are building*, not which internal implementation classes Forge uses.
 
 - Framework options depend on language + project type (FastAPI, Django, Flask, …)
+- Architecture for REST API: Simple, Modular Monolith, Clean Architecture
 - **FastAPI:** optional database → engine → Alembic confirm; SQLAlchemy is implied (dim note)
 - **Flask:** optional database → engine → Alembic confirm; SQLAlchemy is implied when a DB is selected (dim note). No Django-style forced infrastructure.
 - **Django (REST API):** database engine only; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three
 
-Framework implications are applied in `resolve_plan`, not by stuffing implied fields into `ProjectDefinition` during the interview.
+Architecture questions are independent of framework. Framework implications are applied in `resolve_plan`, not by stuffing implied fields into `ProjectDefinition` during the interview.
 
 ## Generation result
 
@@ -43,5 +44,5 @@ Shows framework, architecture, capabilities, and next steps (framework-specific 
 
 | Mode | Status |
 |------|--------|
-| Interactive | **Implemented** (FastAPI + Django + Flask) |
+| Interactive | **Implemented** (FastAPI + Django + Flask; Simple / Modular / Clean) |
 | Presets / `--config` | Planned |

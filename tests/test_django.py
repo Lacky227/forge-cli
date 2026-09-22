@@ -161,9 +161,9 @@ def test_django_invalid_fails_before_fs(tmp_path: Path) -> None:
     definition = ProjectDefinition.model_construct(
         name="future-app",
         language=Language.PYTHON,
-        project_type=ProjectType.REST_API,
+        project_type=ProjectType.WORKER,
         framework="django",
-        architecture=ArchitectureStyle.CLEAN,
+        architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(testing=True, linting=False),
     )
     with pytest.raises(GenerationError, match="Cannot generate"):

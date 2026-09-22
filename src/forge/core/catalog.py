@@ -50,11 +50,12 @@ FRAMEWORKS_BY_LANGUAGE_AND_TYPE: dict[Language, dict[ProjectType, tuple[str, ...
     },
 }
 
-# Architectures offered in the CLI. Clean is reserved until a generator exists.
+# Architectures offered in the CLI for each project type.
 ARCHITECTURES_BY_TYPE: dict[ProjectType, tuple[ArchitectureStyle, ...]] = {
     ProjectType.REST_API: (
         ArchitectureStyle.SIMPLE,
         ArchitectureStyle.MODULAR_MONOLITH,
+        ArchitectureStyle.CLEAN,
     ),
     ProjectType.CLI: (ArchitectureStyle.SIMPLE,),
     ProjectType.WORKER: (
@@ -88,6 +89,7 @@ GENERATABLE_ARCHITECTURES: frozenset[ArchitectureStyle] = frozenset(
     {
         ArchitectureStyle.SIMPLE,
         ArchitectureStyle.MODULAR_MONOLITH,
+        ArchitectureStyle.CLEAN,
     }
 )
 

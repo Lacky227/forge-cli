@@ -1,0 +1,15 @@
+"""Persistence ports used by application use cases.
+
+Concrete implementations live in ``infrastructure``.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+
+class SessionFactory(Protocol):
+    """Creates a database session for use cases that need persistence."""
+
+    def __call__(self) -> Any:
+        ...

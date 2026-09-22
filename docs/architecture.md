@@ -49,12 +49,12 @@ An optional `capabilities.orm` exists for programmatic/config paths that state a
 **Current:** `forge.generator.resolve.resolve_plan(definition) → GenerationPlan`.
 
 - reject unsupported / incoherent **explicit** combinations before filesystem writes
-- normalize package naming and template path
+- normalize package naming and template path (`templates/<lang>/<framework>/<architecture>/`)
 - resolve framework implications (ORM, migration system, `rest_framework`)
 - resolve runtime/dev dependencies per framework (deduplicated)
 - compute run / migrate / check commands
 
-Framework resolution is dispatched inside the resolver (FastAPI / Django / Flask functions)—not a plugin system.
+Architecture is independent of framework selection: the same `GenerationPlan` path serves Simple, Modular Monolith, and Clean templates. Framework resolution stays inside the resolver—not a plugin system.
 
 ### GenerationPlan
 
@@ -68,21 +68,20 @@ GenerationPlan    = what Forge resolved that request into
 ### Generator / Templates
 
 ```text
-templates/python/fastapi/{simple,modular-monolith}/
-templates/python/django/{simple,modular-monolith}/
-templates/python/flask/{simple,modular-monolith}/
+templates/python/{fastapi,django,flask}/{simple,modular-monolith,clean}/
 ```
 
-Templates present plan data. Django uses conventional `manage.py` + `src/config` + apps; FastAPI and Flask keep package layouts under `src/<package>/` (Flask uses an application factory).
+Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters.
 
 ## What generates today
 
-| Combination | Status |
-|-------------|--------|
-| Python · FastAPI · REST API · Simple / Modular | **Supported** |
-| Python · Django · REST API · Simple / Modular | **Supported** |
-| Python · Flask · REST API · Simple / Modular | **Supported** |
-| CLI / Worker / Clean Architecture | Not generated |
+| Framework \\ Architecture | Simple | Modular Monolith | Clean |
+|---------------------------|--------|------------------|-------|
+| FastAPI | **Supported** | **Supported** | **Supported** |
+| Django | **Supported** | **Supported** | **Supported** |
+| Flask | **Supported** | **Supported** | **Supported** |
+
+CLI / Worker project types are catalogued but not generated yet.
 
 ### Framework semantics
 
@@ -98,11 +97,37 @@ Flask
       (SQLAlchemy + optional Alembic — same strategy as FastAPI)
 ```
 
+### Architecture styles
+
+#### Simple
+
+Flat, minimal package layout for the chosen framework.
+
+#### Modular Monolith
+
+Framework-conventional modular packaging (FastAPI/Flask layered packages; Django domain apps under `apps/`).
+
+#### Clean Architecture
+
+Layered packages with dependency rule **presentation → application → domain**; infrastructure implements ports at the edges.
+
+```text
+domain/           pure concepts (no framework / ORM imports)
+application/      use cases (+ persistence ports when a DB is selected)
+infrastructure/   config, ORM/session, persistence adapters
+presentation/     HTTP API (FastAPI / Flask / DRF)
+```
+
+- Health flows through `presentation` → `application` → `domain` (not a one-line route stub).
+- Persistence directories and ports are omitted when no database is selected (FastAPI/Flask).
+- Django Clean keeps ORM models in `infrastructure.persistence` (Django app) and DRF views in `presentation.api`.
+
 ### Django decisions
 
 - **REST API ⇒ Django REST Framework** — resolved as `features.rest_framework` (not a user toggle).
 - **Simple** — `src/config` + one app `src/core`
 - **Modular Monolith** — `src/config` + domain apps under `src/apps/` (starts with `apps.core`)
+- **Clean** — `src/{domain,application,infrastructure,presentation,config}`; `primary_app` = `infrastructure.persistence`
 - Database always selected for Django REST API (SQLite or PostgreSQL)
 - No SQLAlchemy / Alembic for Django
 
@@ -111,9 +136,9 @@ Flask
 - Database is optional (None / SQLite / PostgreSQL)
 - SQLAlchemy only when a database is selected
 - Alembic only when migrations are explicitly enabled
-- No Flask-Migrate, Flask-Admin, or other optional extensions in the first version
 - **Simple** — flat package with `create_app` + `routes.py`
-- **Modular Monolith** — `api/`, `core/`, and layered packages (`models`, …) when persistence is selected
+- **Modular Monolith** — `api/`, `core/`, and layered packages when persistence is selected
+- **Clean** — same Clean layering as FastAPI, with Flask presentation
 
 ## Package layout
 

@@ -56,7 +56,8 @@ GenerationPlan    = resolved implementation
 ## Open decisions
 
 - `--config` format
-- Clean Architecture generators
+- CLI / Worker generators
 - Slimmer FastAPI dependency set
 - Whether Django should ever support a non-REST project type without DRF
 - Whether Flask should ever offer an ORM other than SQLAlchemy
+- How far Clean Architecture persistence demos should go beyond a session/port boundary
