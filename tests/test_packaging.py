@@ -170,6 +170,25 @@ def test_clean_wheel_install_generates_outside_repo(tmp_path: Path) -> None:
     # Presets leave CI off — shared workflow must not appear by default.
     assert not (project / ".github" / "workflows" / "ci.yml").exists()
 
+    dry = subprocess.run(
+        [
+            str(forge_bin),
+            "new",
+            "dry-wheel",
+            "--preset",
+            "fastapi-postgres",
+            "--dry-run",
+        ],
+        cwd=gen_dir,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "Dry run" in dry.stdout
+    assert "pyproject.toml" in dry.stdout
+    assert not (gen_dir / "dry-wheel").exists()
+
     # Generate with CI from the installed wheel (packaged ``_shared`` template).
     config = gen_dir / "with-ci.yaml"
     config.write_text(

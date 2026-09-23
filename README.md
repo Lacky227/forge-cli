@@ -219,6 +219,7 @@ Presets are named compositions of valid Forge choices — not separate generator
 
 ```bash
 forge new my-api --preset fastapi-postgres
+forge new my-api --preset fastapi-postgres --dry-run
 forge plan --preset fastapi-mongo
 ```
 
@@ -226,10 +227,11 @@ forge plan --preset fastapi-mongo
 
 ## Inspect before you generate
 
-`forge plan` resolves a configuration and prints the full `GenerationPlan` — without writing any files.
+`forge plan` resolves a configuration and prints the full `GenerationPlan` — without writing any files. `forge new --dry-run` answers a different question: which concrete files would be created at the destination.
 
 ```bash
 forge plan --preset fastapi-mongo
+forge new my-api --preset fastapi-postgres --dry-run
 ```
 
 ```text

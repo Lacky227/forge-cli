@@ -28,10 +28,11 @@ Builds a **`ProjectDefinition`** from interactive prompts, configuration, or a n
 Interactive prompts ─┐
 YAML (--config)      ├→ ProjectDefinition → resolve_plan() → GenerationPlan
 Preset (--preset)    ─┘                                      ├→ generator (forge new)
+                                                             ├→ preview (forge new --dry-run)
                                                              └→ Rich summary (forge plan)
 ```
 
-All input paths share the same domain model and resolution pipeline. `forge plan` stops after `resolve_plan` and never writes a project. A preset is **not** a generator: it expands to a `ProjectDefinition` and does not bypass validation, resolution, or templates.
+All input paths share the same domain model and resolution pipeline. `forge plan` stops after `resolve_plan` and never writes a project. `forge new --dry-run` resolves the same plan, applies destination conflict rules, and lists concrete output paths via shared template discovery — without creating or modifying files. A preset is **not** a generator: it expands to a `ProjectDefinition` and does not bypass validation, resolution, or templates.
 
 ### Project Definition / Configuration
 
@@ -94,6 +95,8 @@ templates/python/_includes/   ← Jinja macros/includes (not copied into project
 ```
 
 Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters. Language-level ``_shared`` templates are merged after the framework/architecture tree when applicable (capability-gated via ``should_emit``). README capability sections are shared via ``_includes/readme_macros.j2``.
+
+Real generation and `forge new --dry-run` share the same planned-output discovery (`planned_outputs` / `planned_output_paths` in `forge.generator.render`): framework tree + `_shared` overlay, `_includes` never emitted, `should_emit` gates, and output path transformation. Dry-run lists those paths; generation renders them.
 
 In the built wheel, the same tree is installed as ``forge/templates/`` (Hatch force-include). Runtime resolution is handled by ``forge.generator.render.templates_root()``.
 

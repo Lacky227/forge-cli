@@ -29,10 +29,10 @@ Forge assumes the user will continue developing the project manually after gener
 
 ## Core user experience
 
-1. Launch an interactive flow (`forge new`, optionally with a name or preset).
+1. Launch an interactive flow (`forge new`, optionally with a name or preset), or preview outputs with `forge new … --dry-run`.
 2. Answer adaptive questions: project type, language/ecosystem, framework, architecture style, and only the capabilities that matter.
 3. Review a normalized project definition (conceptually; formatting is an implementation detail).
-4. Generate a project that starts, reflects the selections, and is ready for real work.
+4. Generate a project that starts, reflects the selections, and is ready for real work — or inspect the planned file list first via `--dry-run`.
 
 The CLI should feel modern and pleasant. See [cli.md](./cli.md).
 

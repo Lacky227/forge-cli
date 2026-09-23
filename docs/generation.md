@@ -159,7 +159,7 @@ Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are
 
 ### Resolved developer-workflow metadata
 
-`resolve_plan` also fills plan fields used by `forge plan` (and later by templates):
+`resolve_plan` also fills plan fields used by `forge plan`, templates, and `forge new --dry-run`:
 
 - `environment_variables` — names/examples/purposes matching current generated settings and `.env.example` (framework-specific SQL models preserved)
 - `docker_services` — dependency Compose services only (`db` / `mongodb` / `redis`)
@@ -167,7 +167,9 @@ Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are
 - `emits_env_example` — true when `environment_variables` is non-empty (Docker alone does not emit an empty `.env.example`)
 - `ci_provider` — when `github-actions`, generation emits `.github/workflows/ci.yml` from `templates/python/_shared/` (Python **3.12**, `uv sync`, then selected Ruff/pytest; no DB service containers)
 
-Post-generation **next steps** (CLI summary) follow the local-dev path: start dependency containers with `docker compose up -d <docker_services>` when that list is non-empty, then migrate/run on the host. Bare `docker compose up -d` is never emitted. Full-stack `docker compose up --build` is documented in the generated README Docker section (and is the only Compose command when Docker is selected without persistence).
+Post-generation **next steps** (CLI summary and dry-run informational commands) follow the local-dev path: start dependency containers with `docker compose up -d <docker_services>` when that list is non-empty, then migrate/run on the host. Bare `docker compose up -d` is never emitted. Full-stack `docker compose up --build` is documented in the generated README Docker section (and is the only Compose command when Docker is selected without persistence).
+
+`forge new --dry-run` reuses the same template discovery as real generation to list concrete destination-relative paths without writing files. Destination conflict validation matches generation. See [cli.md](./cli.md).
 
 Generated projects expose a **liveness** health endpoint only (`{"status":"ok"}`). There is no readiness/dependency probe in 0.3.0.
 

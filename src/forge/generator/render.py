@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
@@ -15,6 +16,14 @@ _PACKAGE_DIR_TOKEN = "__package__"
 _TEMPLATE_SUFFIX = ".j2"
 _SHARED_DIR_NAME = "_shared"
 _INCLUDES_DIR_NAME = "_includes"
+
+
+@dataclass(frozen=True)
+class PlannedOutput:
+    """One template file that generation would emit to a destination path."""
+
+    template_path: Path
+    relative_path: Path
 
 _DOCKER_FILES = frozenset({"Dockerfile.j2", "docker-compose.yml.j2"})
 _SQL_ONLY_FILES = frozenset(
@@ -117,9 +126,7 @@ def create_env(
 
 def iter_template_files(template_dir: Path) -> Iterator[Path]:
     for path in sorted(template_dir.rglob("*")):
-        if path.is_file() and not path.name.startswith(".gitkeep"):
-            yield path
-        elif path.is_file() and path.name == ".gitkeep":
+        if path.is_file():
             yield path
 
 
@@ -171,6 +178,53 @@ def output_relative_path(relative: Path, plan: GenerationPlan) -> Path:
     return out
 
 
+def iter_planned_outputs_from_dir(
+    template_dir: Path,
+    plan: GenerationPlan,
+) -> Iterator[PlannedOutput]:
+    """Yield emit jobs from one template root (framework or ``_shared``)."""
+    for source in iter_template_files(template_dir):
+        relative = source.relative_to(template_dir)
+        if not should_emit(relative, plan):
+            continue
+        yield PlannedOutput(
+            template_path=source,
+            relative_path=output_relative_path(relative, plan),
+        )
+
+
+def planned_outputs(plan: GenerationPlan) -> tuple[PlannedOutput, ...]:
+    """Discover every file generation would write for ``plan`` (no I/O writes).
+
+    Uses the same framework tree, ``_shared`` overlay, ``should_emit``, and
+    path transformation as real generation. ``_includes`` is never emitted.
+    """
+    template_dir = templates_root() / plan.template_subdir
+    if not template_dir.is_dir():
+        raise GenerationError(f"Template directory not found: {template_dir}")
+
+    jobs: list[PlannedOutput] = list(
+        iter_planned_outputs_from_dir(template_dir, plan)
+    )
+
+    shared = shared_template_dir(plan)
+    if (
+        shared is not None
+        and shared.resolve() != template_dir.resolve()
+    ):
+        jobs.extend(iter_planned_outputs_from_dir(shared, plan))
+
+    if not jobs:
+        raise GenerationError(f"No template files emitted from {template_dir}")
+
+    return tuple(jobs)
+
+
+def planned_output_paths(plan: GenerationPlan) -> tuple[str, ...]:
+    """Sorted destination-relative paths that generation would write."""
+    return tuple(sorted(job.relative_path.as_posix() for job in planned_outputs(plan)))
+
+
 def render_tree(
     template_dir: Path,
     destination: Path,
@@ -184,8 +238,9 @@ def render_tree(
 
     written: list[Path] = []
     written.extend(
-        _render_template_dir(
+        _render_planned_outputs(
             template_dir,
+            list(iter_planned_outputs_from_dir(template_dir, plan)),
             destination,
             plan,
             extra_dirs=include_roots,
@@ -198,8 +253,9 @@ def render_tree(
         and shared.resolve() != template_dir.resolve()
     ):
         written.extend(
-            _render_template_dir(
+            _render_planned_outputs(
                 shared,
+                list(iter_planned_outputs_from_dir(shared, plan)),
                 destination,
                 plan,
                 extra_dirs=include_roots,
@@ -212,34 +268,31 @@ def render_tree(
     return written
 
 
-def _render_template_dir(
+def _render_planned_outputs(
     template_dir: Path,
+    jobs: list[PlannedOutput],
     destination: Path,
     plan: GenerationPlan,
     *,
     extra_dirs: list[Path] | None = None,
 ) -> list[Path]:
-    """Render one template root into ``destination`` using resolved features."""
+    """Render planned outputs from one template root into ``destination``."""
     env = create_env(template_dir, extra_dirs=extra_dirs)
     written: list[Path] = []
     jinja_ctx = plan.as_jinja_dict()
 
-    for source in iter_template_files(template_dir):
-        relative = source.relative_to(template_dir)
-        if not should_emit(relative, plan):
-            continue
-
-        target_rel = output_relative_path(relative, plan)
-        target = destination / target_rel
+    for job in jobs:
+        target = destination / job.relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
+        source = job.template_path
 
         if source.name.endswith(_TEMPLATE_SUFFIX):
-            template_name = relative.as_posix()
+            template_name = source.relative_to(template_dir).as_posix()
             content = env.get_template(template_name).render(**jinja_ctx)
             target.write_text(content, encoding="utf-8")
         else:
             target.write_bytes(source.read_bytes())
 
-        written.append(target_rel)
+        written.append(job.relative_path)
 
     return written

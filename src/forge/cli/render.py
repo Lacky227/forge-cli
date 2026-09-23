@@ -11,7 +11,7 @@ from rich.text import Text
 
 from forge.core import catalog
 from forge.core.definition import ProjectDefinition
-from forge.generator.engine import GenerationResult
+from forge.generator.engine import GenerationPreview, GenerationResult
 from forge.generator.plan import GenerationPlan
 
 console = Console()
@@ -73,11 +73,82 @@ def print_generation_result(
         console.print(f"  {preset_title}")
     console.print()
     console.print("[bold]Stack:[/bold]")
-    for line in _stack_lines(result):
+    for line in _stack_lines(result.plan):
         console.print(f"  {line}")
     console.print()
     console.print("[bold]Next steps:[/bold]")
     for step in result.next_steps():
+        console.print(f"  [cyan]{step}[/cyan]")
+    console.print()
+
+
+def print_generation_preview(
+    preview: GenerationPreview,
+    *,
+    preset_title: str | None = None,
+) -> None:
+    """Print a dry-run preview: destination, files, and informational next steps."""
+    plan = preview.plan
+    features = plan.features
+
+    console.print()
+    console.print(
+        Panel(
+            Text("Dry run — no files will be written", style="bold"),
+            border_style="yellow",
+            padding=(0, 2),
+            expand=False,
+        )
+    )
+
+    console.print()
+    console.print("[bold]Project[/bold]")
+    console.print(f"  Name: {plan.definition.name}")
+    console.print(f"  Destination: {preview.destination}")
+    if preset_title:
+        console.print(f"  Preset: {preset_title}")
+
+    console.print()
+    console.print("[bold]Stack[/bold]")
+    for line in _stack_lines(plan):
+        console.print(f"  {line}")
+    if features.docker:
+        console.print("  Docker")
+    if features.ci_provider:
+        label = catalog.CI_PROVIDER_LABELS.get(
+            features.ci_provider, features.ci_provider
+        )
+        console.print(f"  CI: {label}")
+
+    console.print()
+    console.print("[bold]Files[/bold]")
+    for path in preview.files:
+        console.print(f"  {path}")
+
+    deps = list(plan.runtime_dependencies) + list(plan.dev_dependencies)
+    if deps:
+        console.print()
+        console.print("[bold]Dependencies[/bold]")
+        for dep in deps:
+            console.print(f"  {dep}")
+
+    if plan.docker_services:
+        console.print()
+        console.print("[bold]Docker services[/bold]")
+        console.print(f"  {', '.join(plan.docker_services)}")
+
+    if plan.environment_variables:
+        console.print()
+        console.print("[bold]Environment[/bold]")
+        for var in plan.environment_variables:
+            console.print(f"  {var.name}")
+
+    console.print()
+    console.print(f"[bold]HTTP[/bold]  GET {plan.health_path}")
+
+    console.print()
+    console.print("[bold]Next steps[/bold] [dim](informational — not executed)[/dim]")
+    for step in preview.next_steps():
         console.print(f"  [cyan]{step}[/cyan]")
     console.print()
 
@@ -124,11 +195,10 @@ def _format_location(destination: Path) -> str:
     return f"./{text}" if text != "." else "."
 
 
-def _stack_lines(result: GenerationResult) -> list[str]:
+def _stack_lines(plan: GenerationPlan) -> list[str]:
     """Human-readable stack summary derived from the GenerationPlan."""
-    plan = result.plan
     features = plan.features
-    caps = result.definition.capabilities
+    caps = plan.definition.capabilities
     lines = [plan.framework_label, plan.architecture_label]
 
     if features.database and caps.sql_database:

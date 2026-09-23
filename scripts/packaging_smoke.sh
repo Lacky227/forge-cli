@@ -114,6 +114,10 @@ GEN="${WORK}/generated"
 mkdir -p "${GEN}"
 cd "${GEN}"
 
+echo "==> Dry-run via preset (installed package)"
+forge new dry-fa --preset fastapi-postgres --dry-run | grep -F "Dry run"
+test ! -e dry-fa
+
 echo "==> Generate via preset (installed package)"
 forge new pack-fa --preset fastapi-postgres
 test -f pack-fa/pyproject.toml
