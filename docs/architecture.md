@@ -28,18 +28,21 @@ Builds a **`ProjectDefinition`** from interactive prompts, configuration, or a n
 Interactive prompts ─┐
 YAML (--config)      ├→ ProjectDefinition → resolve_plan() → GenerationPlan
 Preset (--preset)    ─┘                                      ├→ generator (forge new)
+                                                             ├→ preview (forge new --dry-run)
                                                              └→ Rich summary (forge plan)
 ```
 
-All input paths share the same domain model and resolution pipeline. `forge plan` stops after `resolve_plan` and never writes a project. A preset is **not** a generator: it expands to a `ProjectDefinition` and does not bypass validation, resolution, or templates.
+All input paths share the same domain model and resolution pipeline. `forge plan` stops after `resolve_plan` and never writes a project. `forge new --dry-run` resolves the same plan, applies destination conflict rules, and lists concrete output paths via shared template discovery — without creating or modifying files. A preset is **not** a generator: it expands to a `ProjectDefinition` and does not bypass validation, resolution, or templates.
 
 ### Project Definition / Configuration
 
 **Current:** `forge.core.definition.ProjectDefinition`.
 
-**Explicit user intent only:** language, project type, framework, architecture, and selectable capabilities (`sql_database` / `nosql_database`, optional Alembic for SQLAlchemy stacks, `docker`, `testing`, `linting`).
+**Explicit user intent only:** language, project type, framework, architecture, and selectable capabilities (`sql_database` / `nosql_database`, optional Alembic for SQLAlchemy stacks, `docker`, `testing`, `linting`, optional `ci`).
 
 SQL and NoSQL are **independent** first-class choices. A project may have neither, either, or both (one engine from each category).
+
+Optional CI is an explicit provider choice (`github-actions`) or none. CI is valid only when testing and/or linting is enabled — Forge does not silently enable those tools. When selected, the generator emits `.github/workflows/ci.yml` from the language-level shared template (`templates/python/_shared/…`). The workflow runs `uv sync` plus the selected Ruff and/or pytest steps; it does not add database service containers.
 
 Framework-implied implementation details are **not** required on the definition:
 
@@ -72,20 +75,27 @@ Architecture is independent of framework selection: the same `GenerationPlan` pa
 
 ### GenerationPlan
 
-Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`), dependency lists, entry/run/migrate/check commands, labels, and `primary_app` (Django).
+Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`, optional `ci_provider`), dependency lists, entry/run/migrate/check commands, labels, `primary_app` (Django), plus resolved developer-workflow metadata:
+
+- `environment_variables` / `emits_env_example` — canonical `EnvVarSpec` list; `.env.example` is emitted only when the list is non-empty (shown by `forge plan` and consumed by templates)
+- `docker_services` — Compose **dependency** service names (`db`, `mongodb`, `redis`) when Docker is enabled; empty when Docker is off or there are no dependency services
+- `health_path` — generated liveness path (FastAPI `/health`; Flask `/api/health`; Django `/api/health/`)
 
 ```text
 ProjectDefinition = what the user asked for
 GenerationPlan    = what Forge resolved that request into
 ```
-
 ### Generator / Templates
 
 ```text
 templates/python/{fastapi,django,flask}/{simple,modular-monolith,clean}/
+templates/python/_shared/     ← emitted overlays (GitHub Actions CI, `.env.example`)
+templates/python/_includes/   ← Jinja macros/includes (not copied into projects)
 ```
 
-Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters.
+Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters. Language-level ``_shared`` templates are merged after the framework/architecture tree when applicable (capability-gated via ``should_emit``). README capability sections are shared via ``_includes/readme_macros.j2``.
+
+Real generation and `forge new --dry-run` share the same planned-output discovery (`planned_outputs` / `planned_output_paths` in `forge.generator.render`): framework tree + `_shared` overlay, `_includes` never emitted, `should_emit` gates, and output path transformation. Dry-run lists those paths; generation renders them.
 
 In the built wheel, the same tree is installed as ``forge/templates/`` (Hatch force-include). Runtime resolution is handled by ``forge.generator.render.templates_root()``.
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from forge.core.types import (
     ArchitectureStyle,
+    CiProvider,
     Language,
     NoSqlDatabase,
     ProjectType,
@@ -51,6 +52,12 @@ NOSQL_DATABASE_LABELS: dict[str, str] = {
     NoSqlDatabase.MONGODB.value: "MongoDB",
     NoSqlDatabase.REDIS.value: "Redis",
 }
+
+CI_PROVIDER_LABELS: dict[str, str] = {
+    CiProvider.GITHUB_ACTIONS.value: "GitHub Actions",
+}
+
+CI_PROVIDERS: tuple[str, ...] = tuple(CI_PROVIDER_LABELS)
 
 # Backward-compatible alias used by older call sites / display helpers.
 DATABASE_ENGINE_LABELS: dict[str, str] = {

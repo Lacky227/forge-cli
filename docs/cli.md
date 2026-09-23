@@ -17,6 +17,7 @@ uv run forge new
 uv run forge new --help
 uv run forge new my-api
 uv run forge new my-api --preset fastapi-postgres
+uv run forge new my-api --preset fastapi-postgres --dry-run
 uv run forge new --config forge.yaml
 uv run forge new my-api --config forge.yaml
 uv run forge plan --help
@@ -32,12 +33,13 @@ uv run forge plan my-api --config forge.yaml
 | `forge new [NAME]` | Interactive interview → generate `./<name>` |
 | `forge new NAME --preset ID` | Expand preset → `ProjectDefinition` → generate (no prompts) |
 | `forge new [NAME] --config FILE` | Load YAML config (no prompts) → generate |
+| `forge new … --dry-run` | Preview concrete output paths for the same inputs; write nothing |
 | `forge plan --preset ID` | Resolve and display `GenerationPlan` (no filesystem writes) |
 | `forge plan [NAME] --config FILE` | Same for YAML; name precedence matches `forge new` |
 
-`new` generates projects. `plan` only inspects the resolved plan. Do not add unrelated subcommands.
+`new` generates projects (or previews them with `--dry-run`). `plan` only inspects the resolved plan. Do not add unrelated subcommands.
 
-`--quiet`, `--verbose`, `--dry-run`, and `--force` are **intentionally deferred** — not part of the current contract.
+`--quiet`, `--verbose`, and `--force` are **intentionally deferred** — not part of the current contract. `--dry-run` is supported on `forge new` only.
 
 `--preset` and `--config` **cannot** be combined (rejected with a clear error). ForgeConfig field defaults would make merge precedence ambiguous; keep one non-interactive source of truth.
 
@@ -57,12 +59,31 @@ Names must start with a letter and contain only letters, digits, hyphens, and un
 
 | Destination state | Behavior |
 |-------------------|----------|
-| Does not exist | Created |
-| Empty directory | Allowed (project files are written into it) |
-| Non-empty directory | Error — no overwrite |
-| Existing file at that path | Error |
+| Does not exist | Created (dry-run previews without creating) |
+| Empty directory | Allowed (project files are written into it; dry-run leaves it empty) |
+| Non-empty directory | Error — no overwrite (dry-run rejects the same way; contents untouched) |
+| Existing file at that path | Error (dry-run rejects; file untouched) |
 
 Forge never merges into an existing project and does not offer `--force`.
+
+## `forge new --dry-run`
+
+Preview the **concrete filesystem output** Forge would generate for the same definition sources as normal generation (`interactive` / `--preset` / `--config`).
+
+```bash
+forge new my-api --dry-run
+forge new my-api --preset fastapi-postgres --dry-run
+forge new my-api --config forge.yml --dry-run
+```
+
+| Concern | `forge plan` | `forge new --dry-run` |
+|---------|--------------|------------------------|
+| Question answered | What did Forge resolve? | What exactly would Forge create here? |
+| Primary output | Resolved `GenerationPlan` summary | Destination + concrete relative file paths |
+| Writes files | No | No |
+| Destination rules | N/A (no destination) | Same conflict validation as real generation |
+
+`--dry-run` is execution behavior only — it is **not** part of `ProjectDefinition`, YAML, presets, or `GenerationPlan`. Output discovery reuses the same template walk, `_shared` overlay, `_includes` exclusion, and `should_emit` gates as real generation. Suggested next steps are shown as informational and are not executed.
 
 ## Exit codes
 
@@ -142,6 +163,9 @@ forge plan my-api --config forge.yaml
 - With `--preset` and no CLI name, the plan uses the display name `project` (nothing is written to disk).
 - With `--config`, name precedence matches `forge new`.
 - Framework-implied values (ORM, migration system, DRF, commands, dependencies) come from `GenerationPlan`, not from re-reading the definition in the CLI.
+- Tooling includes testing, linting, Docker, and CI (provider label or `no`).
+- When applicable, the summary also shows **Environment** (variable name + purpose), **Docker** dependency services, and **HTTP** liveness (`GET <health_path>`).
+- File lists belong to `forge new --dry-run`, not `forge plan`.
 
 ## Presets
 
@@ -189,6 +213,7 @@ forge new my-api -p django-postgres
 | Interactive | `forge new [NAME]` | Yes |
 | Preset | `forge new NAME --preset ID` | No |
 | Config | `forge new [NAME] --config FILE` | No |
+| Dry-run | `forge new … --dry-run` | Same as the chosen mode above |
 | Plan (preset) | `forge plan --preset ID` | No |
 | Plan (config) | `forge plan [NAME] --config FILE` | No |
 
@@ -229,8 +254,11 @@ forge new --config forge.yaml          # uses name from YAML
 | `testing` | no | default `true` |
 | `linting` | no | default `true` |
 | `docker` | no | default `false` |
+| `ci` | no | omit / null = none; only `github-actions` today — requires `testing` or `linting` |
 
 Unknown fields are rejected. Do **not** put resolver-owned facts in the file (`migration_system`, `rest_framework`, Django ORM as a required choice, …).
+
+Selecting `ci: github-actions` generates `.github/workflows/ci.yml` (GitHub Actions only). The workflow installs dependencies with `uv sync` and runs selected checks (`uv run ruff check .` and/or `uv run pytest -q`). No PostgreSQL/MongoDB/Redis service containers are added — generated tests stay service-independent. Existing presets leave CI disabled.
 
 #### Persistence schema
 
@@ -282,6 +310,7 @@ migrations: true
 testing: true
 linting: true
 docker: true
+ci: github-actions
 ```
 
 FastAPI (legacy SQL shorthand still works):
@@ -325,6 +354,9 @@ docker: true
 - **FastAPI / Flask:** optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
 - **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three
+- **CI:** after testing/linting, if either is Yes, ask “Add CI?” with GitHub Actions / No; skipped when both tooling options are No
+
+Generated project READMEs document stack, setup (`uv sync`, `cp .env.example .env` when env vars exist), configuration table from resolved environment metadata, run/health (liveness only), migrations/tests/lint/Docker/CI when selected, and a short layout section.
 
 Architecture questions are independent of framework. Framework implications are applied in `resolve_plan`, not by stuffing implied fields into `ProjectDefinition` during the interview.
 
@@ -336,4 +368,4 @@ Architecture questions are independent of framework. Framework implications are 
 | Configuration (`--config`) | **Implemented** (YAML) |
 | Presets (`--preset`) | **Implemented** (small curated catalog) |
 | Plan inspection (`forge plan`) | **Implemented** (non-interactive; `--preset` / `--config`) |
-| `--dry-run` | Intentionally deferred |
+| Dry-run (`forge new --dry-run`) | **Implemented** (preview outputs; zero writes) |

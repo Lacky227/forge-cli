@@ -17,7 +17,7 @@ from forge.core.definition import ProjectDefinition
 from forge.core.naming import to_package_name
 from forge.core.types import ArchitectureStyle, ProjectType
 from forge.generator.errors import GenerationError
-from forge.generator.plan import GenerationFeatures, GenerationPlan
+from forge.generator.plan import EnvVarSpec, GenerationFeatures, GenerationPlan
 
 _SQLALCHEMY_ORM = "sqlalchemy"
 _DJANGO_ORM = "django-orm"
@@ -42,6 +42,17 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
         _commands_and_entry(definition, features, package_name)
     )
     primary_app = _primary_app(definition)
+    environment_variables = _environment_variables(
+        definition,
+        features,
+        package_name=package_name,
+        database_url=database_url,
+        mongodb_url=mongodb_url,
+        mongodb_database=mongodb_db,
+        redis_url=redis_url,
+    )
+    docker_services = _docker_services(features)
+    health_path = _health_path(definition)
 
     return GenerationPlan(
         definition=definition,
@@ -65,6 +76,9 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
         framework_label=catalog.FRAMEWORK_LABELS.get(
             definition.framework, definition.framework
         ),
+        environment_variables=environment_variables,
+        docker_services=docker_services,
+        health_path=health_path,
         migrate_command=migrate_command,
         check_command=check_command,
         primary_app=primary_app,
@@ -156,6 +170,7 @@ def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
         docker=caps.docker,
         testing=caps.testing,
         linting=caps.linting,
+        ci_provider=caps.ci,
         orm=orm,
         migration_system=migration_system,
         nosql_client=nosql_client,
@@ -407,3 +422,147 @@ def _primary_app(definition: ProjectDefinition) -> str | None:
     if definition.architecture is ArchitectureStyle.MODULAR_MONOLITH:
         return "apps.core"
     return "core"
+
+
+def _docker_services(features: GenerationFeatures) -> tuple[str, ...]:
+    """Compose dependency service names (not the application container)."""
+    if not features.docker:
+        return ()
+    services: list[str] = []
+    if features.postgresql:
+        services.append("db")
+    if features.mongodb:
+        services.append("mongodb")
+    if features.redis:
+        services.append("redis")
+    return tuple(services)
+
+
+def _health_path(definition: ProjectDefinition) -> str:
+    """Liveness endpoint path for the generated stack."""
+    framework = definition.framework
+    if framework == "django":
+        return "/api/health/"
+    if framework == "flask":
+        return "/api/health"
+    # FastAPI (all architectures)
+    return "/health"
+
+
+def _environment_variables(
+    definition: ProjectDefinition,
+    features: GenerationFeatures,
+    *,
+    package_name: str,
+    database_url: str,
+    mongodb_url: str,
+    mongodb_database: str,
+    redis_url: str,
+) -> tuple[EnvVarSpec, ...]:
+    """Env vars that match current generated settings / ``.env.example``."""
+    specs: list[EnvVarSpec] = []
+
+    if definition.framework == "django":
+        # Django always requires SQL for REST API; .env.example always includes
+        # these when the file is emitted.
+        specs.append(
+            EnvVarSpec(
+                name="DJANGO_SECRET_KEY",
+                example="dev-insecure-change-me",
+                purpose="Django secret key",
+            )
+        )
+        specs.append(
+            EnvVarSpec(
+                name="DJANGO_DEBUG",
+                example="true",
+                purpose="Enable Django debug mode",
+            )
+        )
+        if features.postgresql:
+            specs.extend(
+                [
+                    EnvVarSpec(
+                        name="POSTGRES_DB",
+                        example=package_name,
+                        purpose="PostgreSQL database name",
+                    ),
+                    EnvVarSpec(
+                        name="POSTGRES_USER",
+                        example="postgres",
+                        purpose="PostgreSQL user",
+                    ),
+                    EnvVarSpec(
+                        name="POSTGRES_PASSWORD",
+                        example="postgres",
+                        purpose="PostgreSQL password",
+                    ),
+                    EnvVarSpec(
+                        name="POSTGRES_HOST",
+                        example="localhost",
+                        purpose="PostgreSQL host",
+                    ),
+                    EnvVarSpec(
+                        name="POSTGRES_PORT",
+                        example="5432",
+                        purpose="PostgreSQL port",
+                    ),
+                ]
+            )
+    else:
+        # FastAPI / Flask — SQLAlchemy URL model.
+        if features.database:
+            specs.append(
+                EnvVarSpec(
+                    name="DATABASE_URL",
+                    example=database_url,
+                    purpose="SQLAlchemy database URL",
+                )
+            )
+        # Compose Postgres credentials (app still uses DATABASE_URL).
+        if features.docker and features.postgresql:
+            specs.extend(
+                [
+                    EnvVarSpec(
+                        name="POSTGRES_USER",
+                        example="postgres",
+                        purpose="PostgreSQL user for Docker Compose",
+                    ),
+                    EnvVarSpec(
+                        name="POSTGRES_PASSWORD",
+                        example="postgres",
+                        purpose="PostgreSQL password for Docker Compose",
+                    ),
+                    EnvVarSpec(
+                        name="POSTGRES_DB",
+                        example=package_name,
+                        purpose="PostgreSQL database name for Docker Compose",
+                    ),
+                ]
+            )
+
+    if features.mongodb:
+        specs.extend(
+            [
+                EnvVarSpec(
+                    name="MONGODB_URL",
+                    example=mongodb_url,
+                    purpose="MongoDB connection URL",
+                ),
+                EnvVarSpec(
+                    name="MONGODB_DATABASE",
+                    example=mongodb_database,
+                    purpose="MongoDB database name",
+                ),
+            ]
+        )
+    if features.redis:
+        specs.append(
+            EnvVarSpec(
+                name="REDIS_URL",
+                example=redis_url,
+                purpose="Redis connection URL",
+            )
+        )
+
+    return tuple(specs)

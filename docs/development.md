@@ -30,12 +30,13 @@ uv run forge --help
 uv run forge --version
 uv run forge new my-api
 uv run forge new my-api --preset fastapi-postgres
+uv run forge new my-api --preset fastapi-postgres --dry-run
 uv run forge plan --preset fastapi-postgres
 uv run forge new --config forge.yaml
 uv run pytest
 ```
 
-Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`.
+Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`, `tests/test_dry_run.py`.
 See [cli.md](./cli.md) for the full command surface, presets, and destination/exit behavior.
 
 ### Packaging and distribution
@@ -71,13 +72,13 @@ Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com
 
 ### Versioning
 
-Current version: **`0.2.0`** — public development release; PyPI distribution **`forge-scaffolder`**.
+Current version: **`0.3.0`** — public development release; PyPI distribution **`forge-scaffolder`**.
 
 | Version | Meaning |
 |---------|---------|
 | `0.x` | Public development releases |
 | `0.1.x` | Backwards-compatible fixes and small improvements |
-| `0.2.0` | Meaningful new capabilities or intentional public-interface changes |
+| `0.2.0` / `0.3.0` | Meaningful new capabilities or intentional public-interface changes |
 | `1.0.0` | Stable public CLI / domain contract |
 
 Record user-facing changes in [CHANGELOG.md](../CHANGELOG.md). Do not introduce automated semantic-release tooling for routine work.
@@ -116,7 +117,6 @@ GenerationPlan    = resolved implementation
 - How far Clean Architecture persistence demos should go beyond a session/port boundary
 - Whether Redis should gain first-class cache/session/queue semantics beyond a client
 - Config export / round-trip tooling
-- Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator
 - Whether preset + config merging is ever worth the precedence complexity (currently rejected)
 - Author / maintainer contact metadata for PyPI
 - Whether generated projects should inherit Forge's GPL-3.0-only license (they do **not** automatically; decision not made)

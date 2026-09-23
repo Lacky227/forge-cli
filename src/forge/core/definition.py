@@ -16,6 +16,7 @@ from forge.core import catalog
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 _NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
+_FALSEY_CI = frozenset({"", "false", "none", "null", "no", "off"})
 
 
 class Capabilities(BaseModel):
@@ -45,6 +46,36 @@ class Capabilities(BaseModel):
     docker: bool = False
     testing: bool = True
     linting: bool = True
+    # Optional CI provider id (e.g. "github-actions"); None = no CI.
+    ci: str | None = None
+
+    @field_validator("ci", mode="before")
+    @classmethod
+    def normalize_ci(cls, value: object) -> str | None:
+        if value is None or value is False:
+            return None
+        if value is True:
+            raise ValueError(
+                "ci must be a provider name (github-actions) or null — not true"
+            )
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            if cleaned in _FALSEY_CI:
+                return None
+            return cleaned
+        raise ValueError("ci must be a string provider name, false, or null")
+
+    @model_validator(mode="after")
+    def validate_ci(self) -> Capabilities:
+        if self.ci is None:
+            return self
+        if self.ci not in catalog.CI_PROVIDERS:
+            raise ValueError(
+                "ci must be one of: " + ", ".join(catalog.CI_PROVIDERS)
+            )
+        if not self.testing and not self.linting:
+            raise ValueError("ci requires testing or linting to be enabled")
+        return self
 
     @property
     def database(self) -> bool:
@@ -195,6 +226,11 @@ class ProjectDefinition(BaseModel):
             "Docker": "Yes" if caps.docker else "No",
             "Testing": "Yes" if caps.testing else "No",
             "Linting": "Ruff" if caps.linting else "No",
+            "CI": (
+                catalog.CI_PROVIDER_LABELS.get(caps.ci, caps.ci)
+                if caps.ci
+                else "No"
+            ),
         }
         if caps.sql_database:
             implied_orm = caps.orm or catalog.default_orm_for(self.framework)

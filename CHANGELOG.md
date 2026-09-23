@@ -7,6 +7,38 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-23
+
+Developer-workflow metadata, optional GitHub Actions CI, generated DX consistency, and `forge new --dry-run`.
+
+### Added
+
+- Optional GitHub Actions CI (`ci: github-actions`) via interactive flow and YAML; requires pytest and/or Ruff
+- Generated `.github/workflows/ci.yml` from a shared template (selected Ruff/pytest steps only; no database service containers)
+- Richer `forge plan` output: environment variables, Docker dependency services, and health endpoint
+- Canonical resolved environment metadata driving shared `.env.example` and generated README configuration
+- `forge new --dry-run` — preview concrete output paths with zero filesystem writes (same discovery and destination rules as generation)
+
+### Changed
+
+- Generated README/setup/configuration sections share plan-driven macros for consistency
+- `.env.example` emitted only when environment variables exist; Compose `env_file` follows the same gate
+- Dockerfile `HEALTHCHECK` uses the resolved liveness path
+- FastAPI liveness endpoint normalized to `/health` for all architectures (including Clean)
+- Post-generation next steps start Compose **dependency** services only (`db` / `mongodb` / `redis`) when present
+
+### Fixed
+
+- Empty `.env.example` no longer generated when there are no environment variables
+- FastAPI Clean health path aligned with other FastAPI layouts (`/health`)
+- Drift between resolved plan metadata and generated project documentation/configuration
+
+### Compatibility
+
+- YAML without `ci` remains valid; existing presets leave CI disabled
+- `--dry-run` is CLI execution behavior only — not a YAML or plan field
+- Generated FastAPI Clean projects: health URL changes from `/api/health` (0.2.x) to `/health` (0.3.0)
+
 ## [0.2.0] - 2026-09-23
 
 Independent SQL and NoSQL persistence for generated Python REST API projects.

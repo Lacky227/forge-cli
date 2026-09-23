@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
@@ -13,6 +14,16 @@ from forge.generator.plan import GenerationPlan
 
 _PACKAGE_DIR_TOKEN = "__package__"
 _TEMPLATE_SUFFIX = ".j2"
+_SHARED_DIR_NAME = "_shared"
+_INCLUDES_DIR_NAME = "_includes"
+
+
+@dataclass(frozen=True)
+class PlannedOutput:
+    """One template file that generation would emit to a destination path."""
+
+    template_path: Path
+    relative_path: Path
 
 _DOCKER_FILES = frozenset({"Dockerfile.j2", "docker-compose.yml.j2"})
 _SQL_ONLY_FILES = frozenset(
@@ -75,9 +86,36 @@ def _looks_like_forge_pyproject(path: Path) -> bool:
     return 'name = "forge-scaffolder"' in text
 
 
-def create_env(template_dir: Path) -> Environment:
+def shared_template_dir(plan: GenerationPlan) -> Path | None:
+    """Language-level shared overlay (e.g. ``templates/python/_shared``)."""
+    shared = (
+        templates_root()
+        / plan.definition.language.value
+        / _SHARED_DIR_NAME
+    )
+    return shared if shared.is_dir() else None
+
+
+def includes_dir(plan: GenerationPlan) -> Path | None:
+    """Jinja include/macro root (not emitted to generated projects)."""
+    path = (
+        templates_root()
+        / plan.definition.language.value
+        / _INCLUDES_DIR_NAME
+    )
+    return path if path.is_dir() else None
+
+
+def create_env(
+    template_dir: Path,
+    *,
+    extra_dirs: list[Path] | None = None,
+) -> Environment:
+    searchpath = [str(template_dir)]
+    if extra_dirs:
+        searchpath.extend(str(path) for path in extra_dirs if path.is_dir())
     return Environment(
-        loader=FileSystemLoader(str(template_dir)),
+        loader=FileSystemLoader(searchpath),
         undefined=StrictUndefined,
         keep_trailing_newline=True,
         autoescape=select_autoescape(enabled_extensions=()),
@@ -88,9 +126,7 @@ def create_env(template_dir: Path) -> Environment:
 
 def iter_template_files(template_dir: Path) -> Iterator[Path]:
     for path in sorted(template_dir.rglob("*")):
-        if path.is_file() and not path.name.startswith(".gitkeep"):
-            yield path
-        elif path.is_file() and path.name == ".gitkeep":
+        if path.is_file():
             yield path
 
 
@@ -99,6 +135,10 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
     features = plan.features
     parts = relative.parts
     name = relative.name
+
+    # Shared GitHub Actions workflow — only when CI is resolved on.
+    if parts and parts[0] == ".github":
+        return features.ci
 
     if name in _DOCKER_FILES and not features.docker:
         return False
@@ -109,7 +149,7 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
         return False
     if "tests" in parts and not features.testing:
         return False
-    if name == ".env.example.j2" and not features.env_example:
+    if name == ".env.example.j2" and not plan.emits_env_example:
         return False
     if name in _SQL_ONLY_FILES and not features.database:
         return False
@@ -138,38 +178,121 @@ def output_relative_path(relative: Path, plan: GenerationPlan) -> Path:
     return out
 
 
+def iter_planned_outputs_from_dir(
+    template_dir: Path,
+    plan: GenerationPlan,
+) -> Iterator[PlannedOutput]:
+    """Yield emit jobs from one template root (framework or ``_shared``)."""
+    for source in iter_template_files(template_dir):
+        relative = source.relative_to(template_dir)
+        if not should_emit(relative, plan):
+            continue
+        yield PlannedOutput(
+            template_path=source,
+            relative_path=output_relative_path(relative, plan),
+        )
+
+
+def planned_outputs(plan: GenerationPlan) -> tuple[PlannedOutput, ...]:
+    """Discover every file generation would write for ``plan`` (no I/O writes).
+
+    Uses the same framework tree, ``_shared`` overlay, ``should_emit``, and
+    path transformation as real generation. ``_includes`` is never emitted.
+    """
+    template_dir = templates_root() / plan.template_subdir
+    if not template_dir.is_dir():
+        raise GenerationError(f"Template directory not found: {template_dir}")
+
+    jobs: list[PlannedOutput] = list(
+        iter_planned_outputs_from_dir(template_dir, plan)
+    )
+
+    shared = shared_template_dir(plan)
+    if (
+        shared is not None
+        and shared.resolve() != template_dir.resolve()
+    ):
+        jobs.extend(iter_planned_outputs_from_dir(shared, plan))
+
+    if not jobs:
+        raise GenerationError(f"No template files emitted from {template_dir}")
+
+    return tuple(jobs)
+
+
+def planned_output_paths(plan: GenerationPlan) -> tuple[str, ...]:
+    """Sorted destination-relative paths that generation would write."""
+    return tuple(sorted(job.relative_path.as_posix() for job in planned_outputs(plan)))
+
+
 def render_tree(
     template_dir: Path,
     destination: Path,
     plan: GenerationPlan,
 ) -> list[Path]:
-    """Render all templates under ``template_dir`` into ``destination``."""
+    """Render framework templates, then any language-level ``_shared`` overlay."""
     if not template_dir.is_dir():
         raise GenerationError(f"Template directory not found: {template_dir}")
 
-    env = create_env(template_dir)
+    include_roots = [path for path in (includes_dir(plan),) if path is not None]
+
+    written: list[Path] = []
+    written.extend(
+        _render_planned_outputs(
+            template_dir,
+            list(iter_planned_outputs_from_dir(template_dir, plan)),
+            destination,
+            plan,
+            extra_dirs=include_roots,
+        )
+    )
+
+    shared = shared_template_dir(plan)
+    if (
+        shared is not None
+        and shared.resolve() != template_dir.resolve()
+    ):
+        written.extend(
+            _render_planned_outputs(
+                shared,
+                list(iter_planned_outputs_from_dir(shared, plan)),
+                destination,
+                plan,
+                extra_dirs=include_roots,
+            )
+        )
+
+    if not written:
+        raise GenerationError(f"No template files emitted from {template_dir}")
+
+    return written
+
+
+def _render_planned_outputs(
+    template_dir: Path,
+    jobs: list[PlannedOutput],
+    destination: Path,
+    plan: GenerationPlan,
+    *,
+    extra_dirs: list[Path] | None = None,
+) -> list[Path]:
+    """Render planned outputs from one template root into ``destination``."""
+    env = create_env(template_dir, extra_dirs=extra_dirs)
     written: list[Path] = []
     jinja_ctx = plan.as_jinja_dict()
 
-    for source in iter_template_files(template_dir):
-        relative = source.relative_to(template_dir)
-        if not should_emit(relative, plan):
-            continue
-
-        target_rel = output_relative_path(relative, plan)
-        target = destination / target_rel
+    for job in jobs:
+        target = destination / job.relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
+        source = job.template_path
 
         if source.name.endswith(_TEMPLATE_SUFFIX):
-            template_name = relative.as_posix()
+            template_name = source.relative_to(template_dir).as_posix()
             content = env.get_template(template_name).render(**jinja_ctx)
             target.write_text(content, encoding="utf-8")
         else:
             target.write_bytes(source.read_bytes())
 
-        written.append(target_rel)
-
-    if not written:
-        raise GenerationError(f"No template files emitted from {template_dir}")
+        written.append(job.relative_path)
 
     return written

@@ -13,7 +13,7 @@ with deliberate architecture, persistence, tooling, and infrastructure choices.
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/Lacky227/forge-cli)
 
-**Current release:** [0.2.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.2.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
+**Current release:** [0.3.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.3.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
 
 </div>
 
@@ -134,7 +134,7 @@ Python **REST API** generation for FastAPI, Django, and Flask.
 |------------|---------|---------------|
 | **SQL** | PostgreSQL, SQLite | FastAPI/Flask → SQLAlchemy (+ optional Alembic); Django → Django ORM + migrations |
 | **NoSQL** | MongoDB, Redis | MongoDB → PyMongo; Redis → redis-py |
-| **Tooling** | pytest, Ruff, Docker | Wired when selected |
+| **Tooling** | pytest, Ruff, Docker, optional GitHub Actions CI | Wired when selected |
 
 ---
 
@@ -219,6 +219,7 @@ Presets are named compositions of valid Forge choices — not separate generator
 
 ```bash
 forge new my-api --preset fastapi-postgres
+forge new my-api --preset fastapi-postgres --dry-run
 forge plan --preset fastapi-mongo
 ```
 
@@ -226,10 +227,11 @@ forge plan --preset fastapi-mongo
 
 ## Inspect before you generate
 
-`forge plan` resolves a configuration and prints the full `GenerationPlan` — without writing any files.
+`forge plan` resolves a configuration and prints the full `GenerationPlan` — without writing any files. `forge new --dry-run` answers a different question: which concrete files would be created at the destination.
 
 ```bash
 forge plan --preset fastapi-mongo
+forge new my-api --preset fastapi-postgres --dry-run
 ```
 
 ```text
@@ -306,7 +308,7 @@ Legacy `database: postgresql` remains supported as an SQL-only shorthand. Prefer
 
 ## Project status
 
-**Current release: [0.2.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.2.0)** — public development / alpha.
+**Current release: [0.3.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.3.0)** — public development / alpha.
 
 Current limitations:
 

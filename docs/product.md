@@ -29,10 +29,10 @@ Forge assumes the user will continue developing the project manually after gener
 
 ## Core user experience
 
-1. Launch an interactive flow (`forge new`, optionally with a name or preset).
+1. Launch an interactive flow (`forge new`, optionally with a name or preset), or preview outputs with `forge new … --dry-run`.
 2. Answer adaptive questions: project type, language/ecosystem, framework, architecture style, and only the capabilities that matter.
 3. Review a normalized project definition (conceptually; formatting is an implementation detail).
-4. Generate a project that starts, reflects the selections, and is ready for real work.
+4. Generate a project that starts, reflects the selections, and is ready for real work — or inspect the planned file list first via `--dry-run`.
 
 The CLI should feel modern and pleasant. See [cli.md](./cli.md).
 
@@ -47,7 +47,7 @@ Forge generates a **project**, not a pile of empty folders. Depending on selecti
 - database / ORM / migration setup when selected
 - Docker support when selected
 - development tooling (e.g. tests, linters) when selected
-- short project documentation useful for continuing development
+- short project documentation useful for continuing development (stack, setup, env, run, health, tooling, Docker/CI when selected)
 
 Generated projects should be understandable, runnable, conventional, maintainable, and suitable as the start of a real codebase.
 
@@ -63,7 +63,7 @@ See **Non-goals** below. In short: Forge assists architectural choices and imple
 - Presets as compositions of validated choices
 - Quality bar: working integrations, proportional architecture, cross-platform CLI
 
-Python (FastAPI, Django, potentially Flask) is the first ecosystem. It is not the permanent boundary of the product.
+Python (FastAPI, Django REST, Flask) is the first ecosystem. It is not the permanent boundary of the product.
 
 ## Initial scope
 
@@ -89,6 +89,7 @@ The first product version targets **Python** project generation.
 - JWT authentication
 - Docker
 - pytest, Ruff
+- Optional CI (`github-actions`) — generates `.github/workflows/ci.yml` when selected with pytest and/or Ruff
 - Environment configuration
 - Migrations (e.g. Alembic where appropriate for SQL)
 

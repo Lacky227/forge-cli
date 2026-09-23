@@ -219,6 +219,18 @@ def _collect_capabilities(
     testing = _confirm("Include testing setup (pytest)?", default=True)
     linting = _confirm("Include Ruff linting?", default=True)
 
+    ci: str | None = None
+    if testing or linting:
+        ci_choice = _select(
+            "Add CI?",
+            [
+                Choice(title="GitHub Actions", value="github-actions"),
+                Choice(title="No", value="none"),
+            ],
+        )
+        if ci_choice != "none":
+            ci = ci_choice
+
     return Capabilities(
         sql_database=sql_database,
         nosql_database=nosql_database,
@@ -226,6 +238,7 @@ def _collect_capabilities(
         docker=docker,
         testing=testing,
         linting=linting,
+        ci=ci,
     )
 
 

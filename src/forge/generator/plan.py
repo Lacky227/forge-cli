@@ -10,6 +10,19 @@ from forge.core.definition import ProjectDefinition
 
 
 @dataclass(frozen=True)
+class EnvVarSpec:
+    """One environment variable the generated project expects.
+
+    Built by ``resolve_plan`` from the selected stack. Future template /
+    README emission should consume this list rather than re-deriving names.
+    """
+
+    name: str
+    example: str
+    purpose: str
+
+
+@dataclass(frozen=True)
 class GenerationFeatures:
     """Resolved implementation implications of a ProjectDefinition.
 
@@ -29,6 +42,8 @@ class GenerationFeatures:
     docker: bool
     testing: bool
     linting: bool
+    # Optional CI provider id (e.g. "github-actions"); None = no CI.
+    ci_provider: str | None = None
     # Framework-implied / resolved implementation details
     orm: str | None = None
     migration_system: str | None = None  # "alembic" | "django" | None
@@ -37,7 +52,17 @@ class GenerationFeatures:
     rest_framework: bool = False
 
     @property
+    def ci(self) -> bool:
+        """True when a CI provider was selected."""
+        return self.ci_provider is not None
+
+    @property
     def env_example(self) -> bool:
+        """True when SQL, NoSQL, or Docker is selected.
+
+        Prefer ``bool(GenerationPlan.environment_variables)`` for whether an
+        ``.env.example`` file should be emitted — Docker alone may have no vars.
+        """
         return self.database or self.nosql or self.docker
 
 
@@ -75,11 +100,22 @@ class GenerationPlan:
     run_command: str
     architecture_label: str
     framework_label: str
+    # Canonical env vars for the selected stack (plan, .env.example, README).
+    environment_variables: tuple[EnvVarSpec, ...] = ()
+    # Compose dependency service names when Docker is enabled (not the app).
+    docker_services: tuple[str, ...] = ()
+    # Current generated liveness endpoint path for this stack.
+    health_path: str = "/health"
     # Framework-specific migrate / check helpers (None when not applicable)
     migrate_command: str | None = None
     check_command: str | None = None
     # Django: dotted path of the primary app package (e.g. "core" or "apps.core")
     primary_app: str | None = None
+
+    @property
+    def emits_env_example(self) -> bool:
+        """Emit ``.env.example`` only when there are concrete variables."""
+        return bool(self.environment_variables)
 
     def summary_sections(self) -> tuple[PlanSummarySection, ...]:
         """Human-oriented sections derived from resolved plan data only."""
@@ -142,6 +178,16 @@ class GenerationPlan:
         tooling_rows: list[tuple[str, str]] = [
             ("Testing", "pytest" if features.testing else "no"),
             ("Linting", "Ruff" if features.linting else "no"),
+            (
+                "CI",
+                (
+                    catalog.CI_PROVIDER_LABELS.get(
+                        features.ci_provider or "", features.ci_provider or ""
+                    )
+                    if features.ci_provider
+                    else "no"
+                ),
+            ),
             ("Docker", "yes" if features.docker else "no"),
         ]
 
@@ -171,6 +217,35 @@ class GenerationPlan:
         )
         if dep_rows:
             sections.append(PlanSummarySection("Dependencies", tuple(dep_rows)))
+
+        if self.environment_variables:
+            sections.append(
+                PlanSummarySection(
+                    "Environment",
+                    tuple(
+                        (spec.name, spec.purpose)
+                        for spec in self.environment_variables
+                    ),
+                )
+            )
+
+        if features.docker:
+            services_label = (
+                ", ".join(self.docker_services)
+                if self.docker_services
+                else "none (app image only)"
+            )
+            sections.append(
+                PlanSummarySection("Docker", (("Services", services_label),))
+            )
+
+        sections.append(
+            PlanSummarySection(
+                "HTTP",
+                (("Health", f"GET {self.health_path}"),),
+            )
+        )
+
         return tuple(sections)
 
     def as_jinja_dict(self) -> dict[str, object]:
@@ -198,6 +273,8 @@ class GenerationPlan:
             "docker": features.docker,
             "testing": features.testing,
             "linting": features.linting,
+            "ci": features.ci,
+            "ci_provider": features.ci_provider,
             "rest_framework": features.rest_framework,
             "is_postgresql": features.postgresql,
             "is_sqlite": features.sqlite,
@@ -217,6 +294,17 @@ class GenerationPlan:
             "primary_app": self.primary_app,
             "runtime_dependencies": self.runtime_dependencies,
             "dev_dependencies": self.dev_dependencies,
+            "environment_variables": [
+                {
+                    "name": spec.name,
+                    "example": spec.example,
+                    "purpose": spec.purpose,
+                }
+                for spec in self.environment_variables
+            ],
+            "emits_env_example": self.emits_env_example,
+            "docker_services": self.docker_services,
+            "health_path": self.health_path,
         }
 
 

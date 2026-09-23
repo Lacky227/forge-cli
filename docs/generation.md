@@ -4,7 +4,7 @@
 
 ## Quality bar
 
-Coherent layout, correct dependencies, wired integrations, runnable entrypoint, `.env.example` when needed, pytest/Ruff/Docker/migrations when selected, README matching real commands.
+Coherent layout, correct dependencies, wired integrations, runnable entrypoint, `.env.example` when env vars exist, pytest/Ruff/Docker/migrations/CI when selected, README matching real commands and resolved environment metadata. Health endpoints are liveness-only (`{"status":"ok"}`) — no readiness/dependency probes.
 
 ## Official generation compatibility matrix
 
@@ -62,8 +62,9 @@ Examples:
 - FastAPI or Flask + Django ORM
 - Migrations without SQL / Alembic without SQLAlchemy
 - Django REST API without SQL (NoSQL alone is not enough)
+- `ci: github-actions` with both testing and linting disabled
 - Non-generatable language / framework / project-type combinations
-
+- Unknown CI providers
 ### Representative smoke cases
 
 Official list: `SUPPORTED_GENERATION_CASES` in `forge.core.compatibility`.
@@ -116,6 +117,7 @@ Implications are the same across Simple, Modular Monolith, and Clean — archite
 | MongoDB | client → pymongo; `MONGODB_URL` / `MONGODB_DATABASE` |
 | Redis | client → redis (asyncio); `REDIS_URL` |
 | pytest / Ruff / Docker | as selected |
+| CI | optional `github-actions` (requires testing or linting) → `.github/workflows/ci.yml` |
 
 ### Flask
 
@@ -127,6 +129,7 @@ Implications are the same across Simple, Modular Monolith, and Clean — archite
 | MongoDB | client → pymongo (sync); env settings |
 | Redis | client → redis (sync); `REDIS_URL` |
 | pytest / Ruff / Docker | as selected |
+| CI | optional `github-actions` (requires testing or linting) → `.github/workflows/ci.yml` |
 
 Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no driver, no Alembic, no SQL persistence ports/packages. NoSQL clients are independent of SQL.
 
@@ -141,6 +144,7 @@ Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no dr
 | MongoDB / Redis | separate client modules; not Django ORM backends |
 | pytest | `pytest-django` |
 | Ruff / Docker | configured when selected |
+| CI | optional `github-actions` (requires testing or linting) → `.github/workflows/ci.yml` |
 
 ### Clean Architecture quality notes
 
@@ -152,6 +156,22 @@ Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no dr
 ### Dependency policy
 
 Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are deduplicated. FastAPI and Flask share the SQLAlchemy / Alembic / `psycopg` strategy when SQL is selected. NoSQL dependencies (`pymongo`, `redis`) appear only when that engine is selected.
+
+### Resolved developer-workflow metadata
+
+`resolve_plan` also fills plan fields used by `forge plan`, templates, and `forge new --dry-run`:
+
+- `environment_variables` — names/examples/purposes matching current generated settings and `.env.example` (framework-specific SQL models preserved)
+- `docker_services` — dependency Compose services only (`db` / `mongodb` / `redis`)
+- `health_path` — liveness route (FastAPI `/health` for all architectures; Flask `/api/health`; Django `/api/health/`)
+- `emits_env_example` — true when `environment_variables` is non-empty (Docker alone does not emit an empty `.env.example`)
+- `ci_provider` — when `github-actions`, generation emits `.github/workflows/ci.yml` from `templates/python/_shared/` (Python **3.12**, `uv sync`, then selected Ruff/pytest; no DB service containers)
+
+Post-generation **next steps** (CLI summary and dry-run informational commands) follow the local-dev path: start dependency containers with `docker compose up -d <docker_services>` when that list is non-empty, then migrate/run on the host. Bare `docker compose up -d` is never emitted. Full-stack `docker compose up --build` is documented in the generated README Docker section (and is the only Compose command when Docker is selected without persistence).
+
+`forge new --dry-run` reuses the same template discovery as real generation to list concrete destination-relative paths without writing files. Destination conflict validation matches generation. See [cli.md](./cli.md).
+
+Generated projects expose a **liveness** health endpoint only (`{"status":"ok"}`). There is no readiness/dependency probe.
 
 ### Validation expectation
 

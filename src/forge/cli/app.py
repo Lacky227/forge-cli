@@ -15,12 +15,18 @@ from forge.cli.render import (
     print_definition,
     print_error,
     print_generation_plan,
+    print_generation_preview,
     print_generation_result,
 )
 from forge.core.config import ConfigError, definition_from_config
 from forge.core.definition import ProjectDefinition
 from forge.core.presets import Preset, PresetError, definition_from_preset, get_preset
-from forge.generator import GenerationError, generate_project, resolve_plan
+from forge.generator import (
+    GenerationError,
+    generate_project,
+    preview_project,
+    resolve_plan,
+)
 
 # Placeholder name when ``forge plan --preset`` omits NAME (plan never writes files).
 _PLAN_DEFAULT_NAME = "project"
@@ -95,15 +101,24 @@ def new_command(
         ),
         show_default=False,
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help=(
+            "Preview the concrete files Forge would generate without writing "
+            "anything. Destination conflict rules still apply."
+        ),
+    ),
 ) -> None:
     """Generate a project interactively, from a preset, or from YAML config.
 
     Interactive mode asks only questions that affect the generated project.
     With [bold]--preset[/bold] or [bold]--config[/bold], generation is
-    fully non-interactive.
+    fully non-interactive. Pass [bold]--dry-run[/bold] to preview outputs
+    without creating files.
     """
     try:
-        _run_new(name=name, config=config, preset=preset)
+        _run_new(name=name, config=config, preset=preset, dry_run=dry_run)
     except FlowCancelled:
         print_cancelled()
         raise typer.Exit(code=1) from None
@@ -159,6 +174,7 @@ def _run_new(
     name: str | None,
     config: Path | None,
     preset: str | None,
+    dry_run: bool,
 ) -> None:
     print_banner()
     used_preset: Preset | None = None
@@ -183,6 +199,13 @@ def _run_new(
     print_definition(definition)
 
     try:
+        if dry_run:
+            preview = preview_project(definition, base_dir=Path.cwd())
+            print_generation_preview(
+                preview,
+                preset_title=used_preset.title if used_preset else None,
+            )
+            return
         result = generate_project(definition, base_dir=Path.cwd())
     except GenerationError as exc:
         print_error(str(exc))
