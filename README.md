@@ -48,7 +48,7 @@ uvx --from forge-scaffolder forge new my-api
 
 Starting a backend project means deciding framework, project structure, persistence, migrations, Docker, testing, and linting — often from scratch, every time.
 
-Forge turns those explicit decisions into a coherent, runnable project. It resolves implications (ORM, clients, dependencies, commands) and generates a codebase you can install, run, and keep developing by hand.
+Forge turns those explicit decisions into a coherent, runnable project. It resolves implications (ORM, clients, dependencies, commands) and generates a codebase you can install, run, and keep developing by hand. Optional **project modules** (Products, Categories) add real CRUD APIs with pagination and filtering.
 
 It is a **scaffolder**, not a runtime dependency of the projects it creates.
 
@@ -156,6 +156,17 @@ Persistence
 Choose **none**, **SQL only**, **NoSQL only**, or **both** (at most one engine from each category).
 
 **Django note:** Django REST APIs always require SQL. MongoDB or Redis can be added alongside it as separate clients — not as Django ORM backends.
+
+## Project modules
+
+Optional multi-select modules add real CRUD APIs:
+
+| Module | Requires |
+|--------|----------|
+| Products | SQL |
+| Categories | SQL |
+
+Select either or both. When both are selected, products may reference a category. Collection endpoints include pagination, filtering, and allow-listed sorting. Details: [docs/modules.md](docs/modules.md).
 
 ---
 

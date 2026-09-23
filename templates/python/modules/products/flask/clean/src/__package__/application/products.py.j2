@@ -1,0 +1,54 @@
+"""Product use cases."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+from {{ package_name }}.application.product_ports import (
+    ProductRepository,
+)
+from {{ package_name }}.domain.product import Product
+
+
+def create_product(repo: ProductRepository, product: Product) -> Product:
+    return repo.create(product)
+
+
+def get_product(repo: ProductRepository, product_id: int) -> Product | None:
+    return repo.get(product_id)
+
+
+def list_products(
+    repo: ProductRepository,
+    *,
+    q: str | None = None,
+    is_active: bool | None = None,
+    min_price: Decimal | None = None,
+    max_price: Decimal | None = None,
+{% if products_link_categories %}
+    category_id: int | None = None,
+{% endif %}
+    ordering: str = "-created_at",
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[Product], int]:
+    return repo.list(
+        q=q,
+        is_active=is_active,
+        min_price=min_price,
+        max_price=max_price,
+{% if products_link_categories %}
+        category_id=category_id,
+{% endif %}
+        ordering=ordering,
+        page=page,
+        page_size=page_size,
+    )
+
+
+def update_product(repo: ProductRepository, product: Product) -> Product:
+    return repo.update(product)
+
+
+def delete_product(repo: ProductRepository, product_id: int) -> bool:
+    return repo.delete(product_id)

@@ -5,6 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from {{ package_name }}.config import settings
+{% for router in fastapi_routers|sort(attribute='module_id') %}
+from {{ router.import_module }} import (
+    {{ router.router_attr }} as {{ router.module_id }}_router,
+)
+{% endfor %}
 
 {% if is_mongodb or is_redis %}
 
@@ -40,3 +45,12 @@ app = FastAPI(title=settings.app_name)
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+{% for router in fastapi_routers|sort(attribute='module_id') %}
+
+
+app.include_router(
+    {{ router.module_id }}_router,
+    prefix="{{ router.prefix }}",
+    tags={{ router.tags }},
+)
+{% endfor %}

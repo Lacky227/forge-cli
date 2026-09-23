@@ -31,6 +31,7 @@ class GenerationCase:
     ci: str | None = None
     language: Language = Language.PYTHON
     project_type: ProjectType = ProjectType.REST_API
+    modules: tuple[str, ...] = ()
 
     @property
     def database(self) -> bool:
@@ -59,6 +60,7 @@ class GenerationCase:
                 linting=self.linting,
                 ci=self.ci,
             ),
+            modules=self.modules,
         )
 
 
@@ -187,6 +189,76 @@ SUPPORTED_GENERATION_CASES: tuple[GenerationCase, ...] = (
         framework="fastapi",
         architecture=ArchitectureStyle.CLEAN,
         nosql_database="mongodb",
+    ),
+    # Project modules (Products / Categories) — Stage 1 representative cases
+    GenerationCase(
+        id="fastapi-simple-products-sqlite",
+        framework="fastapi",
+        architecture=ArchitectureStyle.SIMPLE,
+        sql_database="sqlite",
+        migrations=True,
+        modules=("products",),
+    ),
+    GenerationCase(
+        id="fastapi-modular-catalog-postgres",
+        framework="fastapi",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="postgresql",
+        migrations=True,
+        modules=("products", "categories"),
+    ),
+    GenerationCase(
+        id="fastapi-clean-catalog-sqlite",
+        framework="fastapi",
+        architecture=ArchitectureStyle.CLEAN,
+        sql_database="sqlite",
+        migrations=True,
+        modules=("products", "categories"),
+    ),
+    GenerationCase(
+        id="django-simple-products",
+        framework="django",
+        architecture=ArchitectureStyle.SIMPLE,
+        sql_database="sqlite",
+        modules=("products",),
+    ),
+    GenerationCase(
+        id="django-modular-categories",
+        framework="django",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="sqlite",
+        modules=("categories",),
+    ),
+    GenerationCase(
+        id="django-clean-catalog",
+        framework="django",
+        architecture=ArchitectureStyle.CLEAN,
+        sql_database="sqlite",
+        modules=("products", "categories"),
+    ),
+    GenerationCase(
+        id="flask-simple-categories-sqlite",
+        framework="flask",
+        architecture=ArchitectureStyle.SIMPLE,
+        sql_database="sqlite",
+        migrations=True,
+        modules=("categories",),
+    ),
+    GenerationCase(
+        id="flask-modular-products-postgres",
+        framework="flask",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="postgresql",
+        migrations=True,
+        modules=("products",),
+    ),
+    GenerationCase(
+        id="flask-clean-catalog-sqlite",
+        framework="flask",
+        architecture=ArchitectureStyle.CLEAN,
+        sql_database="sqlite",
+        migrations=True,
+        modules=("products", "categories"),
     ),
 )
 

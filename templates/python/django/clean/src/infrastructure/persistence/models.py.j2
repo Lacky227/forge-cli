@@ -1,4 +1,11 @@
 """Django ORM models — infrastructure adapters for domain concepts.
 
 Keep domain entities free of Django imports; map them here when needed.
+Import module models so Django and migrations see a complete app registry.
 """
+
+{% for m in model_imports|sort(attribute='module_id') %}
+from {{ m.import_module }} import (  # noqa: E402, F401
+    {{ m.symbol }} as _{{ m.module_id }}_model,
+)
+{% endfor %}

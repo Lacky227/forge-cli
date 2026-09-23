@@ -1,0 +1,169 @@
+"""SQLAlchemy Product model and repository adapter."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+{% if products_link_categories %}
+    ForeignKey,
+{% endif %}
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+    or_,
+)
+from sqlalchemy.orm import Mapped, Session, mapped_column
+
+from {{ package_name }}.domain.product import Product
+from {{ package_name }}.infrastructure.persistence.base import Base
+
+_ORDERING = {
+    "name": "name",
+    "-name": "name",
+    "price": "price",
+    "-price": "price",
+    "created_at": "created_at",
+    "-created_at": "created_at",
+}
+
+
+class ProductModel(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+{% if products_link_categories %}
+    category_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("categories.id"), nullable=True
+    )
+{% endif %}
+
+
+def _to_domain(row: ProductModel) -> Product:
+    return Product(
+        id=row.id,
+        name=row.name,
+        description=row.description,
+        price=row.price,
+        is_active=row.is_active,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+{% if products_link_categories %}
+        category_id=row.category_id,
+{% endif %}
+    )
+
+
+class SqlAlchemyProductRepository:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def create(self, product: Product) -> Product:
+        row = ProductModel(
+            name=product.name,
+            description=product.description,
+            price=product.price,
+            is_active=product.is_active,
+{% if products_link_categories %}
+            category_id=product.category_id,
+{% endif %}
+        )
+        self._db.add(row)
+        self._db.commit()
+        self._db.refresh(row)
+        return _to_domain(row)
+
+    def get(self, product_id: int) -> Product | None:
+        row = self._db.get(ProductModel, product_id)
+        return _to_domain(row) if row is not None else None
+
+    def list(
+        self,
+        *,
+        q: str | None = None,
+        is_active: bool | None = None,
+        min_price: Decimal | None = None,
+        max_price: Decimal | None = None,
+{% if products_link_categories %}
+        category_id: int | None = None,
+{% endif %}
+        ordering: str = "-created_at",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Product], int]:
+        query = self._db.query(ProductModel)
+        if q:
+            pattern = f"%{q}%"
+            query = query.filter(
+                or_(
+                    ProductModel.name.ilike(pattern),
+                    ProductModel.description.ilike(pattern),
+                )
+            )
+        if is_active is not None:
+            query = query.filter(ProductModel.is_active.is_(is_active))
+        if min_price is not None:
+            query = query.filter(ProductModel.price >= min_price)
+        if max_price is not None:
+            query = query.filter(ProductModel.price <= max_price)
+{% if products_link_categories %}
+        if category_id is not None:
+            query = query.filter(ProductModel.category_id == category_id)
+{% endif %}
+        column_name = _ORDERING.get(ordering, "created_at")
+        column = getattr(ProductModel, column_name)
+        if ordering.startswith("-"):
+            query = query.order_by(column.desc())
+        else:
+            query = query.order_by(column.asc())
+        total = query.count()
+        rows = query.offset((page - 1) * page_size).limit(page_size).all()
+        return [_to_domain(row) for row in rows], total
+
+    def update(self, product: Product) -> Product:
+        assert product.id is not None
+        row = self._db.get(ProductModel, product.id)
+        if row is None:
+            raise LookupError(product.id)
+        row.name = product.name
+        row.description = product.description
+        row.price = product.price
+        row.is_active = product.is_active
+{% if products_link_categories %}
+        row.category_id = product.category_id
+{% endif %}
+        self._db.add(row)
+        self._db.commit()
+        self._db.refresh(row)
+        return _to_domain(row)
+
+    def delete(self, product_id: int) -> bool:
+        row = self._db.get(ProductModel, product_id)
+        if row is None:
+            return False
+        self._db.delete(row)
+        self._db.commit()
+        return True
+
+
+ORDERING_CHOICES = frozenset(_ORDERING)

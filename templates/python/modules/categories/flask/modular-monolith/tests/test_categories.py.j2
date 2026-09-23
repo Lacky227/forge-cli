@@ -1,0 +1,89 @@
+"""Categories API tests."""
+
+from __future__ import annotations
+
+
+def test_create_and_get_category(client) -> None:
+    response = client.post(
+        "/api/categories",
+        json={"name": "Electronics", "description": "Gadgets"},
+    )
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["name"] == "Electronics"
+    assert body["slug"] == "electronics"
+
+    detail = client.get(f"/api/categories/{body['id']}")
+    assert detail.status_code == 200
+    assert detail.get_json()["slug"] == "electronics"
+
+
+def test_create_category_with_explicit_slug(client) -> None:
+    response = client.post(
+        "/api/categories",
+        json={"name": "Home Goods", "slug": "home", "description": None},
+    )
+    assert response.status_code == 201
+    assert response.get_json()["slug"] == "home"
+
+
+def test_list_update_delete_category(client) -> None:
+    created = client.post(
+        "/api/categories",
+        json={"name": "Books"},
+    ).get_json()
+
+    listed = client.get("/api/categories")
+    assert listed.status_code == 200
+    payload = listed.get_json()
+    assert payload["page"] == 1
+    assert payload["total"] >= 1
+    assert any(item["id"] == created["id"] for item in payload["items"])
+
+    updated = client.patch(
+        f"/api/categories/{created['id']}",
+        json={"name": "Books & Magazines", "slug": "books-magazines"},
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["slug"] == "books-magazines"
+
+    deleted = client.delete(f"/api/categories/{created['id']}")
+    assert deleted.status_code == 204
+    assert client.get(f"/api/categories/{created['id']}").status_code == 404
+
+
+def test_category_not_found_and_validation(client) -> None:
+    assert client.get("/api/categories/99999").status_code == 404
+    assert client.patch("/api/categories/99999", json={"name": "x"}).status_code == 404
+    assert client.delete("/api/categories/99999").status_code == 404
+
+    invalid = client.post("/api/categories", json={})
+    assert invalid.status_code == 422
+
+
+def test_category_pagination_and_filters(client) -> None:
+    client.post("/api/categories", json={"name": "Alpha Cat"})
+    client.post("/api/categories", json={"name": "Beta Cat", "description": "second"})
+
+    page = client.get("/api/categories", query_string={"page": 1, "page_size": 1})
+    assert page.status_code == 200
+    assert len(page.get_json()["items"]) == 1
+    assert page.get_json()["total"] >= 2
+
+    filtered = client.get("/api/categories", query_string={"q": "Alpha"})
+    assert filtered.status_code == 200
+    assert all("Alpha" in item["name"] for item in filtered.get_json()["items"])
+
+    ordered = client.get("/api/categories", query_string={"ordering": "-name"})
+    assert ordered.status_code == 200
+    names = [item["name"] for item in ordered.get_json()["items"]]
+    assert names == sorted(names, reverse=True)
+
+    bad_order = client.get("/api/categories", query_string={"ordering": "price"})
+    assert bad_order.status_code == 422
+
+
+def test_duplicate_slug_rejected(client) -> None:
+    client.post("/api/categories", json={"name": "One", "slug": "shared"})
+    duplicate = client.post("/api/categories", json={"name": "Two", "slug": "shared"})
+    assert duplicate.status_code == 422

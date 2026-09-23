@@ -1,3 +1,8 @@
 from {{ package_name }}.models.base import Base
+{% for m in model_imports|sort(attribute='module_id') %}
+from {{ m.import_module }} import (  # noqa: F401
+    {{ m.symbol }} as _{{ m.module_id }}_model,
+)
+{% endfor %}
 
 __all__ = ["Base"]

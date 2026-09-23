@@ -48,6 +48,30 @@
 {% endif %}
 {% endmacro %}
 
+{% macro modules_section() %}
+{% if has_modules %}
+## Modules
+
+{% for m in modules %}
+- {{ m.label }} (`{{ m.id }}`)
+{% endfor %}
+
+List and detail endpoints use page-number pagination where the framework supports it (page size 20).
+{% endif %}
+{% endmacro %}
+
+{% macro api_modules_section() %}
+{% if has_modules %}
+## API endpoints
+
+| Method | Path | Summary |
+|--------|------|---------|
+{% for ep in api_endpoints %}
+| `{{ ep.method }}` | `{{ ep.path }}` | {{ ep.summary }} |
+{% endfor %}
+{% endif %}
+{% endmacro %}
+
 {% macro setup_section() %}
 ## Setup
 

@@ -1,10 +1,15 @@
-"""SQLAlchemy declarative base.
+"""SQLAlchemy declarative base and model registry.
 
-Import model modules from Alembic's ``env.py`` so metadata stays complete.
+``Base`` lives in ``base`` so module model modules can import it without
+circular imports. This package re-exports ``Base`` and imports selected
+module models so Alembic metadata stays complete.
 """
 
-from sqlalchemy.orm import DeclarativeBase
+from {{ package_name }}.infrastructure.persistence.base import Base
+{% for m in model_imports|sort(attribute='module_id') %}
+from {{ m.import_module }} import (  # noqa: F401
+    {{ m.symbol }} as _{{ m.module_id }}_model,
+)
+{% endfor %}
 
-
-class Base(DeclarativeBase):
-    pass
+__all__ = ["Base"]

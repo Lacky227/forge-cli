@@ -20,6 +20,7 @@ from pydantic import (
 )
 
 from forge.core.definition import Capabilities, ProjectDefinition
+from forge.core.modules import normalize_modules
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 _FALSEY_DATABASE = frozenset({"", "false", "none", "null", "no", "off"})
@@ -88,6 +89,8 @@ class ForgeConfig(BaseModel):
     docker: bool = False
     # Optional CI provider — ``github-actions`` or omit/null for none.
     ci: str | None = None
+    # Project modules (products, categories, …). Omit or [] for none.
+    modules: list[str] = Field(default_factory=list)
 
     @field_validator("framework")
     @classmethod
@@ -140,6 +143,20 @@ class ForgeConfig(BaseModel):
                 return None
             return cleaned
         raise ValueError("ci must be a string provider name, false, or null")
+
+    @field_validator("modules", mode="before")
+    @classmethod
+    def normalize_modules_field(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            raise ValueError("modules must be a list of module ids, not a string")
+        if not isinstance(value, list):
+            raise ValueError("modules must be a list of module ids")
+        try:
+            return list(normalize_modules(tuple(str(item) for item in value)))
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
     @model_validator(mode="after")
     def names_must_agree(self) -> ForgeConfig:
@@ -242,6 +259,7 @@ class ForgeConfig(BaseModel):
                     linting=self.linting,
                     ci=self.ci,
                 ),
+                modules=tuple(self.modules),
             )
         except ValidationError as exc:
             raise ConfigError(_format_pydantic_error(exc)) from exc

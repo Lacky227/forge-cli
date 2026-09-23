@@ -15,6 +15,7 @@ from rich.console import Console
 
 from forge.core import catalog
 from forge.core.definition import Capabilities, ProjectDefinition
+from forge.core.modules import MODULE_ORDER, MODULE_SPECS, modules_require_sql
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 T = TypeVar("T")
@@ -52,6 +53,16 @@ def _select(message: str, choices: list[Choice]) -> str:
         instruction="(use arrow keys)",
     ).ask()
     return _require(result)
+
+
+def _checkbox(message: str, choices: list[Choice]) -> list[str]:
+    result = questionary.checkbox(
+        message,
+        choices=choices,
+        style=_STYLE,
+        instruction="(space to toggle, enter to confirm)",
+    ).ask()
+    return list(_require(result))
 
 
 def _confirm(message: str, default: bool = True) -> bool:
@@ -139,7 +150,12 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
             )
         )
 
-    capabilities = _collect_capabilities(framework, project_type)
+    modules = _collect_modules()
+    capabilities = _collect_capabilities(
+        framework,
+        project_type,
+        modules=modules,
+    )
     return ProjectDefinition(
         name=name,
         language=language,
@@ -147,12 +163,39 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
         framework=framework,
         architecture=architecture,
         capabilities=capabilities,
+        modules=tuple(modules),
     )
+
+
+def _collect_modules() -> list[str]:
+    """Multi-select project modules (optional)."""
+    selected = _checkbox(
+        "Project modules (optional)",
+        [
+            Choice(
+                title=f"{MODULE_SPECS[mid].label} — {MODULE_SPECS[mid].description}",
+                value=mid.value,
+            )
+            for mid in MODULE_ORDER
+        ],
+    )
+    if not selected:
+        _console.print("[dim]Modules:[/dim] none")
+    else:
+        labels = ", ".join(
+            MODULE_SPECS[m].label
+            for m in MODULE_ORDER
+            if m.value in selected
+        )
+        _console.print(f"[dim]Modules:[/dim] {labels}")
+    return selected
 
 
 def _collect_capabilities(
     framework: str,
     project_type: ProjectType,
+    *,
+    modules: list[str] | None = None,
 ) -> Capabilities:
     """Ask only user-selectable capability questions.
 
@@ -163,6 +206,8 @@ def _collect_capabilities(
     sql_database: str | None = None
     nosql_database: str | None = None
     migrations = False
+    selected_modules = tuple(modules or ())
+    require_sql = modules_require_sql(selected_modules)
 
     if framework == "django":
         # SQL is required for Django REST API; NoSQL is optional.
@@ -180,7 +225,33 @@ def _collect_capabilities(
             nosql_database = _select_nosql_database()
             _print_nosql_client_note(nosql_database)
     elif catalog.supports_sql(framework) or catalog.supports_nosql(framework):
-        if _confirm("Add a database?", default=True):
+        if require_sql:
+            _console.print(
+                "[dim]SQL persistence required by selected modules.[/dim]"
+            )
+            sql_database = _select_sql_database()
+            implied_orm = catalog.default_orm_for(framework)
+            if implied_orm:
+                label = (
+                    "SQLAlchemy"
+                    if implied_orm == "sqlalchemy"
+                    else implied_orm
+                )
+                _console.print(
+                    f"[dim]ORM:[/dim] {label} "
+                    f"[dim](selected for "
+                    f"{catalog.FRAMEWORK_LABELS.get(framework, framework)})"
+                    f"[/dim]"
+                )
+            migrations = _confirm(
+                "Include Alembic migrations?", default=True
+            )
+            if catalog.supports_nosql(framework) and _confirm(
+                "Also add a NoSQL database?", default=False
+            ):
+                nosql_database = _select_nosql_database()
+                _print_nosql_client_note(nosql_database)
+        elif _confirm("Add a database?", default=True):
             db_kind = _select(
                 "Database type",
                 [

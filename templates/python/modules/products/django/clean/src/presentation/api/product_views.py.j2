@@ -1,0 +1,49 @@
+"""Product API views."""
+
+from __future__ import annotations
+
+from decimal import Decimal, InvalidOperation
+
+from django.db.models import Q, QuerySet
+from rest_framework import filters, viewsets
+
+from infrastructure.persistence.product import Product
+from presentation.api.product_serializers import ProductSerializer
+
+
+class ProductViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name", "description"]
+    ordering_fields = ["name", "price", "created_at", "updated_at"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self) -> QuerySet[Product]:
+        qs = Product.objects.all()
+        params = self.request.query_params
+
+        q = params.get("q")
+        if q:
+            qs = qs.filter(
+                Q(name__icontains=q) | Q(description__icontains=q)
+            )
+
+        is_active = params.get("is_active")
+        if is_active is not None and is_active != "":
+            qs = qs.filter(is_active=is_active.lower() in {"1", "true", "yes"})
+
+        for key, lookup in (("min_price", "price__gte"), ("max_price", "price__lte")):
+            raw = params.get(key)
+            if raw is None or raw == "":
+                continue
+            try:
+                qs = qs.filter(**{lookup: Decimal(raw)})
+            except InvalidOperation:
+                continue
+
+{% if products_link_categories %}
+        category_id = params.get("category_id")
+        if category_id not in (None, ""):
+            qs = qs.filter(category_id=category_id)
+{% endif %}
+        return qs

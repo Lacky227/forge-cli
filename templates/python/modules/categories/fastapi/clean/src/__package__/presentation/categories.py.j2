@@ -1,0 +1,141 @@
+"""Categories HTTP presentation."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.application import categories as use_cases
+from {{ package_name }}.application.categories import (
+    SlugConflictError,
+)
+from {{ package_name }}.domain.category import Category
+from {{ package_name }}.infrastructure.database import get_db
+from {{ package_name }}.infrastructure.persistence.category import (
+    ORDERING_CHOICES,
+    SqlAlchemyCategoryRepository,
+)
+from {{ package_name }}.presentation.pagination import (
+    PageParams,
+    get_page_params,
+)
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+
+
+class CategoryCreate(BaseModel):
+    name: str = Field(..., max_length=200)
+    slug: str | None = Field(None, max_length=220)
+    description: str | None = None
+
+
+class CategoryUpdate(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    slug: str | None = Field(None, max_length=220)
+    description: str | None = None
+
+
+class CategoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+def _repo(db: Session) -> SqlAlchemyCategoryRepository:
+    return SqlAlchemyCategoryRepository(db)
+
+
+@router.post("", response_model=CategoryRead, status_code=status.HTTP_201_CREATED)
+def create_category(body: CategoryCreate, db: DbSession) -> CategoryRead:
+    try:
+        category = use_cases.create_category(
+            _repo(db),
+            Category(
+                name=body.name,
+                slug=body.slug or "",
+                description=body.description,
+            ),
+        )
+    except SlugConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="slug already exists",
+        ) from exc
+    return CategoryRead.model_validate(category)
+
+
+@router.get("")
+def list_categories(
+    db: DbSession,
+    params: Page,
+    q: Annotated[str | None, Query()] = None,
+    ordering: Annotated[str, Query()] = "name",
+) -> dict[str, Any]:
+    if ordering not in ORDERING_CHOICES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid ordering: {ordering}",
+        )
+    items, total = use_cases.list_categories(
+        _repo(db),
+        q=q,
+        ordering=ordering,
+        page=params.page,
+        page_size=params.page_size,
+    )
+    return {
+        "items": [CategoryRead.model_validate(item) for item in items],
+        "page": params.page,
+        "page_size": params.page_size,
+        "total": total,
+    }
+
+
+@router.get("/{category_id}", response_model=CategoryRead)
+def get_category(category_id: int, db: DbSession) -> CategoryRead:
+    category = use_cases.get_category(_repo(db), category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return CategoryRead.model_validate(category)
+
+
+@router.patch("/{category_id}", response_model=CategoryRead)
+def update_category(
+    category_id: int, body: CategoryUpdate, db: DbSession
+) -> CategoryRead:
+    repo = _repo(db)
+    existing = use_cases.get_category(repo, category_id)
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    changes = body.model_dump(exclude_unset=True)
+    if "slug" in changes and changes["slug"] is None:
+        del changes["slug"]
+    for key, value in changes.items():
+        setattr(existing, key, value)
+    try:
+        updated = use_cases.update_category(repo, existing)
+    except SlugConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="slug already exists",
+        ) from exc
+    return CategoryRead.model_validate(updated)
+
+
+@router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category(category_id: int, db: DbSession) -> Response:
+    if not use_cases.delete_category(_repo(db), category_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

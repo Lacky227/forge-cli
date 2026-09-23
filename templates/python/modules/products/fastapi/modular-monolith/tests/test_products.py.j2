@@ -1,0 +1,128 @@
+"""Products API tests."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+from fastapi.testclient import TestClient
+
+
+def test_create_and_get_product(client: TestClient) -> None:
+    response = client.post(
+        "/products",
+        json={
+            "name": "Widget",
+            "description": "A useful widget",
+            "price": "19.99",
+            "is_active": True,
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Widget"
+    assert Decimal(body["price"]) == Decimal("19.99")
+
+    detail = client.get(f"/products/{body['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["id"] == body["id"]
+
+
+def test_list_update_delete_product(client: TestClient) -> None:
+    created = client.post(
+        "/products",
+        json={"name": "Gadget", "price": "5.00"},
+    ).json()
+
+    listed = client.get("/products")
+    assert listed.status_code == 200
+    payload = listed.json()
+    assert payload["total"] >= 1
+    assert any(item["id"] == created["id"] for item in payload["items"])
+
+    updated = client.patch(
+        f"/products/{created['id']}",
+        json={"name": "Gadget Plus", "price": "7.50"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Gadget Plus"
+
+    deleted = client.delete(f"/products/{created['id']}")
+    assert deleted.status_code == 204
+    assert client.get(f"/products/{created['id']}").status_code == 404
+
+
+def test_product_not_found_and_validation(client: TestClient) -> None:
+    assert client.get("/products/99999").status_code == 404
+    assert client.patch("/products/99999", json={"name": "x"}).status_code == 404
+    assert client.delete("/products/99999").status_code == 404
+    assert client.post("/products", json={"name": "Bad"}).status_code == 422
+
+
+def test_product_pagination_and_filters(client: TestClient) -> None:
+    client.post(
+        "/products",
+        json={
+            "name": "Alpha",
+            "description": "first",
+            "price": "10.00",
+            "is_active": True,
+        },
+    )
+    client.post(
+        "/products",
+        json={
+            "name": "Beta",
+            "description": "second",
+            "price": "30.00",
+            "is_active": False,
+        },
+    )
+
+    page = client.get("/products", params={"page": 1, "page_size": 1})
+    assert page.status_code == 200
+    assert len(page.json()["items"]) == 1
+    assert page.json()["total"] >= 2
+
+    filtered = client.get(
+        "/products",
+        params={
+            "q": "Alpha",
+            "is_active": True,
+            "min_price": "5",
+            "max_price": "15",
+        },
+    )
+    assert filtered.status_code == 200
+    assert all(item["name"] == "Alpha" for item in filtered.json()["items"])
+
+    ordered = client.get("/products", params={"ordering": "price"})
+    assert ordered.status_code == 200
+    prices = [Decimal(item["price"]) for item in ordered.json()["items"]]
+    assert prices == sorted(prices)
+
+    assert client.get("/products", params={"ordering": "unknown"}).status_code == 422
+
+
+{% if products_link_categories %}
+def test_product_with_category(client: TestClient) -> None:
+    category = client.post(
+        "/categories",
+        json={"name": "Tools", "description": "Handy tools"},
+    ).json()
+    product = client.post(
+        "/products",
+        json={
+            "name": "Hammer",
+            "price": "12.00",
+            "category_id": category["id"],
+        },
+    )
+    assert product.status_code == 201
+    assert product.json()["category_id"] == category["id"]
+
+    listed = client.get("/products", params={"category_id": category["id"]})
+    assert listed.status_code == 200
+    assert all(
+        item["category_id"] == category["id"] for item in listed.json()["items"]
+    )
+{% endif %}

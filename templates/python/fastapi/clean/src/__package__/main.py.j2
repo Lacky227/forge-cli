@@ -6,6 +6,11 @@ from fastapi import FastAPI
 
 from {{ package_name }}.infrastructure.config import settings
 from {{ package_name }}.presentation.api import router
+{% for r in fastapi_routers|sort(attribute='module_id') %}
+from {{ r.import_module }} import (
+    {{ r.router_attr }} as {{ r.module_id }}_router,
+)
+{% endfor %}
 
 {% if is_mongodb or is_redis %}
 
@@ -40,3 +45,10 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app = FastAPI(title=settings.app_name)
 {% endif %}
 app.include_router(router)
+{% for r in fastapi_routers|sort(attribute='module_id') %}
+app.include_router(
+    {{ r.module_id }}_router,
+    prefix="{{ r.prefix }}",
+    tags={{ r.tags }},
+)
+{% endfor %}

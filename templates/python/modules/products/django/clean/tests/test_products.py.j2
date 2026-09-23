@@ -1,0 +1,148 @@
+"""Products API tests."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+import pytest
+from rest_framework.test import APIClient
+
+
+@pytest.mark.django_db
+def test_create_and_get_product(api_client: APIClient) -> None:
+    response = api_client.post(
+        "/api/products/",
+        {
+            "name": "Widget",
+            "description": "A useful widget",
+            "price": "19.99",
+            "is_active": True,
+        },
+        format="json",
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Widget"
+    assert Decimal(body["price"]) == Decimal("19.99")
+    assert body["is_active"] is True
+
+    detail = api_client.get(f"/api/products/{body['id']}/")
+    assert detail.status_code == 200
+    assert detail.json()["id"] == body["id"]
+
+
+@pytest.mark.django_db
+def test_list_update_delete_product(api_client: APIClient) -> None:
+    created = api_client.post(
+        "/api/products/",
+        {"name": "Gadget", "price": "5.00"},
+        format="json",
+    ).json()
+
+    listed = api_client.get("/api/products/")
+    assert listed.status_code == 200
+    payload = listed.json()
+    assert payload["count"] >= 1
+    assert any(item["id"] == created["id"] for item in payload["results"])
+
+    updated = api_client.patch(
+        f"/api/products/{created['id']}/",
+        {"name": "Gadget Plus", "price": "7.50"},
+        format="json",
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Gadget Plus"
+    assert Decimal(updated.json()["price"]) == Decimal("7.50")
+
+    deleted = api_client.delete(f"/api/products/{created['id']}/")
+    assert deleted.status_code == 204
+    assert api_client.get(f"/api/products/{created['id']}/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_product_not_found_and_validation(api_client: APIClient) -> None:
+    assert api_client.get("/api/products/99999/").status_code == 404
+    assert (
+        api_client.patch(
+            "/api/products/99999/", {"name": "x"}, format="json"
+        ).status_code
+        == 404
+    )
+    assert api_client.delete("/api/products/99999/").status_code == 404
+
+    invalid = api_client.post("/api/products/", {"name": "Bad"}, format="json")
+    assert invalid.status_code == 400
+
+
+@pytest.mark.django_db
+def test_product_pagination_and_filters(api_client: APIClient) -> None:
+    api_client.post(
+        "/api/products/",
+        {
+            "name": "Alpha",
+            "description": "first",
+            "price": "10.00",
+            "is_active": True,
+        },
+        format="json",
+    )
+    api_client.post(
+        "/api/products/",
+        {
+            "name": "Beta",
+            "description": "second",
+            "price": "30.00",
+            "is_active": False,
+        },
+        format="json",
+    )
+
+    listed = api_client.get("/api/products/")
+    assert listed.status_code == 200
+    assert listed.json()["count"] >= 2
+    assert len(listed.json()["results"]) <= 20
+
+    filtered = api_client.get(
+        "/api/products/",
+        {"q": "Alpha", "is_active": "true", "min_price": "5", "max_price": "15"},
+    )
+    assert filtered.status_code == 200
+    assert all(item["name"] == "Alpha" for item in filtered.json()["results"])
+
+    ordered = api_client.get("/api/products/", {"ordering": "price"})
+    assert ordered.status_code == 200
+    prices = [Decimal(item["price"]) for item in ordered.json()["results"]]
+    assert prices == sorted(prices)
+
+    searched = api_client.get("/api/products/", {"search": "Beta"})
+    assert searched.status_code == 200
+    assert all("Beta" in item["name"] for item in searched.json()["results"])
+
+
+{% if products_link_categories %}
+@pytest.mark.django_db
+def test_product_with_category(api_client: APIClient) -> None:
+    category = api_client.post(
+        "/api/categories/",
+        {"name": "Tools", "description": "Handy tools"},
+        format="json",
+    ).json()
+    product = api_client.post(
+        "/api/products/",
+        {
+            "name": "Hammer",
+            "price": "12.00",
+            "category_id": category["id"],
+        },
+        format="json",
+    )
+    assert product.status_code == 201
+    assert product.json()["category_id"] == category["id"]
+
+    listed = api_client.get("/api/products/", {"category_id": category["id"]})
+    assert listed.status_code == 200
+    assert all(
+        item["category_id"] == category["id"]
+        for item in listed.json()["results"]
+    )
+{% endif %}

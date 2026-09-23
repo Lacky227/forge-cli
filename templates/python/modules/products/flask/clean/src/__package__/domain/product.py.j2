@@ -1,0 +1,21 @@
+"""Product domain entity."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+
+
+@dataclass(slots=True)
+class Product:
+    name: str
+    price: Decimal
+    id: int | None = None
+    description: str | None = None
+    is_active: bool = True
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+{% if products_link_categories %}
+    category_id: int | None = None
+{% endif %}

@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from forge.core import catalog
+from forge.core.modules import MODULE_LABELS, modules_require_sql, normalize_modules
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 _NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
@@ -107,6 +108,9 @@ class ProjectDefinition(BaseModel):
     framework: str
     architecture: ArchitectureStyle
     capabilities: Capabilities = Field(default_factory=Capabilities)
+    # Selectable domain/API modules (products, categories, …). Distinct from
+    # Capabilities. Omitted / empty means a scaffold-only project (0.3 shape).
+    modules: tuple[str, ...] = ()
 
     @field_validator("name")
     @classmethod
@@ -128,6 +132,20 @@ class ProjectDefinition(BaseModel):
         if not cleaned:
             raise ValueError("framework is required")
         return cleaned
+
+    @field_validator("modules", mode="before")
+    @classmethod
+    def modules_normalized(cls, value: object) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            raise ValueError("modules must be a list of module ids, not a string")
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("modules must be a list of module ids")
+        try:
+            return normalize_modules(tuple(str(item) for item in value))
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
     @model_validator(mode="after")
     def validate_compatibility(self) -> ProjectDefinition:
@@ -192,6 +210,13 @@ class ProjectDefinition(BaseModel):
                     + ", ".join(catalog.NOSQL_DATABASES)
                 )
 
+        if self.modules and modules_require_sql(self.modules):
+            if caps.sql_database is None:
+                labels = ", ".join(MODULE_LABELS.get(m, m) for m in self.modules)
+                raise ValueError(
+                    f"modules require an SQL database (selected: {labels})"
+                )
+
         return self
 
     def to_display_dict(self) -> dict[str, Any]:
@@ -238,6 +263,10 @@ class ProjectDefinition(BaseModel):
             rows["Migrations"] = _migrations_display(self.framework, caps)
         if self.framework == "django" and self.project_type is ProjectType.REST_API:
             rows["API"] = "Django REST Framework"
+        if self.modules:
+            rows["Modules"] = ", ".join(
+                MODULE_LABELS.get(m, m) for m in self.modules
+            )
         return rows
 
 

@@ -196,8 +196,9 @@ def iter_planned_outputs_from_dir(
 def planned_outputs(plan: GenerationPlan) -> tuple[PlannedOutput, ...]:
     """Discover every file generation would write for ``plan`` (no I/O writes).
 
-    Uses the same framework tree, ``_shared`` overlay, ``should_emit``, and
-    path transformation as real generation. ``_includes`` is never emitted.
+    Uses the same framework tree, ``_shared`` overlay, module template mounts,
+    ``should_emit``, and path transformation as real generation. ``_includes``
+    is never emitted.
     """
     template_dir = templates_root() / plan.template_subdir
     if not template_dir.is_dir():
@@ -214,10 +215,50 @@ def planned_outputs(plan: GenerationPlan) -> tuple[PlannedOutput, ...]:
     ):
         jobs.extend(iter_planned_outputs_from_dir(shared, plan))
 
+    jobs.extend(_iter_module_planned_outputs(plan))
+
     if not jobs:
         raise GenerationError(f"No template files emitted from {template_dir}")
 
+    _assert_no_output_collisions(jobs)
     return tuple(jobs)
+
+
+def _module_mount_dirs(plan: GenerationPlan) -> list[Path]:
+    """Resolved template roots for module / foundation mounts."""
+    contrib = plan.contributions
+    if contrib is None or not contrib.template_mounts:
+        return []
+    root = templates_root() / plan.definition.language.value
+    dirs: list[Path] = []
+    for mount in contrib.template_mounts:
+        path = root / mount.source_subdir
+        if not path.is_dir():
+            raise GenerationError(
+                f"Module template directory not found: {path}"
+            )
+        dirs.append(path)
+    return dirs
+
+
+def _iter_module_planned_outputs(plan: GenerationPlan) -> list[PlannedOutput]:
+    jobs: list[PlannedOutput] = []
+    for mount_dir in _module_mount_dirs(plan):
+        jobs.extend(iter_planned_outputs_from_dir(mount_dir, plan))
+    return jobs
+
+
+def _assert_no_output_collisions(jobs: list[PlannedOutput]) -> None:
+    seen: dict[str, Path] = {}
+    for job in jobs:
+        key = job.relative_path.as_posix()
+        prior = seen.get(key)
+        if prior is not None:
+            raise GenerationError(
+                "Template output collision for "
+                f"{key!r}:\n  {prior}\n  {job.template_path}"
+            )
+        seen[key] = job.template_path
 
 
 def planned_output_paths(plan: GenerationPlan) -> tuple[str, ...]:
@@ -230,32 +271,40 @@ def render_tree(
     destination: Path,
     plan: GenerationPlan,
 ) -> list[Path]:
-    """Render framework templates, then any language-level ``_shared`` overlay."""
+    """Render framework templates, ``_shared``, then module mounts."""
     if not template_dir.is_dir():
         raise GenerationError(f"Template directory not found: {template_dir}")
 
     include_roots = [path for path in (includes_dir(plan),) if path is not None]
 
-    written: list[Path] = []
-    written.extend(
-        _render_planned_outputs(
-            template_dir,
-            list(iter_planned_outputs_from_dir(template_dir, plan)),
-            destination,
-            plan,
-            extra_dirs=include_roots,
-        )
-    )
+    # Discover all jobs first so collisions fail before any writes.
+    all_jobs = list(planned_outputs(plan))
 
+    roots_in_order: list[Path] = [template_dir.resolve()]
     shared = shared_template_dir(plan)
-    if (
-        shared is not None
-        and shared.resolve() != template_dir.resolve()
-    ):
+    if shared is not None and shared.resolve() != template_dir.resolve():
+        roots_in_order.append(shared.resolve())
+    roots_in_order.extend(path.resolve() for path in _module_mount_dirs(plan))
+
+    jobs_by_root: dict[Path, list[PlannedOutput]] = {
+        root: [] for root in roots_in_order
+    }
+    for job in all_jobs:
+        root = _template_root_for(job.template_path, plan).resolve()
+        if root not in jobs_by_root:
+            jobs_by_root[root] = []
+            roots_in_order.append(root)
+        jobs_by_root[root].append(job)
+
+    written: list[Path] = []
+    for root in roots_in_order:
+        jobs = jobs_by_root.get(root, [])
+        if not jobs:
+            continue
         written.extend(
             _render_planned_outputs(
-                shared,
-                list(iter_planned_outputs_from_dir(shared, plan)),
+                root,
+                jobs,
                 destination,
                 plan,
                 extra_dirs=include_roots,
@@ -266,6 +315,23 @@ def render_tree(
         raise GenerationError(f"No template files emitted from {template_dir}")
 
     return written
+
+
+def _template_root_for(template_path: Path, plan: GenerationPlan) -> Path:
+    """Find which known template root contains ``template_path``."""
+    candidates = [templates_root() / plan.template_subdir]
+    shared = shared_template_dir(plan)
+    if shared is not None:
+        candidates.append(shared)
+    candidates.extend(_module_mount_dirs(plan))
+    resolved = template_path.resolve()
+    for root in candidates:
+        try:
+            resolved.relative_to(root.resolve())
+            return root
+        except ValueError:
+            continue
+    raise GenerationError(f"Cannot locate template root for {template_path}")
 
 
 def _render_planned_outputs(

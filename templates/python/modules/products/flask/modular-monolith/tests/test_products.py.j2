@@ -1,0 +1,135 @@
+"""Products API tests."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+
+def test_create_and_get_product(client) -> None:
+    response = client.post(
+        "/api/products",
+        json={
+            "name": "Widget",
+            "description": "A useful widget",
+            "price": "19.99",
+            "is_active": True,
+        },
+    )
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["name"] == "Widget"
+    assert Decimal(body["price"]) == Decimal("19.99")
+
+    detail = client.get(f"/api/products/{body['id']}")
+    assert detail.status_code == 200
+    assert detail.get_json()["id"] == body["id"]
+
+
+def test_list_update_delete_product(client) -> None:
+    created = client.post(
+        "/api/products",
+        json={"name": "Gadget", "price": "5.00"},
+    ).get_json()
+
+    listed = client.get("/api/products")
+    assert listed.status_code == 200
+    payload = listed.get_json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 20
+    assert payload["total"] >= 1
+    assert any(item["id"] == created["id"] for item in payload["items"])
+
+    updated = client.patch(
+        f"/api/products/{created['id']}",
+        json={"name": "Gadget Plus", "price": "7.50"},
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["name"] == "Gadget Plus"
+    assert Decimal(updated.get_json()["price"]) == Decimal("7.50")
+
+    deleted = client.delete(f"/api/products/{created['id']}")
+    assert deleted.status_code == 204
+    assert client.get(f"/api/products/{created['id']}").status_code == 404
+
+
+def test_product_not_found_and_validation(client) -> None:
+    assert client.get("/api/products/99999").status_code == 404
+    assert client.patch("/api/products/99999", json={"name": "x"}).status_code == 404
+    assert client.delete("/api/products/99999").status_code == 404
+
+    invalid = client.post("/api/products", json={"name": "Bad"})
+    assert invalid.status_code == 422
+
+
+def test_product_pagination_and_filters(client) -> None:
+    client.post(
+        "/api/products",
+        json={
+            "name": "Alpha",
+            "description": "first",
+            "price": "10.00",
+            "is_active": True,
+        },
+    )
+    client.post(
+        "/api/products",
+        json={
+            "name": "Beta",
+            "description": "second",
+            "price": "30.00",
+            "is_active": False,
+        },
+    )
+
+    page = client.get("/api/products", query_string={"page": 1, "page_size": 1})
+    assert page.status_code == 200
+    assert len(page.get_json()["items"]) == 1
+    assert page.get_json()["page_size"] == 1
+    assert page.get_json()["total"] >= 2
+
+    filtered = client.get(
+        "/api/products",
+        query_string={
+            "q": "Alpha",
+            "is_active": True,
+            "min_price": "5",
+            "max_price": "15",
+        },
+    )
+    assert filtered.status_code == 200
+    assert all(item["name"] == "Alpha" for item in filtered.get_json()["items"])
+
+    ordered = client.get("/api/products", query_string={"ordering": "price"})
+    assert ordered.status_code == 200
+    prices = [Decimal(item["price"]) for item in ordered.get_json()["items"]]
+    assert prices == sorted(prices)
+
+    bad_order = client.get("/api/products", query_string={"ordering": "unknown"})
+    assert bad_order.status_code == 422
+
+
+{% if products_link_categories %}
+def test_product_with_category(client) -> None:
+    category = client.post(
+        "/api/categories",
+        json={"name": "Tools", "description": "Handy tools"},
+    ).get_json()
+    product = client.post(
+        "/api/products",
+        json={
+            "name": "Hammer",
+            "price": "12.00",
+            "category_id": category["id"],
+        },
+    )
+    assert product.status_code == 201
+    assert product.get_json()["category_id"] == category["id"]
+
+    listed = client.get(
+        "/api/products", query_string={"category_id": category["id"]}
+    )
+    assert listed.status_code == 200
+    assert all(
+        item["category_id"] == category["id"] for item in listed.get_json()["items"]
+    )
+{% endif %}

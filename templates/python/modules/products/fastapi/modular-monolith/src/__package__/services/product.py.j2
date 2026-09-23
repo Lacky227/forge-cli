@@ -1,0 +1,54 @@
+"""Product service."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.models.product import Product
+from {{ package_name }}.repositories.product import (
+    ProductRepository,
+)
+from {{ package_name }}.schemas.product import ProductCreate, ProductUpdate
+
+
+class ProductService:
+    def __init__(self, db: Session) -> None:
+        self._repo = ProductRepository(db)
+
+    def create(self, data: ProductCreate) -> Product:
+        return self._repo.create(data.model_dump())
+
+    def get(self, product_id: int) -> Product | None:
+        return self._repo.get(product_id)
+
+    def list_query(
+        self,
+        *,
+        q: str | None = None,
+        is_active: bool | None = None,
+        min_price: Decimal | None = None,
+        max_price: Decimal | None = None,
+{% if products_link_categories %}
+        category_id: int | None = None,
+{% endif %}
+        ordering: str = "-created_at",
+    ) -> Any:
+        return self._repo.list_query(
+            q=q,
+            is_active=is_active,
+            min_price=min_price,
+            max_price=max_price,
+{% if products_link_categories %}
+            category_id=category_id,
+{% endif %}
+            ordering=ordering,
+        )
+
+    def update(self, product: Product, data: ProductUpdate) -> Product:
+        return self._repo.update(product, data.model_dump(exclude_unset=True))
+
+    def delete(self, product: Product) -> None:
+        self._repo.delete(product)

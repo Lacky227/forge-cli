@@ -1,0 +1,34 @@
+"""Category repository port."""
+
+from __future__ import annotations
+
+from typing import Protocol
+
+from {{ package_name }}.domain.category import Category
+
+
+class CategoryRepository(Protocol):
+    def create(self, category: Category) -> Category:
+        ...
+
+    def get(self, category_id: int) -> Category | None:
+        ...
+
+    def get_by_slug(self, slug: str) -> Category | None:
+        ...
+
+    def list(
+        self,
+        *,
+        q: str | None = None,
+        ordering: str = "name",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Category], int]:
+        ...
+
+    def update(self, category: Category) -> Category:
+        ...
+
+    def delete(self, category_id: int) -> bool:
+        ...

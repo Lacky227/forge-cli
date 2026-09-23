@@ -45,6 +45,7 @@ Forge generates a **project**, not a pile of empty folders. Depending on selecti
 - dependency manifests
 - environment configuration samples
 - database / ORM / migration setup when selected
+- optional **project modules** (Products, Categories) with real CRUD APIs when selected — see [modules.md](./modules.md)
 - Docker support when selected
 - development tooling (e.g. tests, linters) when selected
 - short project documentation useful for continuing development (stack, setup, env, run, health, tooling, Docker/CI when selected)
@@ -86,6 +87,7 @@ The first product version targets **Python** project generation.
 - SQL databases: PostgreSQL, SQLite
 - NoSQL / infrastructure clients: MongoDB, Redis
 - ORMs: SQLAlchemy, Django ORM (SQL only)
+- Project modules: Products, Categories (SQL-backed CRUD; see [modules.md](./modules.md))
 - JWT authentication
 - Docker
 - pytest, Ruff

@@ -1,0 +1,38 @@
+"""Product repository port."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Protocol
+
+from {{ package_name }}.domain.product import Product
+
+
+class ProductRepository(Protocol):
+    def create(self, product: Product) -> Product:
+        ...
+
+    def get(self, product_id: int) -> Product | None:
+        ...
+
+    def list(
+        self,
+        *,
+        q: str | None = None,
+        is_active: bool | None = None,
+        min_price: Decimal | None = None,
+        max_price: Decimal | None = None,
+{% if products_link_categories %}
+        category_id: int | None = None,
+{% endif %}
+        ordering: str = "-created_at",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Product], int]:
+        ...
+
+    def update(self, product: Product) -> Product:
+        ...
+
+    def delete(self, product_id: int) -> bool:
+        ...

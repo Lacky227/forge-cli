@@ -3,6 +3,20 @@
 Import model modules from Alembic's ``env.py`` so metadata is complete.
 """
 
+{% set base_key = package_name ~ '.database' %}
+{% set ns = namespace(entries=[]) %}
+{% for m in model_imports %}
+{% set _ = ns.entries.append({'key': m.import_module, 'kind': 'model', 'm': m}) %}
+{% endfor %}
+{% set _ = ns.entries.append({'key': base_key, 'kind': 'base'}) %}
+{% for item in ns.entries|sort(attribute='key') %}
+{% if item.kind == 'base' %}
 from {{ package_name }}.database import Base
+{% else %}
+from {{ item.m.import_module }} import (  # noqa: F401
+    {{ item.m.symbol }} as _{{ item.m.module_id }}_model,
+)
+{% endif %}
+{% endfor %}
 
 __all__ = ["Base"]

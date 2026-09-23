@@ -1,0 +1,16 @@
+"""Category domain entity."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass(slots=True)
+class Category:
+    name: str
+    slug: str
+    id: int | None = None
+    description: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

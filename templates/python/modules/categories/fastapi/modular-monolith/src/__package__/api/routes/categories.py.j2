@@ -1,0 +1,85 @@
+"""Categories HTTP routes."""
+
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.api.pagination import (
+    PageParams,
+    get_page_params,
+    paginate,
+)
+from {{ package_name }}.core.database import get_db
+from {{ package_name }}.repositories.category import ORDERING_CHOICES
+from {{ package_name }}.schemas.category import (
+    CategoryCreate,
+    CategoryRead,
+    CategoryUpdate,
+)
+from {{ package_name }}.services.category import CategoryService
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+
+
+@router.post("", response_model=CategoryRead, status_code=status.HTTP_201_CREATED)
+def create_category(body: CategoryCreate, db: DbSession) -> CategoryRead:
+    category = CategoryService(db).create(body)
+    return CategoryRead.model_validate(category)
+
+
+@router.get("")
+def list_categories(
+    db: DbSession,
+    params: Page,
+    q: Annotated[str | None, Query()] = None,
+    ordering: Annotated[str, Query()] = "name",
+) -> dict[str, Any]:
+    if ordering not in ORDERING_CHOICES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid ordering: {ordering}",
+        )
+    query = CategoryService(db).list_query(q=q, ordering=ordering)
+    result = paginate(query, params.page, params.page_size)
+    return {
+        "items": [CategoryRead.model_validate(item) for item in result["items"]],
+        "page": result["page"],
+        "page_size": result["page_size"],
+        "total": result["total"],
+    }
+
+
+@router.get("/{category_id}", response_model=CategoryRead)
+def get_category(category_id: int, db: DbSession) -> CategoryRead:
+    category = CategoryService(db).get(category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return CategoryRead.model_validate(category)
+
+
+@router.patch("/{category_id}", response_model=CategoryRead)
+def update_category(
+    category_id: int, body: CategoryUpdate, db: DbSession
+) -> CategoryRead:
+    service = CategoryService(db)
+    category = service.get(category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    updated = service.update(category, body)
+    return CategoryRead.model_validate(updated)
+
+
+@router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category(category_id: int, db: DbSession) -> Response:
+    service = CategoryService(db)
+    category = service.get(category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    service.delete(category)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

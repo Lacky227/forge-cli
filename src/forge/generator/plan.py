@@ -7,6 +7,7 @@ from pathlib import Path
 
 from forge.core import catalog
 from forge.core.definition import ProjectDefinition
+from forge.generator.modules import ModuleContributions, contribution_jinja_dict
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,8 @@ class GenerationPlan:
     check_command: str | None = None
     # Django: dotted path of the primary app package (e.g. "core" or "apps.core")
     primary_app: str | None = None
+    # Resolved project modules and structured template contributions.
+    contributions: ModuleContributions | None = None
 
     @property
     def emits_env_example(self) -> bool:
@@ -137,6 +140,18 @@ class GenerationPlan:
         sections: list[PlanSummarySection] = [
             PlanSummarySection("Project", tuple(project_rows)),
         ]
+
+        contrib = self.contributions
+        if contrib is not None and contrib.enabled:
+            module_rows = tuple((m.label, m.id) for m in contrib.modules)
+            sections.append(PlanSummarySection("Modules", module_rows))
+            if contrib.products_link_categories:
+                sections.append(
+                    PlanSummarySection(
+                        "Relationship",
+                        (("Products", "Category (many-to-one)"),),
+                    )
+                )
 
         if features.database or features.nosql:
             if features.database:
@@ -305,6 +320,11 @@ class GenerationPlan:
             "emits_env_example": self.emits_env_example,
             "docker_services": self.docker_services,
             "health_path": self.health_path,
+            **(
+                contribution_jinja_dict(self.contributions)
+                if self.contributions is not None
+                else contribution_jinja_dict(ModuleContributions())
+            ),
         }
 
 

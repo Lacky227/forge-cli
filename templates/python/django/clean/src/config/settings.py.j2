@@ -25,6 +25,11 @@ INSTALLED_APPS = [
     "rest_framework",
 {% endif %}
     "{{ primary_app }}",
+{% for app in django_apps|sort(attribute='module_id') %}
+{% if app.app_config %}
+    "{{ app.app_config }}",
+{% endif %}
+{% endfor %}
 ]
 
 MIDDLEWARE = [
@@ -112,5 +117,14 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
+{% if has_modules %}
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
+{% endif %}
+}
+{% elif has_modules %}
+REST_FRAMEWORK = {
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
 }
 {% endif %}

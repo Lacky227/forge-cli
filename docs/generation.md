@@ -24,6 +24,13 @@ smoke coverage — it is **not** a second compatibility engine.
 
 Python **REST API** only. CLI / Worker project types are catalogued but not generated yet.
 
+### Project modules
+
+Optional selectable modules (`products`, `categories`) add architecture-native CRUD
+APIs. They require SQL. See [modules.md](./modules.md) for the API contract,
+relationship rules, and composition model. Representative cases are included in
+`SUPPORTED_GENERATION_CASES`.
+
 ### Persistence
 
 SQL and NoSQL are independent. At most one engine from each category.

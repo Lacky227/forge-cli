@@ -28,4 +28,12 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
     from {{ package_name }}.presentation.api import bp
 
     app.register_blueprint(bp)
+{% for b in flask_blueprints|sort(attribute='module_id') %}
+    from {{ b.import_module }} import (
+        {{ b.blueprint_attr }} as {{ b.module_id }}_bp,
+    )
+
+    app.register_blueprint({{ b.module_id }}_bp)
+{% endfor %}
+
     return app

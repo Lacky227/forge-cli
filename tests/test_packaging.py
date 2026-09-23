@@ -72,6 +72,15 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     assert any(n.endswith("mongodb.py.j2") for n in templates)
     assert any(n.endswith("redis_client.py.j2") for n in templates)
     assert any(
+        "/modules/products/" in n for n in templates
+    ), "missing products module templates"
+    assert any(
+        "/modules/categories/" in n for n in templates
+    ), "missing categories module templates"
+    assert any(
+        "/modules/_foundation/" in n for n in templates
+    ), "missing module foundation templates"
+    assert any(
         "/_shared/" in n and n.endswith("ci.yml.j2") for n in templates
     ), "missing shared GitHub Actions CI template"
     assert any(
@@ -219,3 +228,43 @@ ci: github-actions
     assert "uv sync" in workflow_text
     assert "uv run pytest -q" in workflow_text
     assert "uv run ruff check ." in workflow_text
+
+    # Modules must resolve from the installed wheel template tree.
+    modules_config = gen_dir / "modules.yaml"
+    modules_config.write_text(
+        """
+name: wheel-mods
+type: rest-api
+framework: fastapi
+architecture: simple
+modules:
+  - products
+  - categories
+persistence:
+  sql: sqlite
+migrations: true
+testing: true
+linting: true
+""",
+        encoding="utf-8",
+    )
+    plan_out = subprocess.check_output(
+        [str(forge_bin), "plan", "--config", str(modules_config)],
+        cwd=gen_dir,
+        env=env,
+        text=True,
+    )
+    assert "Products" in plan_out
+    assert "Categories" in plan_out
+    subprocess.run(
+        [str(forge_bin), "new", "--config", str(modules_config)],
+        cwd=gen_dir,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    mods_project = gen_dir / "wheel-mods"
+    assert (mods_project / "src" / "wheel_mods" / "products.py").is_file()
+    assert (mods_project / "src" / "wheel_mods" / "categories.py").is_file()
+    assert (mods_project / "tests" / "test_products.py").is_file()

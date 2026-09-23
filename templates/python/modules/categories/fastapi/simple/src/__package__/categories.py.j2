@@ -1,0 +1,187 @@
+"""Categories API: schemas, service helpers, and router."""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from datetime import datetime
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.categories_models import Category
+from {{ package_name }}.database import get_db
+from {{ package_name }}.pagination import (
+    PageParams,
+    get_page_params,
+    paginate,
+)
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+
+_ORDERING = {
+    "name": Category.name.asc(),
+    "-name": Category.name.desc(),
+    "created_at": Category.created_at.asc(),
+    "-created_at": Category.created_at.desc(),
+}
+
+
+def slugify(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^\w\s-]", "", ascii_text.lower())
+    slug = re.sub(r"[-\s]+", "-", slug).strip("-")
+    return (slug or "category")[:220]
+
+
+class CategoryCreate(BaseModel):
+    name: str = Field(..., max_length=200)
+    slug: str | None = Field(None, max_length=220)
+    description: str | None = None
+
+
+class CategoryUpdate(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    slug: str | None = Field(None, max_length=220)
+    description: str | None = None
+
+
+class CategoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+def create_category(db: Session, data: CategoryCreate) -> Category:
+    payload = data.model_dump()
+    if not payload.get("slug"):
+        payload["slug"] = slugify(payload["name"])
+    existing = db.query(Category).filter(Category.slug == payload["slug"]).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="slug already exists",
+        )
+    category = Category(**payload)
+    db.add(category)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+def get_category(db: Session, category_id: int) -> Category | None:
+    return db.get(Category, category_id)
+
+
+def list_categories(
+    db: Session,
+    *,
+    q: str | None = None,
+    ordering: str = "name",
+) -> Any:
+    query = db.query(Category)
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter(
+            or_(Category.name.ilike(pattern), Category.description.ilike(pattern))
+        )
+    query = query.order_by(_ORDERING.get(ordering, Category.name.asc()))
+    return query
+
+
+def update_category(
+    db: Session, category: Category, data: CategoryUpdate
+) -> Category:
+    payload = data.model_dump(exclude_unset=True)
+    if "slug" in payload and payload["slug"] is None:
+        del payload["slug"]
+    if "name" in payload and "slug" not in payload and not category.slug:
+        payload["slug"] = slugify(payload["name"])
+    if "slug" in payload:
+        existing = (
+            db.query(Category)
+            .filter(Category.slug == payload["slug"], Category.id != category.id)
+            .first()
+        )
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="slug already exists",
+            )
+    for key, value in payload.items():
+        setattr(category, key, value)
+    db.add(category)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+def delete_category(db: Session, category: Category) -> None:
+    db.delete(category)
+    db.commit()
+
+
+@router.post("", response_model=CategoryRead, status_code=status.HTTP_201_CREATED)
+def create_category_endpoint(body: CategoryCreate, db: DbSession) -> Category:
+    return create_category(db, body)
+
+
+@router.get("")
+def list_categories_endpoint(
+    db: DbSession,
+    params: Page,
+    q: Annotated[str | None, Query()] = None,
+    ordering: Annotated[str, Query()] = "name",
+) -> dict[str, Any]:
+    if ordering not in _ORDERING:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid ordering: {ordering}",
+        )
+    query = list_categories(db, q=q, ordering=ordering)
+    result = paginate(query, params.page, params.page_size)
+    return {
+        "items": [CategoryRead.model_validate(item) for item in result["items"]],
+        "page": result["page"],
+        "page_size": result["page_size"],
+        "total": result["total"],
+    }
+
+
+@router.get("/{category_id}", response_model=CategoryRead)
+def get_category_endpoint(category_id: int, db: DbSession) -> Category:
+    category = get_category(db, category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return category
+
+
+@router.patch("/{category_id}", response_model=CategoryRead)
+def update_category_endpoint(
+    category_id: int, body: CategoryUpdate, db: DbSession
+) -> Category:
+    category = get_category(db, category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return update_category(db, category, body)
+
+
+@router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category_endpoint(category_id: int, db: DbSession) -> Response:
+    category = get_category(db, category_id)
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    delete_category(db, category)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

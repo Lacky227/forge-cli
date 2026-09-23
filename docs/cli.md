@@ -165,6 +165,7 @@ forge plan my-api --config forge.yaml
 - Framework-implied values (ORM, migration system, DRF, commands, dependencies) come from `GenerationPlan`, not from re-reading the definition in the CLI.
 - Tooling includes testing, linting, Docker, and CI (provider label or `no`).
 - When applicable, the summary also shows **Environment** (variable name + purpose), **Docker** dependency services, and **HTTP** liveness (`GET <health_path>`).
+- When modules are selected, the summary includes a **Modules** section (and **Relationship** when Products and Categories are linked).
 - File lists belong to `forge new --dry-run`, not `forge plan`.
 
 ## Presets
@@ -247,6 +248,7 @@ forge new --config forge.yaml          # uses name from YAML
 | `type` | yes | e.g. `rest-api` |
 | `framework` | yes | e.g. `fastapi`, `django`, `flask` |
 | `architecture` | yes | `simple`, `modular-monolith`, `clean` |
+| `modules` | no | list of module ids (`products`, `categories`); omit or `[]` for none — see [modules.md](./modules.md) |
 | `persistence` | no | mapping with optional `sql` / `nosql` keys (see below) |
 | `database` | no | **legacy SQL shorthand** — engine `postgresql` / `sqlite`, or `false`/`null` for none |
 | `orm` | no | optional explicit override; usually omit |
@@ -295,6 +297,24 @@ persistence: null
 Legacy `database: postgresql` remains supported as an SQL-only shorthand. Combining `database` and `persistence` is allowed when they agree (e.g. `database: postgresql` + `persistence: {nosql: redis}`). Conflicting values are rejected with a clear error.
 
 ### Examples
+
+FastAPI with Products + Categories:
+
+```yaml
+name: catalog-api
+type: rest-api
+framework: fastapi
+architecture: modular-monolith
+modules:
+  - products
+  - categories
+persistence:
+  sql: postgresql
+migrations: true
+testing: true
+linting: true
+docker: true
+```
 
 FastAPI with SQL + Redis:
 
@@ -351,7 +371,8 @@ docker: true
 
 - Framework options depend on language + project type (FastAPI, Django, Flask, …)
 - Architecture for REST API: Simple, Modular Monolith, Clean Architecture
-- **FastAPI / Flask:** optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
+- **Project modules:** optional multi-select (Products, Categories). See [modules.md](./modules.md)
+- **FastAPI / Flask:** if modules requiring SQL are selected, ask for an SQL engine (no silent default); otherwise optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
 - **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three
 - **CI:** after testing/linting, if either is Yes, ask “Add CI?” with GitHub Actions / No; skipped when both tooling options are No

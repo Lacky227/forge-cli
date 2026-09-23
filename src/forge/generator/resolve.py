@@ -17,6 +17,7 @@ from forge.core.definition import ProjectDefinition
 from forge.core.naming import to_package_name
 from forge.core.types import ArchitectureStyle, ProjectType
 from forge.generator.errors import GenerationError
+from forge.generator.modules import resolve_module_contributions
 from forge.generator.plan import EnvVarSpec, GenerationFeatures, GenerationPlan
 
 _SQLALCHEMY_ORM = "sqlalchemy"
@@ -53,6 +54,10 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
     )
     docker_services = _docker_services(features)
     health_path = _health_path(definition)
+    contributions = resolve_module_contributions(
+        definition,
+        package_name=package_name,
+    )
 
     return GenerationPlan(
         definition=definition,
@@ -82,6 +87,7 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
         migrate_command=migrate_command,
         check_command=check_command,
         primary_app=primary_app,
+        contributions=contributions,
     )
 
 
@@ -223,12 +229,13 @@ def _resolve_dependencies(
     definition: ProjectDefinition,
     features: GenerationFeatures,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    has_modules = bool(definition.modules)
     if definition.framework == "fastapi":
         runtime, dev = _fastapi_dependencies(features)
     elif definition.framework == "django":
         runtime, dev = _django_dependencies(features)
     elif definition.framework == "flask":
-        runtime, dev = _flask_dependencies(features)
+        runtime, dev = _flask_dependencies(features, has_modules=has_modules)
     else:
         raise GenerationError(
             "Cannot generate this project:\n\n"
@@ -306,6 +313,8 @@ def _django_dependencies(
 
 def _flask_dependencies(
     features: GenerationFeatures,
+    *,
+    has_modules: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Flask is intentionally minimal — persistence deps only when selected."""
     runtime: list[str] = [
@@ -319,6 +328,8 @@ def _flask_dependencies(
             runtime.append("psycopg[binary]>=3.2")
         if features.migration_system == _ALEMBIC:
             runtime.append("alembic>=1.14")
+    if has_modules:
+        runtime.append("pydantic>=2.0")
 
     dev: list[str] = []
     if features.testing:
