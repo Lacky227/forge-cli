@@ -152,9 +152,9 @@ class ForgeConfig(BaseModel):
         if value is None:
             return []
         if isinstance(value, str):
-            raise ValueError("modules must be a list of module ids, not a string")
+            raise TypeError("modules must be a list of module ids, not a string")
         if not isinstance(value, list):
-            raise ValueError("modules must be a list of module ids")
+            raise TypeError("modules must be a list of module ids")
         try:
             return list(normalize_modules(tuple(str(item) for item in value)))
         except ValueError as exc:

@@ -13,7 +13,7 @@ with deliberate architecture, persistence, tooling, and infrastructure choices.
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/Lacky227/forge-cli)
 
-**Current release:** [0.3.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.3.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
+**Current release:** [0.4.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.4.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
 
 </div>
 
@@ -286,6 +286,18 @@ persistence:
   sql: postgresql
   nosql: redis
 
+modules:
+  - products
+  - categories
+  - files
+  - background-jobs
+  - email
+  - webhooks
+
+storage:
+  backend: s3
+  minio: true
+
 migrations: true
 testing: true
 linting: true
@@ -296,7 +308,7 @@ docker: true
 forge new --config forge.yaml
 ```
 
-Legacy `database: postgresql` remains supported as an SQL-only shorthand. Prefer the `persistence` model for new configs.
+Omit `modules` (or use `modules: []`) for a scaffold-only project. `storage` is only valid when Files is selected. Legacy `database: postgresql` remains supported as an SQL-only shorthand; prefer `persistence` for new configs.
 
 `--preset` and `--config` cannot be combined.
 
@@ -327,7 +339,7 @@ Legacy `database: postgresql` remains supported as an SQL-only shorthand. Prefer
 
 ## Project status
 
-**Current release: [0.3.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.3.0)** — public development / alpha.
+**Current release: [0.4.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.4.0)** — public development / alpha.
 
 Current limitations:
 
@@ -336,6 +348,8 @@ Current limitations:
 - Redis integration is a client wiring — not cache/session/queue abstractions
 - MongoDB uses PyMongo directly — no ODM layer
 - At most one SQL database and one NoSQL database per project
+- Users / Auth modules are not in 0.4 (reserved for a later release)
+- Webhooks are outgoing-only; Background Jobs use RQ only; Files storage is local or S3-compatible
 
 ---
 

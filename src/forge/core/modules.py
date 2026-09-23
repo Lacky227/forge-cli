@@ -125,7 +125,8 @@ def normalize_modules(raw: list[str] | tuple[str, ...] | None) -> tuple[str, ...
     """Normalize module ids: lowercase, unique, catalog order.
 
     Does **not** expand dependencies — call ``expand_module_dependencies``
-    during resolution. Raises ``ValueError`` for unknown ids. Empty / None → ``()``.
+    during resolution. Raises ``TypeError`` for non-string ids and
+    ``ValueError`` for unknown/empty ids. Empty / None → ``()``.
     """
     if not raw:
         return ()
@@ -135,7 +136,7 @@ def normalize_modules(raw: list[str] | tuple[str, ...] | None) -> tuple[str, ...
     selected: set[str] = set()
     for item in raw:
         if not isinstance(item, str):
-            raise ValueError(f"module id must be a string, got {type(item).__name__}")
+            raise TypeError(f"module id must be a string, got {type(item).__name__}")
         cleaned = item.strip().lower()
         if not cleaned:
             raise ValueError("module id must not be empty")

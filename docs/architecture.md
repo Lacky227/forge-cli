@@ -96,7 +96,9 @@ GenerationPlan    = what Forge resolved that request into
 Module template mounts live under `templates/python/modules/` and are discovered
 alongside the framework tree and `_shared` overlay. Base templates loop structured
 contributions for shared-file wiring (routers, `INSTALLED_APPS`, blueprints).
-See [modules.md](./modules.md).### Generator / Templates
+See [modules.md](./modules.md).
+
+### Generator / Templates
 
 ```text
 templates/python/{fastapi,django,flask}/{simple,modular-monolith,clean}/
@@ -167,6 +169,7 @@ presentation/     HTTP API (FastAPI / Flask / DRF)
 - Persistence directories and SQL ports are omitted when no SQL database is selected (FastAPI/Flask).
 - MongoDB / Redis clients live in infrastructure (Clean) or core/package modules — domain must not import them.
 - Django Clean keeps ORM models in `infrastructure.persistence` (Django app) and DRF views in `presentation.api`.
+- Django Clean **module** packs follow the same presentation + ORM shape; they do not add full domain/application ports (unlike FastAPI/Flask Clean modules). See [modules.md](./modules.md).
 
 ### Django decisions
 

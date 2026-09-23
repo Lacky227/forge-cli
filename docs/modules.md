@@ -10,7 +10,7 @@ not a parallel catalog of user-facing modules. See
 [architecture.md](./architecture.md) for how modules resolve into structured
 contributions.
 
-## Current modules (Stage 2)
+## Current modules
 
 | Module | Id | Requires SQL | Notes |
 |--------|-----|--------------|-------|
@@ -25,7 +25,12 @@ Modules are independently multi-selectable. Selecting **Webhooks** expands to
 include **Background Jobs** (and therefore Redis). When **both** Products and
 Categories are selected, Forge generates a many-to-one relationship.
 
-Authentication, users, and security modules are reserved for Forge **0.5**.
+Authentication, users, and security modules are reserved for a later release
+(not part of 0.4).
+
+**Django Clean note:** Django Clean module packs wire presentation (DRF) and ORM
+models in `infrastructure.persistence`; they do **not** add full
+domain/application ports the way FastAPI/Flask Clean modules do.
 
 ## User intent vs infrastructure
 
@@ -61,7 +66,7 @@ storage:
   minio: true          # only with backend: s3 and docker: true
 ```
 
-Stage 1 syntax remains valid:
+A smaller catalog-only selection is also valid:
 
 ```yaml
 modules:
@@ -69,7 +74,7 @@ modules:
   - categories
 ```
 
-- Omitted `modules` or `modules: []` → no modules (0.3 scaffold shape)
+- Omitted `modules` or `modules: []` → no modules (scaffold-only, as in 0.3)
 - Unknown ids / backends are rejected
 - Duplicates are removed; order is normalized to the catalog order
 - SQL-requiring modules without SQL fail validation (YAML) or prompt
@@ -132,7 +137,7 @@ without it.
 
 ## Background Jobs
 
-Single Stage 2 implementation: **RQ** on Redis.
+Single implementation in 0.4: **RQ** on Redis.
 
 Generated artifacts include queue helpers, an example deterministic task
 (`ping` / `enqueue_ping`), a worker process, tests (mocked Redis/RQ), and README/worker

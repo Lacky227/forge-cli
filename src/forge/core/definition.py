@@ -15,8 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from forge.core import catalog
 from forge.core.modules import (
     MODULE_LABELS,
-    ModuleId,
     STORAGE_BACKEND_LABELS,
+    ModuleId,
     StorageBackend,
     expand_module_dependencies,
     modules_require_sql,
@@ -47,7 +47,7 @@ class StorageOptions(BaseModel):
         if value is None:
             return StorageBackend.LOCAL.value
         if not isinstance(value, str):
-            raise ValueError("storage.backend must be a string")
+            raise TypeError("storage.backend must be a string")
         return normalize_storage_backend(value) or StorageBackend.LOCAL.value
 
     @model_validator(mode="after")
@@ -180,9 +180,9 @@ class ProjectDefinition(BaseModel):
         if value is None:
             return ()
         if isinstance(value, str):
-            raise ValueError("modules must be a list of module ids, not a string")
+            raise TypeError("modules must be a list of module ids, not a string")
         if not isinstance(value, (list, tuple)):
-            raise ValueError("modules must be a list of module ids")
+            raise TypeError("modules must be a list of module ids")
         try:
             return normalize_modules(tuple(str(item) for item in value))
         except ValueError as exc:
@@ -270,12 +270,15 @@ class ProjectDefinition(BaseModel):
                     + ", ".join(catalog.NOSQL_DATABASES)
                 )
 
-        if self.modules and modules_require_sql(self.modules):
-            if caps.sql_database is None:
-                labels = ", ".join(MODULE_LABELS.get(m, m) for m in self.modules)
-                raise ValueError(
-                    f"modules require an SQL database (selected: {labels})"
-                )
+        if (
+            self.modules
+            and modules_require_sql(self.modules)
+            and caps.sql_database is None
+        ):
+            labels = ", ".join(MODULE_LABELS.get(m, m) for m in self.modules)
+            raise ValueError(
+                f"modules require an SQL database (selected: {labels})"
+            )
 
         has_files = ModuleId.FILES.value in expand_module_dependencies(
             self.modules
