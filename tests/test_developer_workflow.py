@@ -299,7 +299,7 @@ def test_resolve_health_paths() -> None:
         resolve_plan(
             _fastapi(architecture=ArchitectureStyle.CLEAN)
         ).health_path
-        == "/api/health"
+        == "/health"
     )
     assert (
         resolve_plan(

@@ -74,6 +74,12 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     assert any(
         "/_shared/" in n and n.endswith("ci.yml.j2") for n in templates
     ), "missing shared GitHub Actions CI template"
+    assert any(
+        "/_shared/" in n and n.endswith(".env.example.j2") for n in templates
+    )
+    assert any(
+        "/_includes/" in n and n.endswith("readme_macros.j2") for n in templates
+    )
     assert not any(n.startswith("tests/") for n in names)
     assert not any(".cursor" in n for n in names)
     assert not any(".smoke" in n for n in names)

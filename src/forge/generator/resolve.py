@@ -439,16 +439,13 @@ def _docker_services(features: GenerationFeatures) -> tuple[str, ...]:
 
 
 def _health_path(definition: ProjectDefinition) -> str:
-    """Liveness path currently generated for this stack (not a future ideal)."""
+    """Liveness endpoint path for the generated stack."""
     framework = definition.framework
     if framework == "django":
         return "/api/health/"
     if framework == "flask":
         return "/api/health"
-    if framework == "fastapi":
-        if definition.architecture is ArchitectureStyle.CLEAN:
-            return "/api/health"
-        return "/health"
+    # FastAPI (all architectures)
     return "/health"
 
 

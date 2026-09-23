@@ -47,7 +47,7 @@ Forge generates a **project**, not a pile of empty folders. Depending on selecti
 - database / ORM / migration setup when selected
 - Docker support when selected
 - development tooling (e.g. tests, linters) when selected
-- short project documentation useful for continuing development
+- short project documentation useful for continuing development (stack, setup, env, run, health, tooling, Docker/CI when selected)
 
 Generated projects should be understandable, runnable, conventional, maintainable, and suitable as the start of a real codebase.
 

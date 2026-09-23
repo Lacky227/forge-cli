@@ -58,6 +58,11 @@ class GenerationFeatures:
 
     @property
     def env_example(self) -> bool:
+        """True when SQL, NoSQL, or Docker is selected.
+
+        Prefer ``bool(GenerationPlan.environment_variables)`` for whether an
+        ``.env.example`` file should be emitted — Docker alone may have no vars.
+        """
         return self.database or self.nosql or self.docker
 
 
@@ -106,6 +111,11 @@ class GenerationPlan:
     check_command: str | None = None
     # Django: dotted path of the primary app package (e.g. "core" or "apps.core")
     primary_app: str | None = None
+
+    @property
+    def emits_env_example(self) -> bool:
+        """Emit ``.env.example`` only when there are concrete variables."""
+        return bool(self.environment_variables)
 
     def summary_sections(self) -> tuple[PlanSummarySection, ...]:
         """Human-oriented sections derived from resolved plan data only."""
@@ -292,6 +302,7 @@ class GenerationPlan:
                 }
                 for spec in self.environment_variables
             ],
+            "emits_env_example": self.emits_env_example,
             "docker_services": self.docker_services,
             "health_path": self.health_path,
         }

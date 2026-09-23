@@ -34,25 +34,29 @@ class GenerationResult:
         return self.plan.entry_file
 
     def next_steps(self) -> list[str]:
+        """Local-dev bootstrap: deps via Compose, then migrate/run on the host.
+
+        ``docker compose up -d <services>`` lists *dependency* services only
+        (``db`` / ``mongodb`` / ``redis``). It is omitted when Docker is off
+        or when there are no dependency services (Docker packaging alone).
+        Full-stack ``docker compose up --build`` remains documented in the
+        generated README Docker section.
+        """
         steps = [
             f"cd {self.destination.name}",
             "uv sync",
         ]
-        features = self.plan.features
-        if features.docker and (
-            features.postgresql or features.mongodb or features.redis
-        ):
-            services: list[str] = []
-            if features.postgresql:
-                services.append("db")
-            if features.mongodb:
-                services.append("mongodb")
-            if features.redis:
-                services.append("redis")
-            steps.append(f"docker compose up -d {' '.join(services)}")
-        if self.plan.migrate_command:
-            steps.append(self.plan.migrate_command)
-        steps.append(self.plan.run_command)
+        plan = self.plan
+        features = plan.features
+        if plan.emits_env_example:
+            steps.append("cp .env.example .env")
+        if features.docker and plan.docker_services:
+            steps.append(
+                f"docker compose up -d {' '.join(plan.docker_services)}"
+            )
+        if plan.migrate_command:
+            steps.append(plan.migrate_command)
+        steps.append(plan.run_command)
         if features.testing:
             steps.append("uv run pytest")
         if features.linting:

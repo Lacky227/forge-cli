@@ -1,0 +1,166 @@
+{# Shared README capability sections — import from architecture-specific READMEs. #}
+
+{% macro stack_section() %}
+## Stack
+
+- Language: Python
+- Framework: {{ framework_label }}
+- Architecture: {{ architecture_label }}
+{% if rest_framework %}
+- API: Django REST Framework
+{% endif %}
+{% if database %}
+- SQL: {{ database_engine }}
+{% if orm == "django-orm" %}
+- ORM: Django ORM
+{% elif orm == "sqlalchemy" %}
+- ORM: SQLAlchemy
+{% elif orm %}
+- ORM: {{ orm }}
+{% endif %}
+{% if migration_system == "django" %}
+- Migrations: Django
+{% elif migration_system == "alembic" %}
+- Migrations: Alembic
+{% endif %}
+{% endif %}
+{% if is_mongodb %}
+- NoSQL: MongoDB ({{ nosql_client }})
+{% endif %}
+{% if is_redis %}
+- NoSQL: Redis ({{ nosql_client }})
+{% endif %}
+{% if docker %}
+- Docker: yes
+
+{% endif %}
+{% if testing %}
+- Tests: pytest{% if framework == "django" %} + pytest-django{% endif %}
+
+{% endif %}
+{% if linting %}
+- Linting: Ruff
+
+{% endif %}
+{% if ci %}
+- CI: GitHub Actions
+
+{% endif %}
+{% endmacro %}
+
+{% macro setup_section() %}
+## Setup
+
+```bash
+uv sync
+```
+{% if emits_env_example %}
+
+```bash
+cp .env.example .env
+```
+{% endif %}
+{% endmacro %}
+
+{% macro configuration_section() %}
+{% if emits_env_example %}
+## Configuration
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+{% for var in environment_variables %}
+| `{{ var.name }}` | {{ var.purpose }} | `{{ var.example }}` |
+{% endfor %}
+{% endif %}
+{% endmacro %}
+
+{% macro run_section() %}
+## Run
+
+{% if check_command %}
+```bash
+{{ check_command }}
+{% if migrate_command %}
+{{ migrate_command }}
+{% endif %}
+{{ run_command }}
+```
+{% else %}
+```bash
+{{ run_command }}
+```
+{% endif %}
+
+Health check (liveness): `GET {{ health_path }}`.
+{% endmacro %}
+
+{% macro migrations_section() %}
+{% if migrations %}
+## Migrations
+
+{% if migration_system == "django" %}
+```bash
+uv run python manage.py makemigrations
+uv run python manage.py migrate
+```
+{% elif migration_system == "alembic" %}
+```bash
+uv run alembic revision --autogenerate -m "initial"
+uv run alembic upgrade head
+```
+{% endif %}
+{% endif %}
+{% endmacro %}
+
+{% macro tests_section() %}
+{% if testing %}
+## Tests
+
+```bash
+uv run pytest
+```
+{% endif %}
+{% endmacro %}
+
+{% macro lint_section() %}
+{% if linting %}
+## Lint
+
+```bash
+uv run ruff check .
+```
+{% endif %}
+{% endmacro %}
+
+{% macro docker_section() %}
+{% if docker %}
+## Docker
+
+{% if docker_services %}
+```bash
+docker compose up -d {{ docker_services | join(" ") }}
+docker compose up --build
+```
+{% else %}
+```bash
+docker compose up --build
+```
+{% endif %}
+{% endif %}
+{% endmacro %}
+
+{% macro ci_section() %}
+{% if ci %}
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on pushes and pull requests:
+{% if linting %}
+
+- `uv run ruff check .`
+{% endif %}
+{% if testing %}
+
+- `uv run pytest -q`
+{% endif %}
+{% endif %}
+{% endmacro %}

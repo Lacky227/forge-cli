@@ -47,8 +47,10 @@ services:
     build: .
     ports:
       - "8000:8000"
+{% if emits_env_example %}
     env_file:
       - .env
+{% endif %}
 {% if is_postgresql or is_mongodb or is_redis %}
     environment:
 {% if is_postgresql %}

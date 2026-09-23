@@ -334,6 +334,8 @@ docker: true
 - Docker / pytest / Ruff are explicit confirms for all three
 - **CI:** after testing/linting, if either is Yes, ask “Add CI?” with GitHub Actions / No; skipped when both tooling options are No
 
+Generated project READMEs document stack, setup (`uv sync`, `cp .env.example .env` when env vars exist), configuration table from resolved environment metadata, run/health (liveness only), migrations/tests/lint/Docker/CI when selected, and a short layout section.
+
 Architecture questions are independent of framework. Framework implications are applied in `resolve_plan`, not by stuffing implied fields into `ProjectDefinition` during the interview.
 
 ## Interaction modes

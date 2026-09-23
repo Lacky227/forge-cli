@@ -78,21 +78,22 @@ Includes definition reference, package/template paths, `GenerationFeatures` (inc
 
 - `environment_variables` — canonical `EnvVarSpec` list for the selected stack (source of truth for future `.env.example` / README; already shown by `forge plan`)
 - `docker_services` — Compose **dependency** service names (`db`, `mongodb`, `redis`) when Docker is enabled; empty when Docker is off or there are no dependency services
-- `health_path` — current generated liveness path for the stack (reflects templates today; path normalization is a later change)
+- `health_path` — generated liveness path (FastAPI `/health`; Flask `/api/health`; Django `/api/health/`)
+- `environment_variables` / `emits_env_example` — canonical env metadata; `.env.example` is emitted only when the list is non-empty
 
 ```text
 ProjectDefinition = what the user asked for
 GenerationPlan    = what Forge resolved that request into
 ```
-
 ### Generator / Templates
 
 ```text
 templates/python/{fastapi,django,flask}/{simple,modular-monolith,clean}/
-templates/python/_shared/   ← cross-architecture overlays (e.g. GitHub Actions CI)
+templates/python/_shared/     ← emitted overlays (GitHub Actions CI, `.env.example`)
+templates/python/_includes/   ← Jinja macros/includes (not copied into projects)
 ```
 
-Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters. Language-level ``_shared`` templates are merged after the framework/architecture tree when applicable (capability-gated via ``should_emit``).
+Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters. Language-level ``_shared`` templates are merged after the framework/architecture tree when applicable (capability-gated via ``should_emit``). README capability sections are shared via ``_includes/readme_macros.j2``.
 
 In the built wheel, the same tree is installed as ``forge/templates/`` (Hatch force-include). Runtime resolution is handled by ``forge.generator.render.templates_root()``.
 

@@ -48,6 +48,12 @@ assert any(n.endswith("redis_client.py.j2") for n in templates), "missing redis 
 assert any(
     "/_shared/" in n and n.endswith("ci.yml.j2") for n in templates
 ), "missing shared GitHub Actions CI template"
+assert any(
+    "/_shared/" in n and n.endswith(".env.example.j2") for n in templates
+), "missing shared .env.example template"
+assert any(
+    "/_includes/" in n and n.endswith("readme_macros.j2") for n in templates
+), "missing README include macros"
 # Must not ship tests or local smoke trees inside the package
 assert not any(n.startswith("forge/tests/") for n in names)
 assert not any(".smoke" in n for n in names)

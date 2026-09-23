@@ -4,7 +4,7 @@
 
 ## Quality bar
 
-Coherent layout, correct dependencies, wired integrations, runnable entrypoint, `.env.example` when needed, pytest/Ruff/Docker/migrations/CI when selected, README matching real commands.
+Coherent layout, correct dependencies, wired integrations, runnable entrypoint, `.env.example` when env vars exist, pytest/Ruff/Docker/migrations/CI when selected, README matching real commands and resolved environment metadata. Health endpoints are liveness-only (`{"status":"ok"}`) — no readiness/dependency probes.
 
 ## Official generation compatibility matrix
 
@@ -163,8 +163,13 @@ Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are
 
 - `environment_variables` — names/examples/purposes matching current generated settings and `.env.example` (framework-specific SQL models preserved)
 - `docker_services` — dependency Compose services only (`db` / `mongodb` / `redis`)
-- `health_path` — current liveness route for the stack (FastAPI simple/modular `/health`, FastAPI clean `/api/health`, Flask `/api/health`, Django `/api/health/`)
+- `health_path` — liveness route (FastAPI `/health` for all architectures; Flask `/api/health`; Django `/api/health/`)
+- `emits_env_example` — true when `environment_variables` is non-empty (Docker alone does not emit an empty `.env.example`)
 - `ci_provider` — when `github-actions`, generation emits `.github/workflows/ci.yml` from `templates/python/_shared/` (Python **3.12**, `uv sync`, then selected Ruff/pytest; no DB service containers)
+
+Post-generation **next steps** (CLI summary) follow the local-dev path: start dependency containers with `docker compose up -d <docker_services>` when that list is non-empty, then migrate/run on the host. Bare `docker compose up -d` is never emitted. Full-stack `docker compose up --build` is documented in the generated README Docker section (and is the only Compose command when Docker is selected without persistence).
+
+Generated projects expose a **liveness** health endpoint only (`{"status":"ok"}`). There is no readiness/dependency probe in 0.3.0.
 
 ### Validation expectation
 
