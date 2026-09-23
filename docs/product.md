@@ -89,7 +89,7 @@ The first product version targets **Python** project generation.
 - JWT authentication
 - Docker
 - pytest, Ruff
-- Optional CI provider selection (`github-actions`) — selection is resolved into the generation plan; workflow file emission follows in a subsequent developer-workflow change
+- Optional CI (`github-actions`) — generates `.github/workflows/ci.yml` when selected with pytest and/or Ruff
 - Environment configuration
 - Migrations (e.g. Alembic where appropriate for SQL)
 

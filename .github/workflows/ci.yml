@@ -80,6 +80,9 @@ jobs:
               assert any(f"/{framework}/" in n for n in templates), framework
           assert any(n.endswith("mongodb.py.j2") for n in templates)
           assert any(n.endswith("redis_client.py.j2") for n in templates)
+          assert any(
+              "/_shared/" in n and n.endswith("ci.yml.j2") for n in templates
+          ), "missing shared GitHub Actions CI template"
           assert not any(".cursor" in n for n in names)
           assert not any(".smoke" in n for n in names)
           print(f"templates packaged: {len(templates)}")

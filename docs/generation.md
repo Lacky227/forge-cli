@@ -4,7 +4,7 @@
 
 ## Quality bar
 
-Coherent layout, correct dependencies, wired integrations, runnable entrypoint, `.env.example` when needed, pytest/Ruff/Docker/migrations when selected, README matching real commands.
+Coherent layout, correct dependencies, wired integrations, runnable entrypoint, `.env.example` when needed, pytest/Ruff/Docker/migrations/CI when selected, README matching real commands.
 
 ## Official generation compatibility matrix
 
@@ -117,7 +117,7 @@ Implications are the same across Simple, Modular Monolith, and Clean — archite
 | MongoDB | client → pymongo; `MONGODB_URL` / `MONGODB_DATABASE` |
 | Redis | client → redis (asyncio); `REDIS_URL` |
 | pytest / Ruff / Docker | as selected |
-| CI | optional `github-actions` (requires testing or linting); plan metadata until workflow templates land |
+| CI | optional `github-actions` (requires testing or linting) → `.github/workflows/ci.yml` |
 
 ### Flask
 
@@ -129,7 +129,7 @@ Implications are the same across Simple, Modular Monolith, and Clean — archite
 | MongoDB | client → pymongo (sync); env settings |
 | Redis | client → redis (sync); `REDIS_URL` |
 | pytest / Ruff / Docker | as selected |
-| CI | optional `github-actions` (requires testing or linting); plan metadata until workflow templates land |
+| CI | optional `github-actions` (requires testing or linting) → `.github/workflows/ci.yml` |
 
 Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no driver, no Alembic, no SQL persistence ports/packages. NoSQL clients are independent of SQL.
 
@@ -144,7 +144,7 @@ Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no dr
 | MongoDB / Redis | separate client modules; not Django ORM backends |
 | pytest | `pytest-django` |
 | Ruff / Docker | configured when selected |
-| CI | optional `github-actions` (requires testing or linting); plan metadata until workflow templates land |
+| CI | optional `github-actions` (requires testing or linting) → `.github/workflows/ci.yml` |
 
 ### Clean Architecture quality notes
 
@@ -164,6 +164,7 @@ Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are
 - `environment_variables` — names/examples/purposes matching current generated settings and `.env.example` (framework-specific SQL models preserved)
 - `docker_services` — dependency Compose services only (`db` / `mongodb` / `redis`)
 - `health_path` — current liveness route for the stack (FastAPI simple/modular `/health`, FastAPI clean `/api/health`, Flask `/api/health`, Django `/api/health/`)
+- `ci_provider` — when `github-actions`, generation emits `.github/workflows/ci.yml` from `templates/python/_shared/` (Python **3.12**, `uv sync`, then selected Ruff/pytest; no DB service containers)
 
 ### Validation expectation
 

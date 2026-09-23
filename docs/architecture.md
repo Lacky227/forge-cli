@@ -41,7 +41,7 @@ All input paths share the same domain model and resolution pipeline. `forge plan
 
 SQL and NoSQL are **independent** first-class choices. A project may have neither, either, or both (one engine from each category).
 
-Optional CI is an explicit provider choice (`github-actions`) or none. CI is valid only when testing and/or linting is enabled — Forge does not silently enable those tools. Selecting CI records intent on the `GenerationPlan`; emitting a GitHub Actions workflow file is a follow-on generation step (not yet wired in templates).
+Optional CI is an explicit provider choice (`github-actions`) or none. CI is valid only when testing and/or linting is enabled — Forge does not silently enable those tools. When selected, the generator emits `.github/workflows/ci.yml` from the language-level shared template (`templates/python/_shared/…`). The workflow runs `uv sync` plus the selected Ruff and/or pytest steps; it does not add database service containers.
 
 Framework-implied implementation details are **not** required on the definition:
 
@@ -89,9 +89,10 @@ GenerationPlan    = what Forge resolved that request into
 
 ```text
 templates/python/{fastapi,django,flask}/{simple,modular-monolith,clean}/
+templates/python/_shared/   ← cross-architecture overlays (e.g. GitHub Actions CI)
 ```
 
-Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters.
+Templates present plan data. Architecture chooses layout; framework chooses presentation/persistence adapters. Language-level ``_shared`` templates are merged after the framework/architecture tree when applicable (capability-gated via ``should_emit``).
 
 In the built wheel, the same tree is installed as ``forge/templates/`` (Hatch force-include). Runtime resolution is handled by ``forge.generator.render.templates_root()``.
 

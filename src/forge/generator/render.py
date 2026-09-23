@@ -13,6 +13,7 @@ from forge.generator.plan import GenerationPlan
 
 _PACKAGE_DIR_TOKEN = "__package__"
 _TEMPLATE_SUFFIX = ".j2"
+_SHARED_DIR_NAME = "_shared"
 
 _DOCKER_FILES = frozenset({"Dockerfile.j2", "docker-compose.yml.j2"})
 _SQL_ONLY_FILES = frozenset(
@@ -75,6 +76,16 @@ def _looks_like_forge_pyproject(path: Path) -> bool:
     return 'name = "forge-scaffolder"' in text
 
 
+def shared_template_dir(plan: GenerationPlan) -> Path | None:
+    """Language-level shared overlay (e.g. ``templates/python/_shared``)."""
+    shared = (
+        templates_root()
+        / plan.definition.language.value
+        / _SHARED_DIR_NAME
+    )
+    return shared if shared.is_dir() else None
+
+
 def create_env(template_dir: Path) -> Environment:
     return Environment(
         loader=FileSystemLoader(str(template_dir)),
@@ -99,6 +110,10 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
     features = plan.features
     parts = relative.parts
     name = relative.name
+
+    # Shared GitHub Actions workflow — only when CI is resolved on.
+    if parts and parts[0] == ".github":
+        return features.ci
 
     if name in _DOCKER_FILES and not features.docker:
         return False
@@ -143,10 +158,32 @@ def render_tree(
     destination: Path,
     plan: GenerationPlan,
 ) -> list[Path]:
-    """Render all templates under ``template_dir`` into ``destination``."""
+    """Render framework templates, then any language-level ``_shared`` overlay."""
     if not template_dir.is_dir():
         raise GenerationError(f"Template directory not found: {template_dir}")
 
+    written: list[Path] = []
+    written.extend(_render_template_dir(template_dir, destination, plan))
+
+    shared = shared_template_dir(plan)
+    if (
+        shared is not None
+        and shared.resolve() != template_dir.resolve()
+    ):
+        written.extend(_render_template_dir(shared, destination, plan))
+
+    if not written:
+        raise GenerationError(f"No template files emitted from {template_dir}")
+
+    return written
+
+
+def _render_template_dir(
+    template_dir: Path,
+    destination: Path,
+    plan: GenerationPlan,
+) -> list[Path]:
+    """Render one template root into ``destination`` using resolved features."""
     env = create_env(template_dir)
     written: list[Path] = []
     jinja_ctx = plan.as_jinja_dict()
@@ -168,8 +205,5 @@ def render_tree(
             target.write_bytes(source.read_bytes())
 
         written.append(target_rel)
-
-    if not written:
-        raise GenerationError(f"No template files emitted from {template_dir}")
 
     return written

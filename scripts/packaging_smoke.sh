@@ -45,6 +45,9 @@ for frag in (
     assert any(n.startswith(frag) for n in templates), f"missing {frag}"
 assert any(n.endswith("mongodb.py.j2") for n in templates), "missing mongodb templates"
 assert any(n.endswith("redis_client.py.j2") for n in templates), "missing redis templates"
+assert any(
+    "/_shared/" in n and n.endswith("ci.yml.j2") for n in templates
+), "missing shared GitHub Actions CI template"
 # Must not ship tests or local smoke trees inside the package
 assert not any(n.startswith("forge/tests/") for n in names)
 assert not any(".smoke" in n for n in names)

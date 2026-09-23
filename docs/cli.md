@@ -236,7 +236,7 @@ forge new --config forge.yaml          # uses name from YAML
 
 Unknown fields are rejected. Do **not** put resolver-owned facts in the file (`migration_system`, `rest_framework`, Django ORM as a required choice, …).
 
-Selecting `ci: github-actions` records CI intent on the resolved plan (visible via `forge plan`). Emitting `.github/workflows/…` into the generated tree is a follow-on generation step.
+Selecting `ci: github-actions` generates `.github/workflows/ci.yml` (GitHub Actions only). The workflow installs dependencies with `uv sync` and runs selected checks (`uv run ruff check .` and/or `uv run pytest -q`). No PostgreSQL/MongoDB/Redis service containers are added — generated tests stay service-independent. Existing presets leave CI disabled.
 
 #### Persistence schema
 

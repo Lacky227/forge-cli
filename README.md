@@ -134,7 +134,7 @@ Python **REST API** generation for FastAPI, Django, and Flask.
 |------------|---------|---------------|
 | **SQL** | PostgreSQL, SQLite | FastAPI/Flask → SQLAlchemy (+ optional Alembic); Django → Django ORM + migrations |
 | **NoSQL** | MongoDB, Redis | MongoDB → PyMongo; Redis → redis-py |
-| **Tooling** | pytest, Ruff, Docker | Wired when selected |
+| **Tooling** | pytest, Ruff, Docker, optional GitHub Actions CI | Wired when selected |
 
 ---
 

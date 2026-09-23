@@ -28,6 +28,9 @@ def test_templates_root_resolves_python_tree() -> None:
     assert (root / "python" / "fastapi").is_dir()
     assert (root / "python" / "django").is_dir()
     assert (root / "python" / "flask").is_dir()
+    assert (
+        root / "python" / "_shared" / ".github" / "workflows" / "ci.yml.j2"
+    ).is_file()
 
 
 def test_templates_root_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,6 +71,9 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     assert any("flask" in n for n in templates)
     assert any(n.endswith("mongodb.py.j2") for n in templates)
     assert any(n.endswith("redis_client.py.j2") for n in templates)
+    assert any(
+        "/_shared/" in n and n.endswith("ci.yml.j2") for n in templates
+    ), "missing shared GitHub Actions CI template"
     assert not any(n.startswith("tests/") for n in names)
     assert not any(".cursor" in n for n in names)
     assert not any(".smoke" in n for n in names)
@@ -155,3 +161,36 @@ def test_clean_wheel_install_generates_outside_repo(tmp_path: Path) -> None:
     assert (project / "pyproject.toml").is_file()
     assert (project / "src" / "wheel_api").is_dir()
     assert (project / "alembic.ini").is_file()
+    # Presets leave CI off — shared workflow must not appear by default.
+    assert not (project / ".github" / "workflows" / "ci.yml").exists()
+
+    # Generate with CI from the installed wheel (packaged ``_shared`` template).
+    config = gen_dir / "with-ci.yaml"
+    config.write_text(
+        """
+name: wheel-ci
+type: rest-api
+framework: flask
+architecture: simple
+database: false
+testing: true
+linting: true
+ci: github-actions
+""",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [str(forge_bin), "new", "--config", str(config)],
+        cwd=gen_dir,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    ci_project = gen_dir / "wheel-ci"
+    workflow = ci_project / ".github" / "workflows" / "ci.yml"
+    assert workflow.is_file()
+    workflow_text = workflow.read_text(encoding="utf-8")
+    assert "uv sync" in workflow_text
+    assert "uv run pytest -q" in workflow_text
+    assert "uv run ruff check ." in workflow_text
