@@ -63,7 +63,7 @@ See **Non-goals** below. In short: Forge assists architectural choices and imple
 - Presets as compositions of validated choices
 - Quality bar: working integrations, proportional architecture, cross-platform CLI
 
-Python (FastAPI, Django, potentially Flask) is the first ecosystem. It is not the permanent boundary of the product.
+Python (FastAPI, Django REST, Flask) is the first ecosystem. It is not the permanent boundary of the product.
 
 ## Initial scope
 

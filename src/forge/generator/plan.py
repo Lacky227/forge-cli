@@ -100,7 +100,7 @@ class GenerationPlan:
     run_command: str
     architecture_label: str
     framework_label: str
-    # Canonical env vars for the selected stack (plan / future .env / README).
+    # Canonical env vars for the selected stack (plan, .env.example, README).
     environment_variables: tuple[EnvVarSpec, ...] = ()
     # Compose dependency service names when Docker is enabled (not the app).
     docker_services: tuple[str, ...] = ()

@@ -171,7 +171,7 @@ Post-generation **next steps** (CLI summary and dry-run informational commands) 
 
 `forge new --dry-run` reuses the same template discovery as real generation to list concrete destination-relative paths without writing files. Destination conflict validation matches generation. See [cli.md](./cli.md).
 
-Generated projects expose a **liveness** health endpoint only (`{"status":"ok"}`). There is no readiness/dependency probe in 0.3.0.
+Generated projects expose a **liveness** health endpoint only (`{"status":"ok"}`). There is no readiness/dependency probe.
 
 ### Validation expectation
 

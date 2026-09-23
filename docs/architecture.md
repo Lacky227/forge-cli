@@ -77,10 +77,9 @@ Architecture is independent of framework selection: the same `GenerationPlan` pa
 
 Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`, optional `ci_provider`), dependency lists, entry/run/migrate/check commands, labels, `primary_app` (Django), plus resolved developer-workflow metadata:
 
-- `environment_variables` — canonical `EnvVarSpec` list for the selected stack (source of truth for future `.env.example` / README; already shown by `forge plan`)
+- `environment_variables` / `emits_env_example` — canonical `EnvVarSpec` list; `.env.example` is emitted only when the list is non-empty (shown by `forge plan` and consumed by templates)
 - `docker_services` — Compose **dependency** service names (`db`, `mongodb`, `redis`) when Docker is enabled; empty when Docker is off or there are no dependency services
 - `health_path` — generated liveness path (FastAPI `/health`; Flask `/api/health`; Django `/api/health/`)
-- `environment_variables` / `emits_env_example` — canonical env metadata; `.env.example` is emitted only when the list is non-empty
 
 ```text
 ProjectDefinition = what the user asked for

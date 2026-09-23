@@ -19,7 +19,7 @@ from forge.generator.render import templates_root
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DIST_NAME = "forge-scaffolder"
-DIST_VERSION = "0.2.0"
+DIST_VERSION = "0.3.0"
 WHEEL_GLOB = "forge_scaffolder-*.whl"
 
 

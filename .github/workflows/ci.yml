@@ -73,7 +73,7 @@ jobs:
               names = zf.namelist()
               metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
           assert "Name: forge-scaffolder" in metadata
-          assert "Version: 0.2.0" in metadata
+          assert "Version: 0.3.0" in metadata
           templates = [n for n in names if n.startswith("forge/templates/python/")]
           assert templates, "missing forge/templates/python in wheel"
           for framework in ("fastapi", "django", "flask"):

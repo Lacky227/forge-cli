@@ -13,7 +13,7 @@ with deliberate architecture, persistence, tooling, and infrastructure choices.
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/Lacky227/forge-cli)
 
-**Current release:** [0.2.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.2.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
+**Current release:** [0.3.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.3.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
 
 </div>
 
@@ -308,7 +308,7 @@ Legacy `database: postgresql` remains supported as an SQL-only shorthand. Prefer
 
 ## Project status
 
-**Current release: [0.2.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.2.0)** — public development / alpha.
+**Current release: [0.3.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.3.0)** — public development / alpha.
 
 Current limitations:
 
