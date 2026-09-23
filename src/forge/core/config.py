@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from forge.core.definition import Capabilities, ProjectDefinition
+from forge.core.definition import Capabilities, ProjectDefinition, StorageOptions
 from forge.core.modules import normalize_modules
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
@@ -89,8 +89,10 @@ class ForgeConfig(BaseModel):
     docker: bool = False
     # Optional CI provider — ``github-actions`` or omit/null for none.
     ci: str | None = None
-    # Project modules (products, categories, …). Omit or [] for none.
+    # Project modules (products, categories, files, …). Omit or [] for none.
     modules: list[str] = Field(default_factory=list)
+    # Files storage options (only valid with the files module).
+    storage: StorageOptions | None = None
 
     @field_validator("framework")
     @classmethod
@@ -260,6 +262,7 @@ class ForgeConfig(BaseModel):
                     ci=self.ci,
                 ),
                 modules=tuple(self.modules),
+                storage=self.storage,
             )
         except ValidationError as exc:
             raise ConfigError(_format_pydantic_error(exc)) from exc

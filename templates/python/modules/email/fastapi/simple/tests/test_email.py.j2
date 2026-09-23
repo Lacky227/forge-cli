@@ -1,0 +1,24 @@
+"""Email service tests (mock SMTP)."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+from {{ package_name }}.email_service import EmailService
+
+
+def test_send_builds_message() -> None:
+    smtp = MagicMock()
+    factory = MagicMock(return_value=smtp)
+    # support context manager
+    smtp.__enter__ = MagicMock(return_value=smtp)
+    smtp.__exit__ = MagicMock(return_value=False)
+
+    EmailService(smtp_factory=factory).send(
+        "user@example.com", "Hello", "Body text"
+    )
+    smtp.send_message.assert_called_once()
+    msg = smtp.send_message.call_args[0][0]
+    assert msg["To"] == "user@example.com"
+    assert msg["Subject"] == "Hello"
+    assert "Body text" in msg.get_content()

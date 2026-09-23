@@ -1,0 +1,30 @@
+"""RQ background jobs: connection, enqueue helpers, and example tasks."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from redis import Redis
+from rq import Queue
+
+from {{ package_name }}.config import settings
+
+QUEUE_NAME = "default"
+
+
+def get_redis() -> Redis:
+    return Redis.from_url(settings.redis_url)
+
+
+def get_queue(connection: Redis | None = None) -> Queue:
+    return Queue(QUEUE_NAME, connection=connection or get_redis())
+
+
+def ping(message: str = "pong") -> str:
+    """Deterministic example task."""
+    return f"ping:{message}"
+
+
+def enqueue_ping(message: str = "pong", *, queue: Queue | None = None) -> Any:
+    q = queue or get_queue()
+    return q.enqueue(ping, message)

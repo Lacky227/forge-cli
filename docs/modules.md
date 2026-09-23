@@ -1,31 +1,67 @@
 # Project modules
 
-Forge can generate **project modules** — selectable domain/API packs that add
-real CRUD functionality to a generated REST API.
+Forge can generate **project modules** — selectable packs that add real
+application capabilities to a generated REST API.
 
 Modules are distinct from developer-workflow **capabilities** (Docker, testing,
-linting, CI) and from persistence engines. See [architecture.md](./architecture.md)
-for how modules resolve into structured contributions.
+linting, CI) and from persistence engines. Supporting infrastructure (storage
+backends, RQ, Redis, SMTP, MinIO) is *resolved* from module selection — it is
+not a parallel catalog of user-facing modules. See
+[architecture.md](./architecture.md) for how modules resolve into structured
+contributions.
 
-## Current modules (Stage 1)
+## Current modules (Stage 2)
 
-| Module | Id | Requires SQL | Description |
-|--------|-----|--------------|-------------|
+| Module | Id | Requires SQL | Notes |
+|--------|-----|--------------|-------|
 | Products | `products` | yes | Generic product CRUD API |
 | Categories | `categories` | yes | Generic category CRUD API |
+| Files | `files` | yes | Upload/download API + object storage |
+| Background Jobs | `background-jobs` | no | RQ workers (implies Redis) |
+| Email | `email` | no | SMTP email service |
+| Webhooks | `webhooks` | no | Outgoing delivery via Background Jobs |
 
-Modules are independently selectable:
-
-```text
-none | products | categories | products + categories
-```
-
-When **both** Products and Categories are selected, Forge generates a
-many-to-one relationship: each product may optionally reference a category.
+Modules are independently multi-selectable. Selecting **Webhooks** expands to
+include **Background Jobs** (and therefore Redis). When **both** Products and
+Categories are selected, Forge generates a many-to-one relationship.
 
 Authentication, users, and security modules are reserved for Forge **0.5**.
 
-## User intent
+## User intent vs infrastructure
+
+```text
+User-facing modules          Resolved infrastructure
+─────────────────────        ─────────────────────────
+files                   →    storage (local | s3)
+                             optional MinIO (s3 + docker)
+background-jobs         →    RQ + Redis
+webhooks                →    background-jobs → RQ + Redis
+email                   →    SMTP configuration
+```
+
+Redis may already be selected as NoSQL persistence. Background Jobs **reuse**
+that Redis (`REDIS_URL`) rather than inventing a second broker URL. When Redis
+was not selected as NoSQL, Forge adds it as required infrastructure and
+surfaces that in `forge plan` / interactive output — it does **not** pretend
+the user chose Redis as application NoSQL.
+
+## Configuration
+
+```yaml
+modules:
+  - products
+  - categories
+  - files
+  - background-jobs
+  - email
+  - webhooks
+
+storage:
+  backend: s3          # local | s3 (required shape when files is selected)
+  minio: true          # only with backend: s3 and docker: true
+```
+
+Stage 1 syntax remains valid:
 
 ```yaml
 modules:
@@ -34,84 +70,126 @@ modules:
 ```
 
 - Omitted `modules` or `modules: []` → no modules (0.3 scaffold shape)
-- Unknown ids are rejected
+- Unknown ids / backends are rejected
 - Duplicates are removed; order is normalized to the catalog order
-- SQL-requiring modules without SQL fail validation (YAML/config) or prompt
-  for an SQL engine interactively (FastAPI/Flask)
+- SQL-requiring modules without SQL fail validation (YAML) or prompt
+  interactively (FastAPI/Flask)
+- `storage` without `files` is rejected; `minio` without `s3` or without
+  Docker is rejected
 
 ## Interactive flow
 
-After architecture selection, Forge shows a multi-select checklist for
-modules. Persistence questions adapt:
+After architecture selection, Forge shows a multi-select checklist for all
+modules. Follow-ups are adaptive:
 
-- **Django** — SQL remains required as before; modules do not change that
+- **Files** → storage backend (local / S3-compatible); if S3 + Docker → MinIO?
+- **Webhooks** → announces implied Background Jobs
+- **Background Jobs / Webhooks** → announces Redis (reuse NoSQL or required infra)
+- **Django** — SQL remains required as before
 - **FastAPI / Flask** — if modules requiring SQL are selected, Forge asks for
-  an SQL engine (it does **not** silently pick PostgreSQL or SQLite)
+  an SQL engine (it does **not** silently pick one)
 
-## Generated API (conceptual)
+## Files
+
+### Metadata decision
+
+File **bytes** live in object storage. **Metadata** (id, filename, content_type,
+size, storage_key, created_at) is persisted in SQL so listing and id-based
+APIs stay consistent across local and S3 backends. Therefore Files requires
+SQL. The API never exposes filesystem paths — only opaque `storage_key` values.
+
+### API (conceptual)
 
 ```text
-POST   /products          GET /products
-GET    /products/{id}     PATCH /products/{id}     DELETE /products/{id}
-
-POST   /categories        GET /categories
-GET    /categories/{id}   PATCH /categories/{id}   DELETE /categories/{id}
+POST   /files
+GET    /files
+GET    /files/{id}
+GET    /files/{id}/content
+DELETE /files/{id}
 ```
 
-Django uses trailing slashes (`/api/products/`). FastAPI prefixes are
-`/products` and `/categories`. Flask uses `/api/products` and `/api/categories`.
+### Validation
 
-### Collection behavior
+Empty uploads, maximum size (`UPLOAD_MAX_BYTES`, default 10 MiB), unsafe
+filenames / path traversal, and uuid-based storage keys. MIME headers are not
+treated as strong content security.
 
-Bundled with CRUD modules (not a separate Forge checkbox):
+### Storage
 
-| Concern | Contract |
+| Backend | Behavior |
 |---------|----------|
-| Pagination | `page` (default 1), `page_size` (default 20, max 100) |
-| Envelope | `{ "items", "page", "page_size", "total" }` (DRF uses its pagination shape) |
-| Filtering | Products: `q`, `is_active`, `min_price`, `max_price`, `category_id` (when linked); Categories: `q` |
-| Sorting | Allow-listed `ordering` fields only |
+| `local` | Files under `STORAGE_LOCAL_ROOT` (default `./var/storage`); gitignored |
+| `s3` | Generic S3-compatible client (`boto3`) via `S3_ENDPOINT_URL`, keys, bucket, region |
 
-### Domain fields
+Bucket auto-creation is **off** by default (`S3_CREATE_BUCKET=false`). Enable
+explicitly when you want startup to create a missing bucket.
 
-**Product:** `id`, `name`, `description`, `price` (precise decimal), `is_active`,
-timestamps; optional `category_id` when both modules selected.
+### MinIO
 
-**Category:** `id`, `name`, `slug` (unique; derived from name when omitted),
-`description`, timestamps.
+When Files + S3 + Docker + `minio: true`, Compose includes a MinIO service and
+wires `S3_ENDPOINT_URL` to it. MinIO is optional — external S3 endpoints work
+without it.
 
-## Architecture-aware layout
+## Background Jobs
 
-| Style | Shape |
-|-------|--------|
-| Simple | Compact route/schema/model modules beside the existing package |
-| Modular Monolith | Feature packages / Django apps with routes, schemas, services, repositories |
-| Clean | Domain + application use cases + infrastructure adapters + presentation |
+Single Stage 2 implementation: **RQ** on Redis.
+
+Generated artifacts include queue helpers, an example deterministic task
+(`echo_message`), a worker process, tests (mocked Redis/RQ), and README/worker
+commands. The resolved plan exposes processes:
+
+```text
+Processes
+  API
+  Worker
+```
+
+With Docker, Compose adds a `worker` service using the same image and the
+resolved worker command.
+
+## Email
+
+SMTP via stdlib `smtplib`. Configuration: `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `EMAIL_FROM`.
+
+Forge generates an `EmailService` exercised by tests with a fake SMTP client.
+There is **no** public arbitrary-send HTTP endpoint.
+
+## Webhooks (outgoing only)
+
+Outgoing delivery only — no inbound framework, signatures, or subscription UI.
+
+Delivery POSTs JSON to configured `WEBHOOK_URL` through RQ with timeout and a
+**bounded** retry count (`WEBHOOK_MAX_RETRIES`). There is **no** public
+open-proxy endpoint that accepts arbitrary target URLs.
 
 ## Composition model
 
 ```text
-ProjectDefinition.modules
+ProjectDefinition.modules (+ storage options)
+        ↓
+expand_module_dependencies()   # e.g. webhooks → background-jobs
         ↓
 resolve_module_contributions()
         ↓
-ModuleContributions (routers, apps, model imports, template mounts, …)
+ModuleContributions + GenerationFeatures
+  (routers, apps, mounts, deps, env, docker, processes)
         ↓
-base templates loop contributions + module template mounts emit files
+base templates + module mounts
 ```
 
-Module templates live under `templates/python/modules/` (not nine full copies
-inside each framework×architecture scaffold). Base trees only gain contribution
-loops. `planned_outputs` discovers module mounts with the same gates as real
-generation (dry-run parity).
+Module templates live under `templates/python/modules/`. Dependency edges,
+env vars, Docker services, and processes are plan-owned — templates do not
+re-derive the infrastructure graph.
 
 ## `forge plan`
 
-When modules are selected, the plan includes a **Modules** section (and a
-**Relationship** row when Products and Categories are linked).
+Selected modules appear under **Modules** (implied ones marked). Additional
+sections when applicable: Storage, Background Jobs, Email, Webhooks,
+Processes, Infrastructure (Redis when implied), Docker services.
 
 ## Testing
 
-Generated projects include CRUD tests (create/list/retrieve/update/delete,
-validation, pagination, filtering, and the linked relationship when both
-modules are selected).
+Generated projects include module tests that do **not** require live
+PostgreSQL, Redis, MinIO, SMTP, or network access for the default unit suite
+(mocks/fakes/tmp paths).

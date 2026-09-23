@@ -1,0 +1,83 @@
+"""Files API tests."""
+
+from __future__ import annotations
+
+from io import BytesIO
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from {{ package_name }}.core.config import Config
+from {{ package_name }}.services import file as file_service_mod
+
+
+{% if is_storage_local %}
+@pytest.fixture(autouse=True)
+def _local_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Config, "STORAGE_LOCAL_ROOT", str(tmp_path / "storage"))
+{% endif %}
+
+
+{% if is_storage_s3 %}
+@pytest.fixture(autouse=True)
+def _mock_s3(monkeypatch: pytest.MonkeyPatch) -> None:
+    store: dict[str, bytes] = {}
+    client = MagicMock()
+
+    def put_object(**kwargs):
+        store[kwargs["Key"]] = kwargs["Body"]
+
+    def get_object(**kwargs):
+        body = MagicMock()
+        body.read.return_value = store[kwargs["Key"]]
+        return {"Body": body}
+
+    def delete_object(**kwargs):
+        store.pop(kwargs["Key"], None)
+
+    client.put_object.side_effect = put_object
+    client.get_object.side_effect = get_object
+    client.delete_object.side_effect = delete_object
+
+    from {{ package_name }}.services.storage import S3Storage
+
+    monkeypatch.setattr(
+        file_service_mod,
+        "get_storage",
+        lambda: S3Storage(
+            bucket="test",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            region="us-east-1",
+            client=client,
+        ),
+    )
+{% endif %}
+
+
+def test_upload_list_get_download_delete(client) -> None:
+    response = client.post(
+        "/api/files",
+        data={"upload": (BytesIO(b"hello world"), "hello.txt")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["filename"] == "hello.txt"
+
+    content = client.get(f"/api/files/{body['id']}/content")
+    assert content.status_code == 200
+    assert content.data == b"hello world"
+
+    assert client.delete(f"/api/files/{body['id']}").status_code == 204
+
+
+def test_empty_upload_rejected(client) -> None:
+    response = client.post(
+        "/api/files",
+        data={"upload": (BytesIO(b""), "empty.txt")},
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 422

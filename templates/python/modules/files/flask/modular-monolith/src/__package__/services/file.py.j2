@@ -1,0 +1,82 @@
+"""File service."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.core.config import Config
+from {{ package_name }}.models.file import File
+from {{ package_name }}.repositories.file import FileRepository
+from {{ package_name }}.services.storage import (
+{% if is_storage_local %}
+    LocalStorage,
+{% endif %}
+{% if is_storage_s3 %}
+    S3Storage,
+{% endif %}
+    new_storage_key,
+    safe_filename,
+)
+
+
+def get_storage():
+{% if is_storage_local %}
+    return LocalStorage(Config.STORAGE_LOCAL_ROOT)
+{% endif %}
+{% if is_storage_s3 %}
+    return S3Storage(
+        bucket=Config.S3_BUCKET,
+        endpoint_url=Config.S3_ENDPOINT_URL,
+        access_key=Config.S3_ACCESS_KEY,
+        secret_key=Config.S3_SECRET_KEY,
+        region=Config.S3_REGION,
+        create_bucket=Config.S3_CREATE_BUCKET,
+    )
+{% endif %}
+
+
+class FileService:
+    def __init__(self, db: Session) -> None:
+        self._repo = FileRepository(db)
+        self._storage = get_storage()
+
+    def upload(
+        self,
+        *,
+        filename: str,
+        data: bytes,
+        content_type: str | None,
+    ) -> File:
+        name = safe_filename(filename)
+        if not data:
+            raise ValueError("Empty upload")
+        if len(data) > Config.UPLOAD_MAX_BYTES:
+            raise ValueError("File exceeds UPLOAD_MAX_BYTES")
+        key = new_storage_key(name)
+        self._storage.save(key, data, content_type=content_type)
+        return self._repo.create(
+            {
+                "filename": name,
+                "content_type": content_type,
+                "size": len(data),
+                "storage_key": key,
+            }
+        )
+
+    def get(self, file_id: int) -> File | None:
+        return self._repo.get(file_id)
+
+    def list_query(self) -> Any:
+        return self._repo.list_query()
+
+    def load_bytes(self, row: File) -> bytes:
+        return self._storage.load(row.storage_key)
+
+    def delete(self, row: File) -> None:
+        try:
+            self._storage.delete(row.storage_key)
+        except Exception:
+            pass
+        self._repo.delete(row)

@@ -1,0 +1,148 @@
+"""Files HTTP presentation."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Annotated, Any
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import Response as RawResponse
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.application import files as use_cases
+from {{ package_name }}.infrastructure.config import settings
+from {{ package_name }}.infrastructure.database import get_db
+from {{ package_name }}.infrastructure.persistence.file import SqlAlchemyFileRepository
+from {{ package_name }}.infrastructure.storage import (
+{% if is_storage_local %}
+    LocalStorage,
+{% endif %}
+{% if is_storage_s3 %}
+    S3Storage,
+{% endif %}
+    new_storage_key,
+    safe_filename,
+)
+from {{ package_name }}.presentation.pagination import (
+    PageParams,
+    get_page_params,
+)
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+
+
+class FileRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    filename: str
+    content_type: str | None
+    size: int
+    storage_key: str
+    created_at: datetime
+
+
+def _repo(db: Session) -> SqlAlchemyFileRepository:
+    return SqlAlchemyFileRepository(db)
+
+
+def get_storage():
+{% if is_storage_local %}
+    return LocalStorage(settings.storage_local_root)
+{% endif %}
+{% if is_storage_s3 %}
+    return S3Storage(
+        bucket=settings.s3_bucket,
+        endpoint_url=settings.s3_endpoint_url,
+        access_key=settings.s3_access_key,
+        secret_key=settings.s3_secret_key,
+        region=settings.s3_region,
+        create_bucket=settings.s3_create_bucket,
+    )
+{% endif %}
+
+
+@router.post("", response_model=FileRead, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    db: DbSession,
+    file: Annotated[UploadFile, File()],
+) -> FileRead:
+    try:
+        file = use_cases.upload_file(
+            _repo(db),
+            get_storage(),
+            filename=file.filename or "",
+            data=await file.read(),
+            content_type=file.content_type,
+            max_bytes=settings.upload_max_bytes,
+            make_key=new_storage_key,
+            safe_name=safe_filename,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        code = (
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            if "UPLOAD_MAX_BYTES" in detail
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=code, detail=detail) from exc
+    return FileRead.model_validate(file)
+
+
+@router.get("")
+def list_files(db: DbSession, params: Page) -> dict[str, Any]:
+    items, total = use_cases.list_files(
+        _repo(db), page=params.page, page_size=params.page_size
+    )
+    return {
+        "items": [FileRead.model_validate(item) for item in items],
+        "page": params.page,
+        "page_size": params.page_size,
+        "total": total,
+    }
+
+
+@router.get("/{file_id}", response_model=FileRead)
+def get_file(file_id: int, db: DbSession) -> FileRead:
+    file = use_cases.get_file(_repo(db), file_id)
+    if file is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return FileRead.model_validate(file)
+
+
+@router.get("/{file_id}/content")
+def download_file(file_id: int, db: DbSession) -> RawResponse:
+    try:
+        result = use_cases.download_file(_repo(db), get_storage(), file_id)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Object missing"
+        ) from exc
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    file, data = result
+    media = file.content_type or "application/octet-stream"
+    return RawResponse(
+        content=data,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{file.filename}"'},
+    )
+
+
+@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_file(file_id: int, db: DbSession) -> Response:
+    if not use_cases.delete_file(_repo(db), get_storage(), file_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1,0 +1,31 @@
+"""File metadata repository."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.models.file import File
+
+
+class FileRepository:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def create(self, data: dict[str, Any]) -> File:
+        row = File(**data)
+        self._db.add(row)
+        self._db.commit()
+        self._db.refresh(row)
+        return row
+
+    def get(self, file_id: int) -> File | None:
+        return self._db.get(File, file_id)
+
+    def list_query(self) -> Any:
+        return self._db.query(File).order_by(File.created_at.desc())
+
+    def delete(self, row: File) -> None:
+        self._db.delete(row)
+        self._db.commit()

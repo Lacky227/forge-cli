@@ -1,0 +1,16 @@
+"""File domain entity."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass
+class File:
+    filename: str
+    size: int
+    storage_key: str
+    content_type: str | None = None
+    id: int | None = None
+    created_at: datetime | None = None

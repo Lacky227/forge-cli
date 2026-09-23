@@ -14,8 +14,18 @@ from questionary import Choice, Style
 from rich.console import Console
 
 from forge.core import catalog
-from forge.core.definition import Capabilities, ProjectDefinition
-from forge.core.modules import MODULE_ORDER, MODULE_SPECS, modules_require_sql
+from forge.core.definition import Capabilities, ProjectDefinition, StorageOptions
+from forge.core.modules import (
+    MODULE_ORDER,
+    MODULE_SPECS,
+    STORAGE_BACKEND_LABELS,
+    ModuleId,
+    StorageBackend,
+    expand_module_dependencies,
+    implied_modules,
+    modules_require_redis,
+    modules_require_sql,
+)
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 T = TypeVar("T")
@@ -156,6 +166,9 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
         project_type,
         modules=modules,
     )
+    storage = _collect_storage_options(modules, docker=capabilities.docker)
+    # Surface implied Background Jobs / Redis before returning.
+    _announce_module_implications(modules, capabilities)
     return ProjectDefinition(
         name=name,
         language=language,
@@ -164,6 +177,7 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
         architecture=architecture,
         capabilities=capabilities,
         modules=tuple(modules),
+        storage=storage,
     )
 
 
@@ -189,6 +203,60 @@ def _collect_modules() -> list[str]:
         )
         _console.print(f"[dim]Modules:[/dim] {labels}")
     return selected
+
+
+def _collect_storage_options(
+    modules: list[str],
+    *,
+    docker: bool,
+) -> StorageOptions | None:
+    """Ask Files-only storage questions (after Docker is known)."""
+    if ModuleId.FILES.value not in modules:
+        return None
+    backend = _select(
+        "Storage backend",
+        [
+            Choice(
+                title=STORAGE_BACKEND_LABELS[StorageBackend.LOCAL.value],
+                value=StorageBackend.LOCAL.value,
+            ),
+            Choice(
+                title=STORAGE_BACKEND_LABELS[StorageBackend.S3.value],
+                value=StorageBackend.S3.value,
+            ),
+        ],
+    )
+    minio = False
+    if backend == StorageBackend.S3.value and docker:
+        minio = _confirm("Add MinIO for local development?", default=True)
+    return StorageOptions(backend=backend, minio=minio)
+
+
+def _announce_module_implications(
+    modules: list[str],
+    capabilities: Capabilities,
+) -> None:
+    expanded = expand_module_dependencies(tuple(modules))
+    implied = implied_modules(tuple(modules), expanded)
+    if implied:
+        labels = ", ".join(MODULE_SPECS[ModuleId(m)].label for m in implied)
+        note = (
+            " [dim](required by Webhooks)[/dim]"
+            if ModuleId.WEBHOOKS.value in modules
+            else ""
+        )
+        _console.print(f"[dim]Implied modules:[/dim] {labels}{note}")
+    if modules_require_redis(tuple(modules)):
+        if capabilities.nosql_database == "redis":
+            _console.print(
+                "[dim]Redis:[/dim] reusing selected NoSQL Redis "
+                "[dim](Background Jobs)[/dim]"
+            )
+        else:
+            _console.print(
+                "[dim]Redis:[/dim] required infrastructure "
+                "[dim](Background Jobs / RQ)[/dim]"
+            )
 
 
 def _collect_capabilities(

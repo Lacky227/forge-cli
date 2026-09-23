@@ -1,8 +1,8 @@
 """Resolved module contributions for the generator.
 
-User-selected module ids on ``ProjectDefinition`` are resolved once into
-structured contributions. Templates consume contribution lists; they do not
-re-implement module dependency rules.
+User-selected module ids on ``ProjectDefinition`` are expanded (dependency
+graph) and resolved once into structured contributions. Templates consume
+contribution lists; they do not re-implement module dependency rules.
 """
 
 from __future__ import annotations
@@ -11,9 +11,35 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from forge.core.definition import ProjectDefinition
-from forge.core.modules import MODULE_LABELS, MODULE_SPECS, ModuleId
+from forge.core.modules import (
+    MODULE_LABELS,
+    MODULE_SPECS,
+    ModuleId,
+    expand_module_dependencies,
+    implied_modules,
+    modules_need_foundation,
+    modules_require_sql,
+)
 from forge.core.types import ArchitectureStyle
 from forge.generator.errors import GenerationError
+
+# Modules that expose HTTP routers/blueprints/Django URL includes.
+_HTTP_API_MODULES: frozenset[str] = frozenset(
+    {
+        ModuleId.PRODUCTS.value,
+        ModuleId.CATEGORIES.value,
+        ModuleId.FILES.value,
+    }
+)
+
+# Modules that register SQLAlchemy / Django ORM models via model_imports.
+_MODEL_MODULES: frozenset[str] = frozenset(
+    {
+        ModuleId.PRODUCTS.value,
+        ModuleId.CATEGORIES.value,
+        ModuleId.FILES.value,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,19 +97,26 @@ class TemplateMount:
 
 @dataclass(frozen=True, slots=True)
 class ResolvedModule:
-    """One selected module after resolution."""
+    """One selected (or implied) module after resolution."""
 
     id: str
     label: str
+    implied: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class ModuleContributions:
-    """Aggregated structured contributions from all selected modules."""
+    """Aggregated structured contributions from all effective modules."""
 
     modules: tuple[ResolvedModule, ...] = ()
+    selected_modules: tuple[str, ...] = ()
+    implied_module_ids: tuple[str, ...] = ()
     has_products: bool = False
     has_categories: bool = False
+    has_files: bool = False
+    has_background_jobs: bool = False
+    has_email: bool = False
+    has_webhooks: bool = False
     products_link_categories: bool = False
     fastapi_routers: tuple[RouterContribution, ...] = ()
     flask_blueprints: tuple[BlueprintContribution, ...] = ()
@@ -91,7 +124,11 @@ class ModuleContributions:
     model_imports: tuple[ModelImportContribution, ...] = ()
     template_mounts: tuple[TemplateMount, ...] = ()
     api_endpoints: tuple[tuple[str, str, str], ...] = ()
-    # (method, path, summary) for README / plan consumers
+    # Extra runtime dependency pins contributed by modules (deduped later).
+    runtime_dependencies: tuple[str, ...] = ()
+    # Env var specs contributed by modules (merged into the plan).
+    environment_variables: tuple[tuple[str, str, str], ...] = ()
+    # (name, example, purpose)
 
     @property
     def enabled(self) -> bool:
@@ -107,44 +144,70 @@ def resolve_module_contributions(
     if not definition.modules:
         return ModuleContributions()
 
-    if definition.capabilities.sql_database is None:
+    try:
+        expanded = expand_module_dependencies(definition.modules)
+    except ValueError as exc:
+        raise GenerationError(f"Cannot generate this project:\n\n{exc}") from exc
+
+    implied = implied_modules(definition.modules, expanded)
+
+    if modules_require_sql(expanded) and definition.capabilities.sql_database is None:
         raise GenerationError(
             "Cannot generate this project:\n\n"
             "Selected modules require an SQL database "
             "(postgresql or sqlite)."
         )
 
+    if ModuleId.FILES.value in expanded and definition.storage is None:
+        raise GenerationError(
+            "Cannot generate this project:\n\n"
+            "The files module requires storage options "
+            "(backend: local or s3)."
+        )
+
     framework = definition.framework
     architecture = definition.architecture
-    selected = tuple(definition.modules)
-    has_products = ModuleId.PRODUCTS.value in selected
-    has_categories = ModuleId.CATEGORIES.value in selected
+    has_products = ModuleId.PRODUCTS.value in expanded
+    has_categories = ModuleId.CATEGORIES.value in expanded
+    has_files = ModuleId.FILES.value in expanded
+    has_jobs = ModuleId.BACKGROUND_JOBS.value in expanded
+    has_email = ModuleId.EMAIL.value in expanded
+    has_webhooks = ModuleId.WEBHOOKS.value in expanded
     link = has_products and has_categories
+    implied_set = set(implied)
 
     resolved = tuple(
-        ResolvedModule(id=mid, label=MODULE_LABELS.get(mid, mid))
-        for mid in selected
+        ResolvedModule(
+            id=mid,
+            label=MODULE_LABELS.get(mid, mid),
+            implied=mid in implied_set,
+        )
+        for mid in expanded
     )
 
-    mounts: list[TemplateMount] = [
-        TemplateMount(
-            module_id="_foundation",
-            source_subdir=Path(
-                "modules",
-                "_foundation",
-                framework,
-                architecture.value,
-            ),
+    mounts: list[TemplateMount] = []
+    if modules_need_foundation(expanded):
+        mounts.append(
+            TemplateMount(
+                module_id="_foundation",
+                source_subdir=Path(
+                    "modules",
+                    "_foundation",
+                    framework,
+                    architecture.value,
+                ),
+            )
         )
-    ]
 
     fastapi_routers: list[RouterContribution] = []
     flask_blueprints: list[BlueprintContribution] = []
     django_apps: list[DjangoAppContribution] = []
     model_imports: list[ModelImportContribution] = []
     endpoints: list[tuple[str, str, str]] = []
+    runtime_deps: list[str] = []
+    env_vars: list[tuple[str, str, str]] = []
 
-    for mid in selected:
+    for mid in expanded:
         if mid not in MODULE_SPECS:
             raise GenerationError(f"Unknown module {mid!r}")
         mounts.append(
@@ -158,23 +221,42 @@ def resolve_module_contributions(
                 ),
             )
         )
-        _append_framework_contributions(
-            mid,
-            framework=framework,
-            architecture=architecture,
-            package_name=package_name,
-            link=link,
-            fastapi_routers=fastapi_routers,
-            flask_blueprints=flask_blueprints,
-            django_apps=django_apps,
-            model_imports=model_imports,
-            endpoints=endpoints,
-        )
+        if mid in _HTTP_API_MODULES or mid in {
+            ModuleId.BACKGROUND_JOBS.value,
+            ModuleId.EMAIL.value,
+            ModuleId.WEBHOOKS.value,
+        }:
+            _append_framework_contributions(
+                mid,
+                framework=framework,
+                architecture=architecture,
+                package_name=package_name,
+                link=link,
+                fastapi_routers=fastapi_routers,
+                flask_blueprints=flask_blueprints,
+                django_apps=django_apps,
+                model_imports=model_imports,
+                endpoints=endpoints,
+            )
+
+    _append_module_dependencies(
+        expanded,
+        definition=definition,
+        runtime_deps=runtime_deps,
+        env_vars=env_vars,
+        package_name=package_name,
+    )
 
     return ModuleContributions(
         modules=resolved,
+        selected_modules=tuple(definition.modules),
+        implied_module_ids=implied,
         has_products=has_products,
         has_categories=has_categories,
+        has_files=has_files,
+        has_background_jobs=has_jobs,
+        has_email=has_email,
+        has_webhooks=has_webhooks,
         products_link_categories=link,
         fastapi_routers=tuple(fastapi_routers),
         flask_blueprints=tuple(flask_blueprints),
@@ -182,7 +264,125 @@ def resolve_module_contributions(
         model_imports=tuple(model_imports),
         template_mounts=tuple(mounts),
         api_endpoints=tuple(endpoints),
+        runtime_dependencies=tuple(runtime_deps),
+        environment_variables=tuple(env_vars),
     )
+
+
+def _append_module_dependencies(
+    expanded: tuple[str, ...],
+    *,
+    definition: ProjectDefinition,
+    runtime_deps: list[str],
+    env_vars: list[tuple[str, str, str]],
+    package_name: str,
+) -> None:
+    """Module-owned deps and env metadata (merged centrally by resolve_plan)."""
+    storage = definition.storage
+    if ModuleId.FILES.value in expanded:
+        env_vars.append(
+            (
+                "UPLOAD_MAX_BYTES",
+                "10485760",
+                "Maximum upload size in bytes (default 10 MiB)",
+            )
+        )
+        if storage is not None and storage.backend == "local":
+            env_vars.append(
+                (
+                    "STORAGE_LOCAL_ROOT",
+                    "./var/storage",
+                    "Local filesystem root for uploaded objects",
+                )
+            )
+        if storage is not None and storage.backend == "s3":
+            runtime_deps.append("boto3>=1.35")
+            env_vars.extend(
+                [
+                    (
+                        "S3_ENDPOINT_URL",
+                        "http://localhost:9000",
+                        "S3-compatible endpoint URL",
+                    ),
+                    (
+                        "S3_ACCESS_KEY",
+                        "minioadmin",
+                        "S3 access key id",
+                    ),
+                    (
+                        "S3_SECRET_KEY",
+                        "minioadmin",
+                        "S3 secret access key",
+                    ),
+                    (
+                        "S3_BUCKET",
+                        f"{package_name}-files",
+                        "S3 bucket name for uploaded objects",
+                    ),
+                    (
+                        "S3_REGION",
+                        "us-east-1",
+                        "S3 region (required by some clients)",
+                    ),
+                ]
+            )
+            if storage.minio and definition.capabilities.docker:
+                env_vars.extend(
+                    [
+                        (
+                            "MINIO_ROOT_USER",
+                            "minioadmin",
+                            "MinIO root user (local development)",
+                        ),
+                        (
+                            "MINIO_ROOT_PASSWORD",
+                            "minioadmin",
+                            "MinIO root password (local development)",
+                        ),
+                    ]
+                )
+
+    if ModuleId.BACKGROUND_JOBS.value in expanded:
+        runtime_deps.append("rq>=2.0")
+        # redis package is added by resolve_plan when Redis is required
+
+    if ModuleId.EMAIL.value in expanded:
+        env_vars.extend(
+            [
+                ("SMTP_HOST", "localhost", "SMTP server hostname"),
+                ("SMTP_PORT", "587", "SMTP server port"),
+                ("SMTP_USERNAME", "", "SMTP username (optional)"),
+                ("SMTP_PASSWORD", "", "SMTP password (optional)"),
+                ("SMTP_USE_TLS", "true", "Use STARTTLS for SMTP"),
+                (
+                    "EMAIL_FROM",
+                    f"noreply@{package_name}.local",
+                    "Default From address for outbound email",
+                ),
+            ]
+        )
+
+    if ModuleId.WEBHOOKS.value in expanded:
+        runtime_deps.append("httpx>=0.27")
+        env_vars.extend(
+            [
+                (
+                    "WEBHOOK_URL",
+                    "https://example.com/hooks/forge",
+                    "Configured outgoing webhook target URL",
+                ),
+                (
+                    "WEBHOOK_TIMEOUT_SECONDS",
+                    "10",
+                    "HTTP timeout for webhook delivery",
+                ),
+                (
+                    "WEBHOOK_MAX_RETRIES",
+                    "3",
+                    "Maximum delivery attempts (bounded)",
+                ),
+            ]
+        )
 
 
 def _append_framework_contributions(
@@ -228,8 +428,19 @@ def _append_framework_contributions(
         raise GenerationError(
             f"Modules are not supported for framework {framework!r}"
         )
-    # link reserved for schema/README flags via ModuleContributions
     _ = link
+
+
+def _singular(module_id: str) -> str:
+    mapping = {
+        "products": "product",
+        "categories": "category",
+        "files": "file",
+        "background-jobs": "jobs",
+        "email": "email",
+        "webhooks": "webhook",
+    }
+    return mapping.get(module_id, module_id.rstrip("s"))
 
 
 def _fastapi_contributions(
@@ -241,22 +452,32 @@ def _fastapi_contributions(
     model_imports: list[ModelImportContribution],
     endpoints: list[tuple[str, str, str]],
 ) -> None:
+    if module_id not in _HTTP_API_MODULES:
+        # Jobs / email / webhooks contribute services + tests via mounts only.
+        return
+
     prefix = f"/{module_id}"
-    tag = module_id.capitalize()
+    tag = MODULE_LABELS.get(module_id, module_id.capitalize())
+    singular = _singular(module_id)
+
     if architecture is ArchitectureStyle.SIMPLE:
-        import_module = f"{package_name}.{module_id}"
-        model_module = f"{package_name}.{module_id}_models"
-        symbol = "Product" if module_id == "products" else "Category"
+        import_module = f"{package_name}.{module_id.replace('-', '_')}"
+        if module_id == ModuleId.FILES.value:
+            import_module = f"{package_name}.files"
+        model_module = f"{package_name}.{module_id.replace('-', '_')}_models"
+        if module_id == ModuleId.FILES.value:
+            model_module = f"{package_name}.files_models"
+        symbol = singular.capitalize()
     elif architecture is ArchitectureStyle.MODULAR_MONOLITH:
-        import_module = f"{package_name}.api.routes.{module_id}"
-        model_module = f"{package_name}.models.{module_id.rstrip('s')}"
-        # products -> product, categories -> category
-        singular = "product" if module_id == "products" else "category"
+        import_module = f"{package_name}.api.routes.{module_id.replace('-', '_')}"
+        if module_id == ModuleId.FILES.value:
+            import_module = f"{package_name}.api.routes.files"
         model_module = f"{package_name}.models.{singular}"
         symbol = singular.capitalize()
     else:  # CLEAN
-        import_module = f"{package_name}.presentation.{module_id}"
-        singular = "product" if module_id == "products" else "category"
+        import_module = f"{package_name}.presentation.{module_id.replace('-', '_')}"
+        if module_id == ModuleId.FILES.value:
+            import_module = f"{package_name}.presentation.files"
         model_module = (
             f"{package_name}.infrastructure.persistence.{singular}"
         )
@@ -271,14 +492,18 @@ def _fastapi_contributions(
             tags=(tag,),
         )
     )
-    model_imports.append(
-        ModelImportContribution(
-            module_id=module_id,
-            import_module=model_module,
-            symbol=symbol,
+    if module_id in _MODEL_MODULES:
+        model_imports.append(
+            ModelImportContribution(
+                module_id=module_id,
+                import_module=model_module,
+                symbol=symbol,
+            )
         )
-    )
-    endpoints.extend(_crud_endpoints(prefix, tag, trailing_slash=False))
+    if module_id == ModuleId.FILES.value:
+        endpoints.extend(_files_endpoints(prefix, trailing_slash=False))
+    else:
+        endpoints.extend(_crud_endpoints(prefix, tag, trailing_slash=False))
 
 
 def _flask_contributions(
@@ -290,17 +515,21 @@ def _flask_contributions(
     model_imports: list[ModelImportContribution],
     endpoints: list[tuple[str, str, str]],
 ) -> None:
-    singular = "product" if module_id == "products" else "category"
+    if module_id not in _HTTP_API_MODULES:
+        return
+
+    singular = _singular(module_id)
+    py_id = module_id.replace("-", "_")
     if architecture is ArchitectureStyle.SIMPLE:
-        import_module = f"{package_name}.{module_id}"
-        model_module = f"{package_name}.{module_id}_models"
+        import_module = f"{package_name}.{py_id}"
+        model_module = f"{package_name}.{py_id}_models"
         symbol = singular.capitalize()
     elif architecture is ArchitectureStyle.MODULAR_MONOLITH:
-        import_module = f"{package_name}.api.routes.{module_id}"
+        import_module = f"{package_name}.api.routes.{py_id}"
         model_module = f"{package_name}.models.{singular}"
         symbol = singular.capitalize()
     else:
-        import_module = f"{package_name}.presentation.{module_id}"
+        import_module = f"{package_name}.presentation.{py_id}"
         model_module = (
             f"{package_name}.infrastructure.persistence.{singular}"
         )
@@ -311,20 +540,23 @@ def _flask_contributions(
             module_id=module_id,
             import_module=import_module,
             blueprint_attr="bp",
-            name=module_id,
+            name=py_id,
         )
     )
-    model_imports.append(
-        ModelImportContribution(
-            module_id=module_id,
-            import_module=model_module,
-            symbol=symbol,
+    if module_id in _MODEL_MODULES:
+        model_imports.append(
+            ModelImportContribution(
+                module_id=module_id,
+                import_module=model_module,
+                symbol=symbol,
+            )
         )
-    )
-    prefix = f"/api/{module_id}"
-    endpoints.extend(
-        _crud_endpoints(prefix, module_id.capitalize(), trailing_slash=False)
-    )
+    prefix = f"/api/{module_id}" if module_id != "files" else "/api/files"
+    label = MODULE_LABELS.get(module_id, module_id.capitalize())
+    if module_id == ModuleId.FILES.value:
+        endpoints.extend(_files_endpoints(prefix, trailing_slash=False))
+    else:
+        endpoints.extend(_crud_endpoints(prefix, label, trailing_slash=False))
 
 
 def _django_contributions(
@@ -335,20 +567,45 @@ def _django_contributions(
     model_imports: list[ModelImportContribution],
     endpoints: list[tuple[str, str, str]],
 ) -> None:
-    singular = "product" if module_id == "products" else "category"
+    if module_id == ModuleId.BACKGROUND_JOBS.value:
+        # RQ management command app (no HTTP routes).
+        if architecture is ArchitectureStyle.SIMPLE:
+            app_config = "jobsq"
+            urls_module = ""
+        elif architecture is ArchitectureStyle.MODULAR_MONOLITH:
+            app_config = "apps.jobs"
+            urls_module = ""
+        else:
+            app_config = "infrastructure.jobs"
+            urls_module = ""
+        apps.append(
+            DjangoAppContribution(
+                module_id=module_id,
+                app_config=app_config,
+                urls_module=urls_module,
+                url_prefix="",
+            )
+        )
+        return
+
+    if module_id not in _HTTP_API_MODULES:
+        return
+
+    singular = _singular(module_id)
+    py_id = module_id.replace("-", "_")
+    url_prefix = f"{py_id}/"
+
     if architecture is ArchitectureStyle.SIMPLE:
-        app_config = module_id
-        urls_module = f"{module_id}.urls"
-        model_module = f"{module_id}.models"
+        app_config = py_id
+        urls_module = f"{py_id}.urls"
+        model_module = f"{py_id}.models"
     elif architecture is ArchitectureStyle.MODULAR_MONOLITH:
-        app_config = f"apps.{module_id}"
-        urls_module = f"apps.{module_id}.urls"
-        model_module = f"apps.{module_id}.models"
+        app_config = f"apps.{py_id}"
+        urls_module = f"apps.{py_id}.urls"
+        model_module = f"apps.{py_id}.models"
     else:
-        # Clean: ORM models stay in infrastructure.persistence (already
-        # INSTALLED); HTTP routes live under presentation.api.
         app_config = ""
-        urls_module = f"presentation.api.{module_id}_urls"
+        urls_module = f"presentation.api.{py_id}_urls"
         model_module = f"infrastructure.persistence.{singular}"
 
     apps.append(
@@ -356,23 +613,43 @@ def _django_contributions(
             module_id=module_id,
             app_config=app_config,
             urls_module=urls_module,
-            url_prefix=f"{module_id}/",
+            url_prefix=url_prefix,
         )
     )
-    model_imports.append(
-        ModelImportContribution(
-            module_id=module_id,
-            import_module=model_module,
-            symbol=singular.capitalize(),
+    if module_id in _MODEL_MODULES:
+        model_imports.append(
+            ModelImportContribution(
+                module_id=module_id,
+                import_module=model_module,
+                symbol=singular.capitalize(),
+            )
         )
-    )
-    endpoints.extend(
-        _crud_endpoints(
-            f"/api/{module_id}",
-            module_id.capitalize(),
-            trailing_slash=True,
+    label = MODULE_LABELS.get(module_id, module_id.capitalize())
+    prefix = f"/api/{py_id}"
+    if module_id == ModuleId.FILES.value:
+        endpoints.extend(_files_endpoints(prefix, trailing_slash=True))
+    else:
+        endpoints.extend(
+            _crud_endpoints(prefix, label, trailing_slash=True)
         )
-    )
+
+
+def _files_endpoints(
+    prefix: str,
+    *,
+    trailing_slash: bool,
+) -> list[tuple[str, str, str]]:
+    slash = "/" if trailing_slash else ""
+    collection = f"{prefix}{slash}"
+    detail = f"{prefix}/{{id}}{slash}"
+    download = f"{prefix}/{{id}}/content{slash}"
+    return [
+        ("POST", collection, "Upload file"),
+        ("GET", collection, "List files"),
+        ("GET", detail, "Retrieve file metadata"),
+        ("GET", download, "Download file content"),
+        ("DELETE", detail, "Delete file"),
+    ]
 
 
 def _crud_endpoints(
@@ -397,11 +674,20 @@ def contribution_jinja_dict(contributions: ModuleContributions) -> dict[str, obj
     """Presentation context fragment for Jinja templates."""
     return {
         "modules": [
-            {"id": m.id, "label": m.label} for m in contributions.modules
+            {
+                "id": m.id,
+                "label": m.label,
+                "implied": m.implied,
+            }
+            for m in contributions.modules
         ],
         "has_modules": contributions.enabled,
         "has_products": contributions.has_products,
         "has_categories": contributions.has_categories,
+        "has_files": contributions.has_files,
+        "has_background_jobs": contributions.has_background_jobs,
+        "has_email": contributions.has_email,
+        "has_webhooks": contributions.has_webhooks,
         "products_link_categories": contributions.products_link_categories,
         "fastapi_routers": [
             {

@@ -1,0 +1,114 @@
+"""Object storage backends for the Files module."""
+
+from __future__ import annotations
+
+import re
+import uuid
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import BinaryIO
+
+from {{ package_name }}.config import settings
+
+_SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def safe_filename(name: str) -> str:
+    base = Path(name).name
+    cleaned = _SAFE_NAME.sub("_", base).strip("._") or "upload"
+    return cleaned[:200]
+
+
+def new_storage_key(filename: str) -> str:
+    return f"{uuid.uuid4().hex}_{safe_filename(filename)}"
+
+
+class StorageBackend(ABC):
+    @abstractmethod
+    def save(self, key: str, stream: BinaryIO, content_type: str) -> int:
+        """Persist bytes; return size."""
+
+    @abstractmethod
+    def open(self, key: str) -> BinaryIO:
+        ...
+
+    @abstractmethod
+    def delete(self, key: str) -> None:
+        ...
+
+
+class LocalStorage(StorageBackend):
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, key: str) -> Path:
+        if "/" in key or "\\" in key or key.startswith(".."):
+            raise ValueError("invalid storage key")
+        path = (self.root / key).resolve()
+        if not str(path).startswith(str(self.root.resolve())):
+            raise ValueError("invalid storage key")
+        return path
+
+    def save(self, key: str, stream: BinaryIO, content_type: str) -> int:
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = stream.read()
+        path.write_bytes(data)
+        return len(data)
+
+    def open(self, key: str) -> BinaryIO:
+        return self._path(key).open("rb")
+
+    def delete(self, key: str) -> None:
+        path = self._path(key)
+        if path.is_file():
+            path.unlink()
+
+
+{% if is_storage_s3 %}
+class S3Storage(StorageBackend):
+    def __init__(self, client=None) -> None:
+        import boto3
+
+        self.bucket = settings.s3_bucket
+        self.client = client or boto3.client(
+            "s3",
+            endpoint_url=settings.s3_endpoint_url,
+            aws_access_key_id=settings.s3_access_key,
+            aws_secret_access_key=settings.s3_secret_key,
+            region_name=settings.s3_region,
+        )
+        if settings.s3_create_bucket:
+            try:
+                self.client.head_bucket(Bucket=self.bucket)
+            except Exception:
+                self.client.create_bucket(Bucket=self.bucket)
+
+    def save(self, key: str, stream: BinaryIO, content_type: str) -> int:
+        data = stream.read()
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+        )
+        return len(data)
+
+    def open(self, key: str) -> BinaryIO:
+        import io
+
+        obj = self.client.get_object(Bucket=self.bucket, Key=key)
+        return io.BytesIO(obj["Body"].read())
+
+    def delete(self, key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=key)
+{% endif %}
+
+
+def get_storage() -> StorageBackend:
+{% if is_storage_s3 %}
+    return S3Storage()
+{% else %}
+    return LocalStorage(settings.storage_local_root)
+{% endif %}

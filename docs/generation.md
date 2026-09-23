@@ -26,10 +26,10 @@ Python **REST API** only. CLI / Worker project types are catalogued but not gene
 
 ### Project modules
 
-Optional selectable modules (`products`, `categories`) add architecture-native CRUD
-APIs. They require SQL. See [modules.md](./modules.md) for the API contract,
-relationship rules, and composition model. Representative cases are included in
-`SUPPORTED_GENERATION_CASES`.
+Optional selectable modules (`products`, `categories`, `files`, `background-jobs`,
+`email`, `webhooks`) add architecture-native capabilities. See [modules.md](./modules.md)
+for the catalog, storage options, Redis/RQ implications, and composition model.
+Representative cases are included in `SUPPORTED_GENERATION_CASES`.
 
 ### Persistence
 

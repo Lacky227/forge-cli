@@ -57,8 +57,8 @@ def next_steps_for(plan: GenerationPlan, *, destination_name: str) -> list[str]:
     """Local-dev bootstrap commands for a resolved plan.
 
     ``docker compose up -d <services>`` lists *dependency* services only
-    (``db`` / ``mongodb`` / ``redis``). It is omitted when Docker is off
-    or when there are no dependency services (Docker packaging alone).
+    (``db`` / ``mongodb`` / ``redis`` / ``minio``). It is omitted when Docker
+    is off or when there are no dependency services (Docker packaging alone).
     Full-stack ``docker compose up --build`` remains documented in the
     generated README Docker section.
     """
@@ -76,6 +76,8 @@ def next_steps_for(plan: GenerationPlan, *, destination_name: str) -> list[str]:
     if plan.migrate_command:
         steps.append(plan.migrate_command)
     steps.append(plan.run_command)
+    if plan.worker_command:
+        steps.append(f"# in another terminal: {plan.worker_command}")
     if features.testing:
         steps.append("uv run pytest")
     if features.linting:

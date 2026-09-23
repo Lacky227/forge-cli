@@ -19,6 +19,34 @@ class Settings(BaseSettings):
 {% if is_redis %}
     redis_url: str = "{{ redis_url_example }}"
 {% endif %}
+{% if has_files %}
+    upload_max_bytes: int = 10485760
+{% if is_storage_local %}
+    storage_local_root: str = "./var/storage"
+{% endif %}
+{% if is_storage_s3 %}
+    s3_endpoint_url: str = "http://localhost:9000"
+    s3_access_key: str = "minioadmin"
+    s3_secret_key: str = "minioadmin"
+    s3_bucket: str = "{{ package_name }}-files"
+    s3_region: str = "us-east-1"
+    s3_create_bucket: bool = False
+{% endif %}
+{% endif %}
+{% if has_email %}
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
+    email_from: str = "noreply@{{ package_name }}.local"
+{% endif %}
+{% if has_webhooks %}
+    webhook_url: str = "https://example.com/hooks/forge"
+    webhook_timeout_seconds: float = 10.0
+    webhook_max_retries: int = 3
+{% endif %}
+
 
 
 settings = Settings()

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from forge.core import catalog
 from forge.core.definition import ProjectDefinition
+from forge.core.modules import STORAGE_BACKEND_LABELS
 from forge.generator.modules import ModuleContributions, contribution_jinja_dict
 
 
@@ -23,6 +24,15 @@ class EnvVarSpec:
     purpose: str
 
 
+@dataclass(frozen=True, slots=True)
+class ProcessSpec:
+    """One runtime process the generated project is expected to run."""
+
+    id: str
+    label: str
+    command: str
+
+
 @dataclass(frozen=True)
 class GenerationFeatures:
     """Resolved implementation implications of a ProjectDefinition.
@@ -37,7 +47,8 @@ class GenerationFeatures:
     sqlite: bool
     # NoSQL / infrastructure clients (independent of SQL)
     mongodb: bool
-    redis: bool
+    redis: bool  # True when Redis is needed (NoSQL selection and/or jobs)
+    redis_nosql: bool  # True when the user selected Redis as NoSQL persistence
     nosql: bool
     migrations: bool
     docker: bool
@@ -51,6 +62,13 @@ class GenerationFeatures:
     nosql_client: str | None = None  # "pymongo" | "redis" | None
     # REST API stacks may enable a framework-native API layer (e.g. DRF).
     rest_framework: bool = False
+    # Stage 2 infrastructure (resolved from modules + options)
+    storage_backend: str | None = None  # "local" | "s3" | None
+    minio: bool = False
+    background_jobs: bool = False
+    email: bool = False
+    webhooks: bool = False
+    rq: bool = False
 
     @property
     def ci(self) -> bool:
@@ -64,7 +82,7 @@ class GenerationFeatures:
         Prefer ``bool(GenerationPlan.environment_variables)`` for whether an
         ``.env.example`` file should be emitted — Docker alone may have no vars.
         """
-        return self.database or self.nosql or self.docker
+        return self.database or self.nosql or self.docker or self.redis
 
 
 @dataclass(frozen=True)
@@ -105,6 +123,8 @@ class GenerationPlan:
     environment_variables: tuple[EnvVarSpec, ...] = ()
     # Compose dependency service names when Docker is enabled (not the app).
     docker_services: tuple[str, ...] = ()
+    # Runtime processes (API always; worker when background jobs).
+    processes: tuple[ProcessSpec, ...] = ()
     # Current generated liveness endpoint path for this stack.
     health_path: str = "/health"
     # Framework-specific migrate / check helpers (None when not applicable)
@@ -119,6 +139,13 @@ class GenerationPlan:
     def emits_env_example(self) -> bool:
         """Emit ``.env.example`` only when there are concrete variables."""
         return bool(self.environment_variables)
+
+    @property
+    def worker_command(self) -> str | None:
+        for process in self.processes:
+            if process.id == "worker":
+                return process.command
+        return None
 
     def summary_sections(self) -> tuple[PlanSummarySection, ...]:
         """Human-oriented sections derived from resolved plan data only."""
@@ -143,7 +170,13 @@ class GenerationPlan:
 
         contrib = self.contributions
         if contrib is not None and contrib.enabled:
-            module_rows = tuple((m.label, m.id) for m in contrib.modules)
+            module_rows = tuple(
+                (
+                    m.label + (" (implied)" if m.implied else ""),
+                    m.id,
+                )
+                for m in contrib.modules
+            )
             sections.append(PlanSummarySection("Modules", module_rows))
             if contrib.products_link_categories:
                 sections.append(
@@ -152,6 +185,49 @@ class GenerationPlan:
                         (("Products", "Category (many-to-one)"),),
                     )
                 )
+
+        if features.storage_backend:
+            storage_rows: list[tuple[str, str]] = [
+                (
+                    "Backend",
+                    STORAGE_BACKEND_LABELS.get(
+                        features.storage_backend, features.storage_backend
+                    ),
+                )
+            ]
+            if features.minio:
+                storage_rows.append(("Local development", "MinIO"))
+            sections.append(PlanSummarySection("Storage", tuple(storage_rows)))
+
+        if features.background_jobs:
+            job_rows: list[tuple[str, str]] = [
+                ("Queue", "RQ"),
+                (
+                    "Redis",
+                    (
+                        "reuse NoSQL selection"
+                        if features.redis_nosql
+                        else "required infrastructure"
+                    ),
+                ),
+            ]
+            sections.append(PlanSummarySection("Background Jobs", tuple(job_rows)))
+
+        if features.email:
+            sections.append(
+                PlanSummarySection("Email", (("Transport", "SMTP"),))
+            )
+
+        if features.webhooks:
+            sections.append(
+                PlanSummarySection(
+                    "Webhooks",
+                    (
+                        ("Direction", "Outgoing"),
+                        ("Delivery", "Background Jobs (RQ)"),
+                    ),
+                )
+            )
 
         if features.database or features.nosql:
             if features.database:
@@ -185,9 +261,32 @@ class GenerationPlan:
                         ("Client", _nosql_client_label(features.nosql_client))
                     )
                 sections.append(PlanSummarySection("NoSQL", tuple(nosql_rows)))
+            elif features.redis and not features.redis_nosql:
+                sections.append(
+                    PlanSummarySection(
+                        "Infrastructure",
+                        (("Redis", "required by Background Jobs"),),
+                    )
+                )
         else:
+            if features.redis and not features.redis_nosql:
+                sections.append(
+                    PlanSummarySection(
+                        "Infrastructure",
+                        (("Redis", "required by Background Jobs"),),
+                    )
+                )
+            else:
+                sections.append(
+                    PlanSummarySection("Persistence", (("Database", "none"),))
+                )
+
+        if self.processes:
             sections.append(
-                PlanSummarySection("Persistence", (("Database", "none"),))
+                PlanSummarySection(
+                    "Processes",
+                    tuple((p.label, p.command) for p in self.processes),
+                )
             )
 
         tooling_rows: list[tuple[str, str]] = [
@@ -213,6 +312,8 @@ class GenerationPlan:
             command_rows.append(("Migrate", self.migrate_command))
         if self.check_command:
             command_rows.append(("Check", self.check_command))
+        if self.worker_command:
+            command_rows.append(("Worker", self.worker_command))
 
         dep_rows: list[tuple[str, str]] = []
         if self.runtime_dependencies:
@@ -267,6 +368,7 @@ class GenerationPlan:
         """Presentation context for Jinja templates (no resolution logic)."""
         features = self.features
         definition = self.definition
+        storage = definition.storage
         return {
             "project_name": definition.name,
             "package_name": self.package_name,
@@ -295,6 +397,16 @@ class GenerationPlan:
             "is_sqlite": features.sqlite,
             "is_mongodb": features.mongodb,
             "is_redis": features.redis,
+            "is_redis_nosql": features.redis_nosql,
+            "storage_backend": features.storage_backend,
+            "is_storage_local": features.storage_backend == "local",
+            "is_storage_s3": features.storage_backend == "s3",
+            "has_minio": features.minio,
+            "has_background_jobs": features.background_jobs,
+            "has_email": features.email,
+            "has_webhooks": features.webhooks,
+            "has_rq": features.rq,
+            "has_worker": any(p.id == "worker" for p in self.processes),
             "is_simple": definition.architecture.value == "simple",
             "is_modular": definition.architecture.value == "modular-monolith",
             "database_url_example": self.database_url_example,
@@ -306,6 +418,7 @@ class GenerationPlan:
             "run_command": self.run_command,
             "migrate_command": self.migrate_command,
             "check_command": self.check_command,
+            "worker_command": self.worker_command,
             "primary_app": self.primary_app,
             "runtime_dependencies": self.runtime_dependencies,
             "dev_dependencies": self.dev_dependencies,
@@ -319,7 +432,12 @@ class GenerationPlan:
             ],
             "emits_env_example": self.emits_env_example,
             "docker_services": self.docker_services,
+            "processes": [
+                {"id": p.id, "label": p.label, "command": p.command}
+                for p in self.processes
+            ],
             "health_path": self.health_path,
+            "storage_minio": bool(storage.minio) if storage else False,
             **(
                 contribution_jinja_dict(self.contributions)
                 if self.contributions is not None

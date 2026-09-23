@@ -39,7 +39,7 @@ All input paths share the same domain model and resolution pipeline. `forge plan
 **Current:** `forge.core.definition.ProjectDefinition`.
 
 **Explicit user intent only:** language, project type, framework, architecture,
-selectable **modules** (`products`, `categories`, …), and selectable capabilities
+selectable **modules** (`products`, `categories`, `files`, …), and selectable capabilities
 (`sql_database` / `nosql_database`, optional Alembic for SQLAlchemy stacks,
 `docker`, `testing`, `linting`, optional `ci`).
 
@@ -84,7 +84,8 @@ Architecture is independent of framework selection: the same `GenerationPlan` pa
 Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`, optional `ci_provider`), dependency lists, entry/run/migrate/check commands, labels, `primary_app` (Django), **module contributions** (`ModuleContributions`: routers, Django apps, model imports, template mounts, API endpoint summaries), plus resolved developer-workflow metadata:
 
 - `environment_variables` / `emits_env_example` — canonical `EnvVarSpec` list; `.env.example` is emitted only when the list is non-empty (shown by `forge plan` and consumed by templates)
-- `docker_services` — Compose **dependency** service names (`db`, `mongodb`, `redis`) when Docker is enabled; empty when Docker is off or there are no dependency services
+- `docker_services` — Compose **dependency** service names (`db`, `mongodb`, `redis`, `minio`) when Docker is enabled; empty when Docker is off or there are no dependency services
+- `processes` — runtime processes (`API`, optional `Worker` when Background Jobs are resolved)
 - `health_path` — generated liveness path (FastAPI `/health`; Flask `/api/health`; Django `/api/health/`)
 
 ```text

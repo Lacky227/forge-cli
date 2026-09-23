@@ -250,3 +250,7 @@ def test_collision_impossible_for_standard_modules() -> None:
 def test_module_id_enum_stable() -> None:
     assert ModuleId.PRODUCTS.value == "products"
     assert ModuleId.CATEGORIES.value == "categories"
+    assert ModuleId.FILES.value == "files"
+    assert ModuleId.BACKGROUND_JOBS.value == "background-jobs"
+    assert ModuleId.EMAIL.value == "email"
+    assert ModuleId.WEBHOOKS.value == "webhooks"

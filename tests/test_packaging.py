@@ -78,6 +78,18 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
         "/modules/categories/" in n for n in templates
     ), "missing categories module templates"
     assert any(
+        "/modules/files/" in n for n in templates
+    ), "missing files module templates"
+    assert any(
+        "/modules/background-jobs/" in n for n in templates
+    ), "missing background-jobs module templates"
+    assert any(
+        "/modules/email/" in n for n in templates
+    ), "missing email module templates"
+    assert any(
+        "/modules/webhooks/" in n for n in templates
+    ), "missing webhooks module templates"
+    assert any(
         "/modules/_foundation/" in n for n in templates
     ), "missing module foundation templates"
     assert any(

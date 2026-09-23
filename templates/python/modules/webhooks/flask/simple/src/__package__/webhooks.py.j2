@@ -1,0 +1,30 @@
+"""Outgoing webhook delivery via RQ (no public SSRF proxy)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+from rq import Queue, Retry
+
+from {{ package_name }}.config import Config
+from {{ package_name }}.jobs import get_queue
+
+
+def post_webhook(payload: dict[str, Any]) -> int:
+    """POST JSON to the configured WEBHOOK_URL. Returns HTTP status code."""
+    timeout = Config.WEBHOOK_TIMEOUT_SECONDS
+    with httpx.Client(timeout=timeout) as client:
+        response = client.post(Config.WEBHOOK_URL, json=payload)
+        response.raise_for_status()
+        return response.status_code
+
+
+def deliver_webhook(
+    payload: dict[str, Any], *, queue: Queue | None = None
+) -> Any:
+    """Enqueue webhook delivery. Retries are bounded by WEBHOOK_MAX_RETRIES."""
+    q = queue or get_queue()
+    max_retries = max(0, Config.WEBHOOK_MAX_RETRIES)
+    retry = Retry(max=max_retries) if max_retries else None
+    return q.enqueue(post_webhook, payload, retry=retry)

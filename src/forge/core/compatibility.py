@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from forge.core.definition import Capabilities, ProjectDefinition
+from forge.core.definition import Capabilities, ProjectDefinition, StorageOptions
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 
@@ -32,6 +32,8 @@ class GenerationCase:
     language: Language = Language.PYTHON
     project_type: ProjectType = ProjectType.REST_API
     modules: tuple[str, ...] = ()
+    storage_backend: str | None = None
+    storage_minio: bool = False
 
     @property
     def database(self) -> bool:
@@ -45,6 +47,12 @@ class GenerationCase:
     def to_definition(self, *, name: str | None = None) -> ProjectDefinition:
         """Build a validated ProjectDefinition for this case."""
         project_name = name or f"case-{self.id}"
+        storage = None
+        if "files" in self.modules or self.storage_backend is not None:
+            storage = StorageOptions(
+                backend=self.storage_backend or "local",
+                minio=self.storage_minio,
+            )
         return ProjectDefinition(
             name=project_name,
             language=self.language,
@@ -61,6 +69,7 @@ class GenerationCase:
                 ci=self.ci,
             ),
             modules=self.modules,
+            storage=storage,
         )
 
 
@@ -259,6 +268,103 @@ SUPPORTED_GENERATION_CASES: tuple[GenerationCase, ...] = (
         sql_database="sqlite",
         migrations=True,
         modules=("products", "categories"),
+    ),
+    # Stage 2 infrastructure-backed modules (representative, not Cartesian)
+    GenerationCase(
+        id="fastapi-simple-files-local",
+        framework="fastapi",
+        architecture=ArchitectureStyle.SIMPLE,
+        sql_database="sqlite",
+        migrations=True,
+        modules=("files",),
+        storage_backend="local",
+    ),
+    GenerationCase(
+        id="fastapi-modular-files-jobs-s3-minio",
+        framework="fastapi",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="postgresql",
+        migrations=True,
+        docker=True,
+        modules=("products", "files", "background-jobs"),
+        storage_backend="s3",
+        storage_minio=True,
+    ),
+    GenerationCase(
+        id="fastapi-clean-all-modules",
+        framework="fastapi",
+        architecture=ArchitectureStyle.CLEAN,
+        sql_database="postgresql",
+        migrations=True,
+        docker=True,
+        modules=(
+            "products",
+            "categories",
+            "files",
+            "background-jobs",
+            "email",
+            "webhooks",
+        ),
+        storage_backend="s3",
+        storage_minio=True,
+    ),
+    GenerationCase(
+        id="django-simple-files-email",
+        framework="django",
+        architecture=ArchitectureStyle.SIMPLE,
+        sql_database="sqlite",
+        modules=("files", "email"),
+        storage_backend="local",
+    ),
+    GenerationCase(
+        id="django-modular-jobs-webhooks",
+        framework="django",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="postgresql",
+        docker=True,
+        modules=("products", "categories", "background-jobs", "webhooks"),
+    ),
+    GenerationCase(
+        id="django-clean-files-jobs-email",
+        framework="django",
+        architecture=ArchitectureStyle.CLEAN,
+        sql_database="sqlite",
+        modules=("files", "background-jobs", "email"),
+        storage_backend="s3",
+    ),
+    GenerationCase(
+        id="flask-simple-files-jobs",
+        framework="flask",
+        architecture=ArchitectureStyle.SIMPLE,
+        sql_database="sqlite",
+        migrations=True,
+        modules=("files", "background-jobs"),
+        storage_backend="local",
+    ),
+    GenerationCase(
+        id="flask-modular-files-email",
+        framework="flask",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="postgresql",
+        migrations=True,
+        modules=("products", "files", "email"),
+        storage_backend="s3",
+    ),
+    GenerationCase(
+        id="flask-clean-all-modules",
+        framework="flask",
+        architecture=ArchitectureStyle.CLEAN,
+        sql_database="sqlite",
+        migrations=True,
+        modules=(
+            "products",
+            "categories",
+            "files",
+            "background-jobs",
+            "email",
+            "webhooks",
+        ),
+        storage_backend="local",
     ),
 )
 

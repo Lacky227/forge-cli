@@ -1,0 +1,43 @@
+"""SMTP-backed email service (no public relay endpoint)."""
+
+from __future__ import annotations
+
+import smtplib
+from email.message import EmailMessage
+from typing import Any, Callable
+
+from django.conf import settings
+
+
+class EmailService:
+    def __init__(self, *, smtp_factory: Callable[[], Any] | None = None) -> None:
+        self._smtp_factory = smtp_factory
+
+    def _connect(self) -> Any:
+        if self._smtp_factory is not None:
+            return self._smtp_factory()
+        client = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
+        if settings.SMTP_USE_TLS:
+            client.starttls()
+        if settings.SMTP_USERNAME:
+            client.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+        return client
+
+    def send(self, *, to: str, subject: str, body: str) -> EmailMessage:
+        message = EmailMessage()
+        message["From"] = settings.EMAIL_FROM
+        message["To"] = to
+        message["Subject"] = subject
+        message.set_content(body)
+        client = self._connect()
+        try:
+            client.send_message(message)
+        finally:
+            close = getattr(client, "quit", None) or getattr(client, "close", None)
+            if callable(close):
+                close()
+        return message
+
+
+def get_email_service() -> EmailService:
+    return EmailService()

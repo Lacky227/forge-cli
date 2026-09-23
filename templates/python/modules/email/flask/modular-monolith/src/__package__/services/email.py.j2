@@ -1,0 +1,39 @@
+"""SMTP email service (stdlib smtplib)."""
+
+from __future__ import annotations
+
+import smtplib
+from email.message import EmailMessage
+from typing import Callable
+
+from {{ package_name }}.core.config import Config
+
+SmtpFactory = Callable[[], smtplib.SMTP]
+
+
+class EmailService:
+    """Send transactional email via SMTP.
+
+    Inject ``smtp_factory`` in tests to avoid a live SMTP server.
+    There is intentionally no public HTTP endpoint that accepts arbitrary mail.
+    """
+
+    def __init__(self, smtp_factory: SmtpFactory | None = None) -> None:
+        self._smtp_factory = smtp_factory or self._default_smtp
+
+    def _default_smtp(self) -> smtplib.SMTP:
+        client = smtplib.SMTP(Config.SMTP_HOST, Config.SMTP_PORT, timeout=30)
+        if Config.SMTP_USE_TLS:
+            client.starttls()
+        if Config.SMTP_USERNAME:
+            client.login(Config.SMTP_USERNAME, Config.SMTP_PASSWORD)
+        return client
+
+    def send(self, to: str, subject: str, body: str, *, from_addr: str | None = None) -> None:
+        message = EmailMessage()
+        message["From"] = from_addr or Config.EMAIL_FROM
+        message["To"] = to
+        message["Subject"] = subject
+        message.set_content(body)
+        with self._smtp_factory() as smtp:
+            smtp.send_message(message)

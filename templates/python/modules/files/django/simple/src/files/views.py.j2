@@ -1,0 +1,112 @@
+"""File API views."""
+
+from __future__ import annotations
+
+from django.conf import settings
+from django.http import HttpResponse
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.request import Request
+from rest_framework.response import Response
+
+from .models import File
+from .serializers import FileSerializer
+from .storage import (
+{% if is_storage_local %}
+    LocalStorage,
+{% endif %}
+{% if is_storage_s3 %}
+    S3Storage,
+{% endif %}
+    new_storage_key,
+    safe_filename,
+)
+
+
+def get_storage():
+{% if is_storage_local %}
+    return LocalStorage(settings.STORAGE_LOCAL_ROOT)
+{% endif %}
+{% if is_storage_s3 %}
+    return S3Storage(
+        bucket=settings.S3_BUCKET,
+        endpoint_url=settings.S3_ENDPOINT_URL,
+        access_key=settings.S3_ACCESS_KEY,
+        secret_key=settings.S3_SECRET_KEY,
+        region=settings.S3_REGION,
+        create_bucket=settings.S3_CREATE_BUCKET,
+    )
+{% endif %}
+
+
+class FileViewSet(viewsets.ViewSet):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def list(self, request: Request) -> Response:
+        from rest_framework.pagination import PageNumberPagination
+
+        qs = File.objects.all()
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset(qs, request)
+        ser = FileSerializer(page, many=True)
+        return paginator.get_paginated_response(ser.data)
+
+    def create(self, request: Request) -> Response:
+        upload = request.FILES.get("upload") or request.FILES.get("file")
+        if upload is None:
+            return Response({"detail": "Missing upload"}, status=422)
+        try:
+            filename = safe_filename(upload.name or "")
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=422)
+        data = upload.read()
+        if not data:
+            return Response({"detail": "Empty upload"}, status=422)
+        if len(data) > settings.UPLOAD_MAX_BYTES:
+            return Response({"detail": "File exceeds UPLOAD_MAX_BYTES"}, status=413)
+
+        key = new_storage_key(filename)
+        get_storage().save(key, data, content_type=upload.content_type)
+        row = File.objects.create(
+            filename=filename,
+            content_type=upload.content_type or None,
+            size=len(data),
+            storage_key=key,
+        )
+        return Response(FileSerializer(row).data, status=status.HTTP_201_CREATED)
+
+    def retrieve(self, request: Request, pk: str | None = None) -> Response:
+        try:
+            row = File.objects.get(pk=pk)
+        except File.DoesNotExist:
+            return Response({"detail": "Not found"}, status=404)
+        return Response(FileSerializer(row).data)
+
+    def destroy(self, request: Request, pk: str | None = None) -> Response:
+        try:
+            row = File.objects.get(pk=pk)
+        except File.DoesNotExist:
+            return Response({"detail": "Not found"}, status=404)
+        try:
+            get_storage().delete(row.storage_key)
+        except Exception:
+            pass
+        row.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"], url_path="content")
+    def content(self, request: Request, pk: str | None = None) -> HttpResponse:
+        try:
+            row = File.objects.get(pk=pk)
+        except File.DoesNotExist:
+            return Response({"detail": "Not found"}, status=404)
+        try:
+            data = get_storage().load(row.storage_key)
+        except (FileNotFoundError, OSError):
+            return Response({"detail": "Object missing"}, status=404)
+        response = HttpResponse(
+            data, content_type=row.content_type or "application/octet-stream"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{row.filename}"'
+        return response

@@ -48,7 +48,7 @@ uvx --from forge-scaffolder forge new my-api
 
 Starting a backend project means deciding framework, project structure, persistence, migrations, Docker, testing, and linting — often from scratch, every time.
 
-Forge turns those explicit decisions into a coherent, runnable project. It resolves implications (ORM, clients, dependencies, commands) and generates a codebase you can install, run, and keep developing by hand. Optional **project modules** (Products, Categories) add real CRUD APIs with pagination and filtering.
+Forge turns those explicit decisions into a coherent, runnable project. It resolves implications (ORM, clients, dependencies, commands) and generates a codebase you can install, run, and keep developing by hand. Optional **project modules** (Products, Categories, Files, Background Jobs, Email, Webhooks) add real capabilities — see [`docs/modules.md`](docs/modules.md).
 
 It is a **scaffolder**, not a runtime dependency of the projects it creates.
 

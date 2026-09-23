@@ -1,4 +1,4 @@
-{% if is_mongodb or is_redis %}
+{% if is_mongodb or is_redis_nosql %}
 from contextlib import asynccontextmanager
 
 {% endif %}
@@ -11,7 +11,7 @@ from {{ router.import_module }} import (
 )
 {% endfor %}
 
-{% if is_mongodb or is_redis %}
+{% if is_mongodb or is_redis_nosql %}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     app.state.mongodb = mongo_client
     app.state.mongodb_db = get_database(mongo_client)
 {% endif %}
-{% if is_redis %}
+{% if is_redis_nosql %}
     from {{ package_name }}.redis_client import create_redis_client
 
     app.state.redis = create_redis_client()
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
 {% if is_mongodb %}
     await app.state.mongodb.close()
 {% endif %}
-{% if is_redis %}
+{% if is_redis_nosql %}
     await app.state.redis.aclose()
 {% endif %}
 

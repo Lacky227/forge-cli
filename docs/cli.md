@@ -248,7 +248,8 @@ forge new --config forge.yaml          # uses name from YAML
 | `type` | yes | e.g. `rest-api` |
 | `framework` | yes | e.g. `fastapi`, `django`, `flask` |
 | `architecture` | yes | `simple`, `modular-monolith`, `clean` |
-| `modules` | no | list of module ids (`products`, `categories`); omit or `[]` for none — see [modules.md](./modules.md) |
+| `modules` | no | list of module ids (`products`, `categories`, `files`, `background-jobs`, `email`, `webhooks`); omit or `[]` for none — see [modules.md](./modules.md) |
+| `storage` | no | `{ backend: local\|s3, minio?: bool }` when `files` is selected |
 | `persistence` | no | mapping with optional `sql` / `nosql` keys (see below) |
 | `database` | no | **legacy SQL shorthand** — engine `postgresql` / `sqlite`, or `false`/`null` for none |
 | `orm` | no | optional explicit override; usually omit |
@@ -371,7 +372,7 @@ docker: true
 
 - Framework options depend on language + project type (FastAPI, Django, Flask, …)
 - Architecture for REST API: Simple, Modular Monolith, Clean Architecture
-- **Project modules:** optional multi-select (Products, Categories). See [modules.md](./modules.md)
+- **Project modules:** optional multi-select (Products, Categories, Files, Background Jobs, Email, Webhooks). See [modules.md](./modules.md)
 - **FastAPI / Flask:** if modules requiring SQL are selected, ask for an SQL engine (no silent default); otherwise optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
 - **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three

@@ -1,0 +1,17 @@
+"""Background jobs tests (no live Redis)."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import {{ package_name }}.jobs as jobs
+
+
+def test_ping_task() -> None:
+    assert jobs.ping("hello") == "ping:hello"
+
+
+def test_enqueue_ping(monkeypatch) -> None:
+    queue = MagicMock()
+    jobs.enqueue_ping("x", queue=queue)
+    queue.enqueue.assert_called_once_with(jobs.ping, "x")

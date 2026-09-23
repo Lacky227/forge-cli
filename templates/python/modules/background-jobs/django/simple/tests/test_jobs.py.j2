@@ -1,0 +1,15 @@
+from unittest.mock import MagicMock
+
+from jobsq.queue import echo_message, enqueue_echo
+
+
+def test_echo_message() -> None:
+    assert echo_message("ping") == "echo:ping"
+
+
+def test_enqueue_echo_uses_queue() -> None:
+    queue = MagicMock()
+    job = MagicMock()
+    job.id = "job-1"
+    queue.enqueue.return_value = job
+    assert enqueue_echo("hi", queue=queue) == "job-1"

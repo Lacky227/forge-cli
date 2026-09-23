@@ -27,8 +27,23 @@
 {% if is_mongodb %}
 - NoSQL: MongoDB ({{ nosql_client }})
 {% endif %}
-{% if is_redis %}
+{% if is_redis_nosql %}
 - NoSQL: Redis ({{ nosql_client }})
+{% elif is_redis %}
+- Redis: infrastructure (queues / workers)
+{% endif %}
+{% if has_files and storage_backend %}
+- File storage: {% if is_storage_local %}local filesystem{% elif is_storage_s3 %}S3-compatible{% else %}{{ storage_backend }}{% endif %}{% if has_minio %} (MinIO for local development){% endif %}
+
+{% endif %}
+{% if has_background_jobs or has_rq %}
+- Background jobs: RQ
+{% endif %}
+{% if has_email %}
+- Email: SMTP
+{% endif %}
+{% if has_webhooks %}
+- Webhooks: outgoing (via RQ)
 {% endif %}
 {% if docker %}
 - Docker: yes
@@ -53,15 +68,59 @@
 ## Modules
 
 {% for m in modules %}
-- {{ m.label }} (`{{ m.id }}`)
+- {{ m.label }} (`{{ m.id }}`){% if m.implied %} — implied dependency{% endif %}
 {% endfor %}
 
+{% if has_files %}
+### Files
+
+Upload, list, metadata, download, and delete endpoints. Object bytes live in
+{% if is_storage_local %}`STORAGE_LOCAL_ROOT` (default `./var/storage`){% elif is_storage_s3 %}an S3-compatible bucket (`S3_*` settings){% else %}configured object storage{% endif %};
+SQL stores metadata only (`storage_key` is a UUID-based opaque key).
+{% if is_storage_s3 %}
+
+The S3 bucket must already exist unless you set `S3_CREATE_BUCKET=true`
+(opt-in; default is false).
+{% endif %}
+{% if has_minio %}
+
+Start MinIO with Docker Compose (`minio` service), then point `S3_ENDPOINT_URL`
+at it.
+{% endif %}
+{% endif %}
+{% if has_background_jobs %}
+### Background jobs
+
+RQ workers read jobs from Redis (`REDIS_URL`). Start a worker with:
+
+```bash
+{{ worker_command }}
+```
+
+{% endif %}
+{% if has_email %}
+### Email
+
+SMTP-backed `EmailService` (stdlib `smtplib`). Configure `SMTP_*` and
+`EMAIL_FROM`. There is no public arbitrary-send HTTP endpoint — use the
+service from application code (see tests for the injection pattern).
+{% endif %}
+{% if has_webhooks %}
+### Webhooks
+
+Outgoing delivery only: `deliver_webhook(payload)` enqueues an RQ job that
+POSTs JSON to `WEBHOOK_URL` with timeout/`WEBHOOK_MAX_RETRIES`. No public
+SSRF proxy endpoint.
+{% endif %}
+
+{% if has_products or has_categories or has_files %}
 List and detail endpoints use page-number pagination where the framework supports it (page size 20).
+{% endif %}
 {% endif %}
 {% endmacro %}
 
 {% macro api_modules_section() %}
-{% if has_modules %}
+{% if has_modules and api_endpoints %}
 ## API endpoints
 
 | Method | Path | Summary |
@@ -112,6 +171,14 @@ cp .env.example .env
 {% else %}
 ```bash
 {{ run_command }}
+```
+{% endif %}
+{% if worker_command %}
+
+Worker (background jobs / webhooks):
+
+```bash
+{{ worker_command }}
 ```
 {% endif %}
 
@@ -165,6 +232,15 @@ uv run ruff check .
 docker compose up -d {{ docker_services | join(" ") }}
 docker compose up --build
 ```
+{% if has_worker %}
+
+Compose includes a `worker` service using the same image as the API with the
+RQ worker command.
+{% endif %}
+{% if has_minio %}
+
+MinIO is available as the `minio` service for local S3-compatible storage.
+{% endif %}
 {% else %}
 ```bash
 docker compose up --build

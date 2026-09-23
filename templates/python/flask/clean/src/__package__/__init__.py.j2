@@ -19,7 +19,7 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
 
     init_mongodb(app)
 {% endif %}
-{% if is_redis %}
+{% if is_redis_nosql %}
     from {{ package_name }}.infrastructure.redis_client import init_redis
 
     init_redis(app)

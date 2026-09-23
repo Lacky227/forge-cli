@@ -159,7 +159,7 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
         return False
     if name in _MONGODB_FILES and not features.mongodb:
         return False
-    if name in _REDIS_FILES and not features.redis:
+    if name in _REDIS_FILES and not features.redis_nosql:
         return False
     return True
 

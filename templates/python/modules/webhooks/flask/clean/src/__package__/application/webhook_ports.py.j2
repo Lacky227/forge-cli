@@ -1,0 +1,10 @@
+"""Webhook delivery port."""
+
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+
+class WebhookDeliverer(Protocol):
+    def deliver(self, payload: dict[str, Any]) -> Any:
+        ...
