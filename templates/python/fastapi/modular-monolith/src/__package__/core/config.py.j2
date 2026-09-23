@@ -12,6 +12,13 @@ class Settings(BaseSettings):
 {% if database %}
     database_url: str = "{{ database_url_example }}"
 {% endif %}
+{% if is_mongodb %}
+    mongodb_url: str = "{{ mongodb_url_example }}"
+    mongodb_database: str = "{{ mongodb_database_example }}"
+{% endif %}
+{% if is_redis %}
+    redis_url: str = "{{ redis_url_example }}"
+{% endif %}
 
 
 settings = Settings()

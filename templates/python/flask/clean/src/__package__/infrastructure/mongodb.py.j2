@@ -1,0 +1,29 @@
+"""MongoDB client helpers (PyMongo)."""
+
+from __future__ import annotations
+
+from flask import Flask, current_app, g
+from pymongo import MongoClient
+from pymongo.database import Database
+
+
+def init_mongodb(app: Flask) -> None:
+    """Register MongoDB teardown on the Flask application."""
+
+    @app.teardown_appcontext
+    def close_mongodb(_exc: BaseException | None) -> None:
+        client = g.pop("mongodb_client", None)
+        if client is not None:
+            client.close()
+
+
+def get_mongodb_client() -> MongoClient:
+    """Return a request-scoped MongoClient."""
+    if "mongodb_client" not in g:
+        g.mongodb_client = MongoClient(current_app.config["MONGODB_URL"])
+    return g.mongodb_client
+
+
+def get_mongodb() -> Database:
+    """Return the configured MongoDB database."""
+    return get_mongodb_client()[current_app.config["MONGODB_DATABASE"]]

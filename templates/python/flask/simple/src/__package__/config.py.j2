@@ -17,3 +17,19 @@ class Config:
         "{{ database_url_example }}",
     )
 {% endif %}
+{% if is_mongodb %}
+    MONGODB_URL: str = os.getenv(
+        "MONGODB_URL",
+        "{{ mongodb_url_example }}",
+    )
+    MONGODB_DATABASE: str = os.getenv(
+        "MONGODB_DATABASE",
+        "{{ mongodb_database_example }}",
+    )
+{% endif %}
+{% if is_redis %}
+    REDIS_URL: str = os.getenv(
+        "REDIS_URL",
+        "{{ redis_url_example }}",
+    )
+{% endif %}

@@ -23,8 +23,7 @@ def _fastapi_definition(
     linting: bool = True,
 ) -> ProjectDefinition:
     caps = Capabilities(
-        database=database,
-        database_engine=engine if database else None,
+        sql_database=engine if database else None,
         migrations=migrations and database,
         docker=docker,
         testing=testing,

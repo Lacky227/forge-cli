@@ -97,6 +97,16 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+{% if is_mongodb %}
+MONGODB_URL = os.environ.get("MONGODB_URL", "{{ mongodb_url_example }}")
+MONGODB_DATABASE = os.environ.get(
+    "MONGODB_DATABASE", "{{ mongodb_database_example }}"
+)
+{% endif %}
+{% if is_redis %}
+REDIS_URL = os.environ.get("REDIS_URL", "{{ redis_url_example }}")
+{% endif %}
+
 {% if rest_framework %}
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [

@@ -23,7 +23,7 @@ _SQLALCHEMY_ORM = "sqlalchemy"
 _DJANGO_ORM = "django-orm"
 _ALEMBIC = "alembic"
 _DJANGO_MIGRATIONS = "django"
-# Frameworks that use SQLAlchemy + optional Alembic when a database is selected.
+# Frameworks that use SQLAlchemy + optional Alembic when SQL is selected.
 _SQLALCHEMY_FRAMEWORKS = frozenset({"fastapi", "flask"})
 
 
@@ -36,6 +36,8 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
     features = _resolve_features(definition)
     runtime_deps, dev_deps = _resolve_dependencies(definition, features)
     database_url = _database_url_example(definition, package_name)
+    mongodb_url, mongodb_db = _mongodb_examples(definition, package_name)
+    redis_url = _redis_url_example(definition)
     entry_file, app_module, run_command, migrate_command, check_command = (
         _commands_and_entry(definition, features, package_name)
     )
@@ -53,6 +55,9 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
         runtime_dependencies=runtime_deps,
         dev_dependencies=dev_deps,
         database_url_example=database_url,
+        mongodb_url_example=mongodb_url,
+        mongodb_database_example=mongodb_db,
+        redis_url_example=redis_url,
         app_module=app_module,
         entry_file=entry_file,
         run_command=run_command,
@@ -108,15 +113,12 @@ def _assert_capability_coherence(definition: ProjectDefinition) -> None:
             "Use SQLAlchemy (and Alembic) instead."
         )
 
-    if caps.migrations and framework == "django":
-        # Django migrations are implied; an explicit migrations=True is fine.
-        # Reject only when an incompatible ORM was also stated.
-        if caps.orm == _SQLALCHEMY_ORM:
-            raise GenerationError(
-                "Cannot generate this project:\n\n"
-                "Django does not use Alembic/SQLAlchemy in Forge. "
-                "Use Django ORM and Django migrations."
-            )
+    if caps.migrations and framework == "django" and caps.orm == _SQLALCHEMY_ORM:
+        raise GenerationError(
+            "Cannot generate this project:\n\n"
+            "Django does not use Alembic/SQLAlchemy in Forge. "
+            "Use Django ORM and Django migrations."
+        )
 
     if caps.migrations and framework in _SQLALCHEMY_FRAMEWORKS:
         if caps.orm is not None and caps.orm != _SQLALCHEMY_ORM:
@@ -125,39 +127,45 @@ def _assert_capability_coherence(definition: ProjectDefinition) -> None:
                 "Alembic requires SQLAlchemy. "
                 f"Selected ORM is {caps.orm!r}."
             )
-        if not caps.database:
+        if caps.sql_database is None:
             raise GenerationError(
                 "Cannot generate this project:\n\n"
-                "Migrations require a compatible database/ORM configuration."
+                "Migrations require a compatible SQL database/ORM configuration."
             )
 
 
 def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
     caps = definition.capabilities
-    engine = caps.database_engine
+    sql = caps.sql_database
+    nosql = caps.nosql_database
     orm = _resolve_orm(definition)
     migration_system = _resolve_migration_system(definition, orm)
+    nosql_client = catalog.nosql_client_for(nosql) if nosql else None
     rest_framework = (
         definition.framework == "django"
         and definition.project_type is ProjectType.REST_API
     )
     return GenerationFeatures(
-        database=caps.database,
-        postgresql=caps.database and engine == "postgresql",
-        sqlite=caps.database and engine == "sqlite",
+        database=sql is not None,
+        postgresql=sql == "postgresql",
+        sqlite=sql == "sqlite",
+        mongodb=nosql == "mongodb",
+        redis=nosql == "redis",
+        nosql=nosql is not None,
         migrations=migration_system is not None,
         docker=caps.docker,
         testing=caps.testing,
         linting=caps.linting,
         orm=orm,
         migration_system=migration_system,
+        nosql_client=nosql_client,
         rest_framework=rest_framework,
     )
 
 
 def _resolve_orm(definition: ProjectDefinition) -> str | None:
     caps = definition.capabilities
-    if not caps.database:
+    if caps.sql_database is None:
         return None
     if caps.orm is not None:
         return caps.orm
@@ -170,7 +178,7 @@ def _resolve_migration_system(
 ) -> str | None:
     """Map framework + explicit choices to a concrete migration implementation."""
     caps = definition.capabilities
-    if not caps.database or orm is None:
+    if caps.sql_database is None or orm is None:
         return None
 
     if definition.framework == "django":
@@ -211,6 +219,7 @@ def _resolve_dependencies(
             "Cannot generate this project:\n\n"
             f"No dependency mapping for framework {definition.framework!r}."
         )
+    _append_nosql_dependencies(runtime, features)
     return _dedupe(runtime), _dedupe(dev)
 
 
@@ -223,6 +232,16 @@ def _dedupe(items: list[str]) -> tuple[str, ...]:
             seen.add(item)
             out.append(item)
     return tuple(out)
+
+
+def _append_nosql_dependencies(
+    runtime: list[str],
+    features: GenerationFeatures,
+) -> None:
+    if features.mongodb:
+        runtime.append("pymongo>=4.13")
+    if features.redis:
+        runtime.append("redis>=5.0")
 
 
 def _fastapi_dependencies(
@@ -297,26 +316,41 @@ def _flask_dependencies(
 
 def _database_url_example(definition: ProjectDefinition, package_name: str) -> str:
     caps = definition.capabilities
-    if not caps.database:
+    if caps.sql_database is None:
         return ""
     if definition.framework == "django":
-        if caps.database_engine == "postgresql":
+        if caps.sql_database == "postgresql":
             return (
                 "postgres://postgres:postgres@localhost:5432/"
                 f"{package_name}"
             )
-        if caps.database_engine == "sqlite":
+        if caps.sql_database == "sqlite":
             return "sqlite:///db.sqlite3"
         return ""
     # FastAPI / Flask (SQLAlchemy)
-    if caps.database_engine == "postgresql":
+    if caps.sql_database == "postgresql":
         return (
             "postgresql+psycopg://postgres:postgres@localhost:5432/"
             f"{package_name}"
         )
-    if caps.database_engine == "sqlite":
+    if caps.sql_database == "sqlite":
         return f"sqlite:///./{package_name}.db"
     return ""
+
+
+def _mongodb_examples(
+    definition: ProjectDefinition,
+    package_name: str,
+) -> tuple[str, str]:
+    if definition.capabilities.nosql_database != "mongodb":
+        return "", ""
+    return "mongodb://localhost:27017", package_name
+
+
+def _redis_url_example(definition: ProjectDefinition) -> str:
+    if definition.capabilities.nosql_database != "redis":
+        return ""
+    return "redis://localhost:6379/0"
 
 
 def _commands_and_entry(

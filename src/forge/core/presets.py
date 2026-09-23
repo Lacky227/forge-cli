@@ -33,7 +33,8 @@ class Preset:
     architecture: ArchitectureStyle
     project_type: ProjectType = ProjectType.REST_API
     language: Language = Language.PYTHON
-    database_engine: str | None = None
+    sql_database: str | None = None
+    nosql_database: str | None = None
     migrations: bool = False
     docker: bool = True
     testing: bool = True
@@ -41,7 +42,6 @@ class Preset:
 
     def to_definition(self, *, name: str) -> ProjectDefinition:
         """Build a validated ``ProjectDefinition`` for ``name``."""
-        database = self.database_engine is not None
         try:
             return ProjectDefinition(
                 name=name,
@@ -50,8 +50,8 @@ class Preset:
                 framework=self.framework,
                 architecture=self.architecture,
                 capabilities=Capabilities(
-                    database=database,
-                    database_engine=self.database_engine,
+                    sql_database=self.sql_database,
+                    nosql_database=self.nosql_database,
                     # ORM left unset — resolve_plan implies framework defaults.
                     migrations=self.migrations,
                     docker=self.docker,
@@ -76,7 +76,7 @@ PRESETS: tuple[Preset, ...] = (
         ),
         framework="fastapi",
         architecture=ArchitectureStyle.MODULAR_MONOLITH,
-        database_engine="postgresql",
+        sql_database="postgresql",
         migrations=True,
     ),
     Preset(
@@ -88,7 +88,7 @@ PRESETS: tuple[Preset, ...] = (
         ),
         framework="fastapi",
         architecture=ArchitectureStyle.CLEAN,
-        database_engine="postgresql",
+        sql_database="postgresql",
         migrations=True,
     ),
     Preset(
@@ -100,7 +100,7 @@ PRESETS: tuple[Preset, ...] = (
         ),
         framework="flask",
         architecture=ArchitectureStyle.MODULAR_MONOLITH,
-        database_engine="postgresql",
+        sql_database="postgresql",
         migrations=True,
     ),
     Preset(
@@ -113,7 +113,19 @@ PRESETS: tuple[Preset, ...] = (
         ),
         framework="django",
         architecture=ArchitectureStyle.MODULAR_MONOLITH,
-        database_engine="postgresql",
+        sql_database="postgresql",
+        migrations=False,
+    ),
+    Preset(
+        id="fastapi-mongo",
+        title="FastAPI + MongoDB",
+        description=(
+            "FastAPI REST API with Modular Monolith layout, "
+            "MongoDB (PyMongo), Docker, pytest, and Ruff."
+        ),
+        framework="fastapi",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        nosql_database="mongodb",
         migrations=False,
     ),
 )

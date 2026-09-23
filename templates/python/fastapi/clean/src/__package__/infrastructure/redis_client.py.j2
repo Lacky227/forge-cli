@@ -1,0 +1,10 @@
+"""Redis client helpers (redis.asyncio)."""
+
+import redis.asyncio as redis
+
+from {{ package_name }}.infrastructure.config import settings
+
+
+def create_redis_client() -> redis.Redis:
+    """Create an async Redis client from application settings."""
+    return redis.from_url(settings.redis_url, decode_responses=True)

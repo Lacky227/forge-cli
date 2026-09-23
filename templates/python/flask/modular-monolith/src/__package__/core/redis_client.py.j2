@@ -1,0 +1,26 @@
+"""Redis client helpers."""
+
+from __future__ import annotations
+
+from flask import Flask, current_app, g
+from redis import Redis
+
+
+def init_redis(app: Flask) -> None:
+    """Register Redis teardown on the Flask application."""
+
+    @app.teardown_appcontext
+    def close_redis(_exc: BaseException | None) -> None:
+        client = g.pop("redis_client", None)
+        if client is not None:
+            client.close()
+
+
+def get_redis() -> Redis:
+    """Return a request-scoped Redis client."""
+    if "redis_client" not in g:
+        g.redis_client = Redis.from_url(
+            current_app.config["REDIS_URL"],
+            decode_responses=True,
+        )
+    return g.redis_client

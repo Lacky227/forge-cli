@@ -131,10 +131,10 @@ def _stack_lines(result: GenerationResult) -> list[str]:
     caps = result.definition.capabilities
     lines = [plan.framework_label, plan.architecture_label]
 
-    if features.database and caps.database_engine:
+    if features.database and caps.sql_database:
         lines.append(
-            catalog.DATABASE_ENGINE_LABELS.get(
-                caps.database_engine, caps.database_engine
+            catalog.SQL_DATABASE_LABELS.get(
+                caps.sql_database, caps.sql_database
             )
         )
     if features.orm == "django-orm":
@@ -148,6 +148,15 @@ def _stack_lines(result: GenerationResult) -> list[str]:
         lines.append("Django migrations")
     elif features.migration_system == "alembic":
         lines.append("Alembic")
+
+    if features.nosql and caps.nosql_database:
+        lines.append(
+            catalog.NOSQL_DATABASE_LABELS.get(
+                caps.nosql_database, caps.nosql_database
+            )
+        )
+        if features.nosql_client:
+            lines.append(features.nosql_client)
 
     if features.rest_framework:
         lines.append("Django REST Framework")

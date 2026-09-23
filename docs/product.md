@@ -83,14 +83,14 @@ The first product version targets **Python** project generation.
 
 **Potential capabilities / integrations** (not all combinations are valid)
 
-- Databases: PostgreSQL, SQLite
-- ORMs: SQLAlchemy, Django ORM
-- Redis
+- SQL databases: PostgreSQL, SQLite
+- NoSQL / infrastructure clients: MongoDB, Redis
+- ORMs: SQLAlchemy, Django ORM (SQL only)
 - JWT authentication
 - Docker
 - pytest, Ruff
 - Environment configuration
-- Migrations (e.g. Alembic where appropriate)
+- Migrations (e.g. Alembic where appropriate for SQL)
 
 **Design requirement:** the system must validate incompatible or meaningless combinations. Framework-specific options stay framework-aware (e.g. do not offer SQLAlchemy-centric paths for a pure Django stack without a conscious design).
 
@@ -100,7 +100,7 @@ The first product version targets **Python** project generation.
 
 ### Working software first
 
-Generate projects that actually work together. Do not ship fake architecture of empty directories and placeholders. If a feature requires integration (e.g. FastAPI + PostgreSQL + SQLAlchemy + Alembic), include coherent initial configuration that can run. The same applies to Docker, Redis, auth, jobs, testing, etc.
+Generate projects that actually work together. Do not ship fake architecture of empty directories and placeholders. If a feature requires integration (e.g. FastAPI + PostgreSQL + SQLAlchemy + Alembic, or FastAPI + MongoDB via pymongo), include coherent initial configuration that can run. The same applies to Docker, Redis, auth, jobs, testing, etc.
 
 ### Avoid unnecessary complexity
 

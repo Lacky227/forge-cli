@@ -5,7 +5,13 @@ Concrete data for adaptive prompting and validation — not a plugin system.
 
 from __future__ import annotations
 
-from forge.core.types import ArchitectureStyle, Language, ProjectType
+from forge.core.types import (
+    ArchitectureStyle,
+    Language,
+    NoSqlDatabase,
+    ProjectType,
+    SqlDatabase,
+)
 
 # Display labels for CLI / summaries. Keys are stable definition values.
 PROJECT_TYPE_LABELS: dict[ProjectType, str] = {
@@ -36,9 +42,20 @@ FRAMEWORK_LABELS: dict[str, str] = {
     "plain": "Plain Python",
 }
 
+SQL_DATABASE_LABELS: dict[str, str] = {
+    SqlDatabase.POSTGRESQL.value: "PostgreSQL",
+    SqlDatabase.SQLITE.value: "SQLite",
+}
+
+NOSQL_DATABASE_LABELS: dict[str, str] = {
+    NoSqlDatabase.MONGODB.value: "MongoDB",
+    NoSqlDatabase.REDIS.value: "Redis",
+}
+
+# Backward-compatible alias used by older call sites / display helpers.
 DATABASE_ENGINE_LABELS: dict[str, str] = {
-    "postgresql": "PostgreSQL",
-    "sqlite": "SQLite",
+    **SQL_DATABASE_LABELS,
+    **NOSQL_DATABASE_LABELS,
 }
 
 # language → project_type → frameworks
@@ -93,17 +110,36 @@ GENERATABLE_ARCHITECTURES: frozenset[ArchitectureStyle] = frozenset(
     }
 )
 
-DATABASE_CAPABLE_FRAMEWORKS: frozenset[str] = frozenset(
+# Frameworks that may select SQL persistence.
+SQL_CAPABLE_FRAMEWORKS: frozenset[str] = frozenset(
     {"fastapi", "django", "flask", "celery"}
 )
 
-DATABASE_ENGINES: tuple[str, ...] = ("postgresql", "sqlite")
+# Frameworks that may select NoSQL clients (MongoDB / Redis).
+NOSQL_CAPABLE_FRAMEWORKS: frozenset[str] = frozenset(
+    {"fastapi", "django", "flask"}
+)
+
+# Backward-compatible alias.
+DATABASE_CAPABLE_FRAMEWORKS: frozenset[str] = SQL_CAPABLE_FRAMEWORKS
+
+SQL_DATABASES: tuple[str, ...] = tuple(db.value for db in SqlDatabase)
+NOSQL_DATABASES: tuple[str, ...] = tuple(db.value for db in NoSqlDatabase)
+
+# Backward-compatible alias for SQL engines.
+DATABASE_ENGINES: tuple[str, ...] = SQL_DATABASES
 
 ORM_BY_FRAMEWORK: dict[str, str] = {
     "fastapi": "sqlalchemy",
     "flask": "sqlalchemy",
     "django": "django-orm",
     "celery": "sqlalchemy",
+}
+
+# Resolved NoSQL client libraries (not ODMs).
+NOSQL_CLIENT_BY_DATABASE: dict[str, str] = {
+    NoSqlDatabase.MONGODB.value: "pymongo",
+    NoSqlDatabase.REDIS.value: "redis",
 }
 
 
@@ -123,11 +159,24 @@ def is_framework_compatible(
 
 
 def supports_database(framework: str) -> bool:
-    return framework in DATABASE_CAPABLE_FRAMEWORKS
+    """Whether the framework supports SQL persistence (legacy name)."""
+    return framework in SQL_CAPABLE_FRAMEWORKS
+
+
+def supports_sql(framework: str) -> bool:
+    return framework in SQL_CAPABLE_FRAMEWORKS
+
+
+def supports_nosql(framework: str) -> bool:
+    return framework in NOSQL_CAPABLE_FRAMEWORKS
 
 
 def default_orm_for(framework: str) -> str | None:
     return ORM_BY_FRAMEWORK.get(framework)
+
+
+def nosql_client_for(nosql_database: str) -> str | None:
+    return NOSQL_CLIENT_BY_DATABASE.get(nosql_database)
 
 
 def is_generatable(

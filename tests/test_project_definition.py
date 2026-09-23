@@ -18,8 +18,7 @@ def test_valid_fastapi_definition() -> None:
         framework="fastapi",
         architecture=ArchitectureStyle.MODULAR_MONOLITH,
         capabilities=Capabilities(
-            database=True,
-            database_engine="postgresql",
+            sql_database="postgresql",
             migrations=True,
             docker=True,
             testing=True,
@@ -40,8 +39,7 @@ def test_valid_django_definition_without_orm_field() -> None:
         framework="django",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(
-            database=True,
-            database_engine="postgresql",
+            sql_database="postgresql",
             docker=True,
         ),
     )
@@ -105,20 +103,20 @@ def test_rejects_clean_architecture_for_cli() -> None:
         )
 
 
-def test_rejects_database_without_engine() -> None:
-    with pytest.raises(ValidationError):
+def test_rejects_invalid_sql_database() -> None:
+    with pytest.raises(ValidationError, match="sql_database must be one of"):
         ProjectDefinition(
             name="api",
             language=Language.PYTHON,
             project_type=ProjectType.REST_API,
             framework="fastapi",
             architecture=ArchitectureStyle.SIMPLE,
-            capabilities=Capabilities(database=True),
+            capabilities=Capabilities(sql_database="invalid"),
         )
 
 
 def test_rejects_orm_when_database_disabled() -> None:
-    with pytest.raises(ValidationError, match="database_engine and orm"):
+    with pytest.raises(ValidationError, match="orm requires capabilities.sql_database"):
         ProjectDefinition(
             name="api",
             language=Language.PYTHON,
@@ -126,14 +124,14 @@ def test_rejects_orm_when_database_disabled() -> None:
             framework="fastapi",
             architecture=ArchitectureStyle.SIMPLE,
             capabilities=Capabilities(
-                database=False,
+                sql_database=None,
                 orm="sqlalchemy",
             ),
         )
 
 
 def test_rejects_database_for_non_capable_framework() -> None:
-    with pytest.raises(ValidationError, match="does not support a database"):
+    with pytest.raises(ValidationError, match="does not support SQL"):
         ProjectDefinition(
             name="tool",
             language=Language.PYTHON,
@@ -141,8 +139,7 @@ def test_rejects_database_for_non_capable_framework() -> None:
             framework="typer",
             architecture=ArchitectureStyle.SIMPLE,
             capabilities=Capabilities(
-                database=True,
-                database_engine="sqlite",
+                sql_database="sqlite",
                 orm="sqlalchemy",
             ),
         )
@@ -157,8 +154,7 @@ def test_django_requires_django_orm() -> None:
             framework="django",
             architecture=ArchitectureStyle.SIMPLE,
             capabilities=Capabilities(
-                database=True,
-                database_engine="postgresql",
+                sql_database="postgresql",
                 orm="sqlalchemy",
             ),
         )

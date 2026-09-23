@@ -27,8 +27,7 @@ def _fastapi_clean(
         framework="fastapi",
         architecture=ArchitectureStyle.CLEAN,
         capabilities=Capabilities(
-            database=database,
-            database_engine=engine if database else None,
+            sql_database=engine if database else None,
             migrations=migrations and database,
             docker=docker,
             testing=True,
@@ -52,8 +51,7 @@ def _flask_clean(
         framework="flask",
         architecture=ArchitectureStyle.CLEAN,
         capabilities=Capabilities(
-            database=database,
-            database_engine=engine if database else None,
+            sql_database=engine if database else None,
             migrations=migrations and database,
             docker=docker,
             testing=True,
@@ -75,8 +73,7 @@ def _django_clean(
         framework="django",
         architecture=ArchitectureStyle.CLEAN,
         capabilities=Capabilities(
-            database=True,
-            database_engine=engine,
+            sql_database=engine,
             docker=docker,
             testing=True,
             linting=True,
@@ -151,8 +148,7 @@ def test_reject_clean_flask_with_django_orm() -> None:
         framework="flask",
         architecture=ArchitectureStyle.CLEAN,
         capabilities=Capabilities.model_construct(
-            database=True,
-            database_engine="postgresql",
+            sql_database="postgresql",
             orm="django-orm",
             migrations=True,
             docker=False,

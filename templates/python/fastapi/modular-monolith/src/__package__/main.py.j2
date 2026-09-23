@@ -1,7 +1,39 @@
+{% if is_mongodb or is_redis %}
+from contextlib import asynccontextmanager
+
+{% endif %}
 from fastapi import FastAPI
 
 from {{ package_name }}.api.routes import api_router
 from {{ package_name }}.core.config import settings
 
+{% if is_mongodb or is_redis %}
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+{% if is_mongodb %}
+    from {{ package_name }}.core.mongodb import create_mongodb_client, get_database
+
+    mongo_client = create_mongodb_client()
+    app.state.mongodb = mongo_client
+    app.state.mongodb_db = get_database(mongo_client)
+{% endif %}
+{% if is_redis %}
+    from {{ package_name }}.core.redis_client import create_redis_client
+
+    app.state.redis = create_redis_client()
+{% endif %}
+    yield
+{% if is_mongodb %}
+    await app.state.mongodb.close()
+{% endif %}
+{% if is_redis %}
+    await app.state.redis.aclose()
+{% endif %}
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
+{% else %}
 app = FastAPI(title=settings.app_name)
+{% endif %}
 app.include_router(api_router)

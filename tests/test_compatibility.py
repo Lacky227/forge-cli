@@ -59,6 +59,16 @@ def test_supported_case_resolves(case: GenerationCase) -> None:
     if case.framework == "flask" and not case.database:
         assert plan.features.orm is None
         assert plan.features.migration_system is None
+    if case.nosql_database == "mongodb":
+        assert plan.features.mongodb is True
+        assert plan.features.nosql_client == "pymongo"
+        assert "pymongo" in " ".join(plan.runtime_dependencies)
+    if case.nosql_database == "redis":
+        assert plan.features.redis is True
+        assert plan.features.nosql_client == "redis"
+        assert "redis" in " ".join(plan.runtime_dependencies)
+    if case.nosql_database is None:
+        assert plan.features.nosql is False
 
 
 @pytest.mark.parametrize("case", SUPPORTED_GENERATION_CASES, ids=lambda c: c.id)
@@ -121,6 +131,27 @@ def test_supported_case_generates_structurally(
     if plan.features.linting:
         assert "ruff" in pyproject.lower()
 
+    if plan.features.mongodb:
+        assert "pymongo" in pyproject.lower()
+        assert "mongodb.py" in "\n".join(
+            p.as_posix() for p in root.rglob("mongodb.py")
+        )
+    else:
+        assert not list(root.rglob("mongodb.py"))
+
+    if plan.features.redis:
+        assert "redis" in pyproject.lower()
+        assert list(root.rglob("redis_client.py"))
+    else:
+        assert not list(root.rglob("redis_client.py"))
+
+    if plan.features.docker and plan.features.mongodb:
+        compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+        assert "mongodb:" in compose
+    if plan.features.docker and plan.features.redis:
+        compose = (root / "docker-compose.yml").read_text(encoding="utf-8")
+        assert "redis:" in compose
+
 
 def test_unsupported_django_sqlalchemy_fails_before_write(tmp_path: Path) -> None:
     definition = ProjectDefinition.model_construct(
@@ -130,8 +161,7 @@ def test_unsupported_django_sqlalchemy_fails_before_write(tmp_path: Path) -> Non
         framework="django",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities.model_construct(
-            database=True,
-            database_engine="postgresql",
+            sql_database="postgresql",
             orm="sqlalchemy",
             migrations=False,
             docker=False,
@@ -152,8 +182,7 @@ def test_unsupported_fastapi_django_orm_fails_before_write(tmp_path: Path) -> No
         framework="fastapi",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities.model_construct(
-            database=True,
-            database_engine="sqlite",
+            sql_database="sqlite",
             orm="django-orm",
             migrations=False,
             docker=False,
@@ -174,8 +203,7 @@ def test_unsupported_flask_django_orm_fails_before_write(tmp_path: Path) -> None
         framework="flask",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities.model_construct(
-            database=True,
-            database_engine="sqlite",
+            sql_database="sqlite",
             orm="django-orm",
             migrations=False,
             docker=False,
@@ -188,10 +216,12 @@ def test_unsupported_flask_django_orm_fails_before_write(tmp_path: Path) -> None
     assert not (tmp_path / "bad-flask").exists()
 
 
-def test_executable_smoke_subset_excludes_postgres() -> None:
+def test_executable_smoke_subset_excludes_external_servers() -> None:
     cases = executable_smoke_cases()
     assert cases
     assert all(c.database_engine != "postgresql" for c in cases)
+    assert all(c.nosql_database is None for c in cases)
+    assert all(not c.docker for c in cases)
     assert {c.framework for c in cases} == {"fastapi", "django", "flask"}
 
 

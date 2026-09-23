@@ -102,6 +102,7 @@ Error: unknown preset 'fastapi-prod'.
 Available presets:
   fastapi-postgres
   fastapi-postgres-clean
+  fastapi-mongo
   flask-postgres
   django-postgres
 ```
@@ -166,6 +167,7 @@ Presets do **not** store resolved facts (`migration_system`, `rest_framework`, i
 |----|--------|
 | `fastapi-postgres` | FastAPI + Modular Monolith + PostgreSQL + Alembic + Docker |
 | `fastapi-postgres-clean` | FastAPI + Clean Architecture + PostgreSQL + Alembic + Docker |
+| `fastapi-mongo` | FastAPI + Modular Monolith + MongoDB + Docker |
 | `flask-postgres` | Flask + Modular Monolith + PostgreSQL + Alembic + Docker |
 | `django-postgres` | Django + Modular Monolith + PostgreSQL + Docker (ORM / migrations / DRF implied) |
 
@@ -220,18 +222,69 @@ forge new --config forge.yaml          # uses name from YAML
 | `type` | yes | e.g. `rest-api` |
 | `framework` | yes | e.g. `fastapi`, `django`, `flask` |
 | `architecture` | yes | `simple`, `modular-monolith`, `clean` |
-| `database` | no | engine `postgresql` / `sqlite`, or `false`/`null` for none |
+| `persistence` | no | mapping with optional `sql` / `nosql` keys (see below) |
+| `database` | no | **legacy SQL shorthand** — engine `postgresql` / `sqlite`, or `false`/`null` for none |
 | `orm` | no | optional explicit override; usually omit |
-| `migrations` | no | default `false` (Alembic for FastAPI/Flask when true) |
+| `migrations` | no | default `false` (Alembic for FastAPI/Flask when true; requires SQL) |
 | `testing` | no | default `true` |
 | `linting` | no | default `true` |
 | `docker` | no | default `false` |
 
 Unknown fields are rejected. Do **not** put resolver-owned facts in the file (`migration_system`, `rest_framework`, Django ORM as a required choice, …).
 
+#### Persistence schema
+
+```text
+Persistence
+├── SQL          (optional — at most one)
+│   ├── postgresql
+│   └── sqlite
+└── NoSQL        (optional — at most one)
+    ├── mongodb
+    └── redis
+```
+
+Preferred form:
+
+```yaml
+persistence:
+  sql: postgresql   # or sqlite, or omit
+  nosql: redis      # or mongodb, or omit
+```
+
+SQL-only / NoSQL-only / none:
+
+```yaml
+persistence:
+  sql: sqlite
+
+persistence:
+  nosql: mongodb
+
+persistence: null
+```
+
+Legacy `database: postgresql` remains supported as an SQL-only shorthand. Combining `database` and `persistence` is allowed when they agree (e.g. `database: postgresql` + `persistence: {nosql: redis}`). Conflicting values are rejected with a clear error.
+
 ### Examples
 
-FastAPI:
+FastAPI with SQL + Redis:
+
+```yaml
+name: my-api
+type: rest-api
+framework: fastapi
+architecture: modular-monolith
+persistence:
+  sql: postgresql
+  nosql: redis
+migrations: true
+testing: true
+linting: true
+docker: true
+```
+
+FastAPI (legacy SQL shorthand still works):
 
 ```yaml
 name: my-api
@@ -246,14 +299,16 @@ linting: true
 docker: true
 ```
 
-Django (implied ORM / migrations / DRF — omit them):
+Django (implied ORM / migrations / DRF — omit them; optional NoSQL):
 
 ```yaml
 name: web
 type: rest-api
 framework: django
 architecture: clean
-database: postgresql
+persistence:
+  sql: postgresql
+  nosql: mongodb
 testing: true
 linting: true
 docker: true
@@ -267,9 +322,8 @@ docker: true
 
 - Framework options depend on language + project type (FastAPI, Django, Flask, …)
 - Architecture for REST API: Simple, Modular Monolith, Clean Architecture
-- **FastAPI:** optional database → engine → Alembic confirm; SQLAlchemy is implied (dim note)
-- **Flask:** optional database → engine → Alembic confirm; SQLAlchemy is implied when a DB is selected (dim note). No Django-style forced infrastructure.
-- **Django (REST API):** database engine only; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
+- **FastAPI / Flask:** optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
+- **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three
 
 Architecture questions are independent of framework. Framework implications are applied in `resolve_plan`, not by stuffing implied fields into `ProjectDefinition` during the interview.

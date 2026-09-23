@@ -35,11 +35,38 @@ class _ProjectSection(BaseModel):
     name: str | None = None
 
 
+class PersistenceConfig(BaseModel):
+    """Structured persistence selection (SQL and NoSQL are independent)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sql: str | None = None
+    nosql: str | None = None
+
+    @field_validator("sql", "nosql", mode="before")
+    @classmethod
+    def normalize_engine(cls, value: Any) -> str | None:
+        if value is None or value is False:
+            return None
+        if value is True:
+            raise ValueError("must be an engine name or null — not true")
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            if cleaned in _FALSEY_DATABASE:
+                return None
+            return cleaned
+        raise ValueError("must be a string engine name, false, or null")
+
+
 class ForgeConfig(BaseModel):
     """YAML-facing input model — maps to ``ProjectDefinition``.
 
-    Field names favour a short human schema (``type``, ``database: postgresql``)
-    rather than mirroring internal capability nesting.
+    Field names favour a short human schema. Persistence may be expressed as:
+
+    * modern: ``persistence: {sql: postgresql, nosql: redis}``
+    * legacy SQL shorthand: ``database: postgresql``
+
+    Specifying incompatible values in both forms is rejected.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -50,8 +77,10 @@ class ForgeConfig(BaseModel):
     project_type: ProjectType = Field(alias="type")
     framework: str
     architecture: ArchitectureStyle
-    # Engine string enables DB; false/null/omitted means no database.
+    # Legacy SQL shorthand — engine string enables SQL; false/null/omitted = none.
     database: str | bool | None = None
+    # Modern structured persistence (SQL and/or NoSQL).
+    persistence: PersistenceConfig | None = None
     orm: str | None = None
     migrations: bool = False
     testing: bool = True
@@ -83,6 +112,17 @@ class ForgeConfig(BaseModel):
             return cleaned
         raise ValueError("database must be a string engine name, false, or null")
 
+    @field_validator("persistence", mode="before")
+    @classmethod
+    def normalize_persistence(cls, value: Any) -> Any:
+        if value is None or value is False:
+            return None
+        if value is True:
+            raise ValueError(
+                "persistence must be a mapping with sql/nosql keys, or null"
+            )
+        return value
+
     @model_validator(mode="after")
     def names_must_agree(self) -> ForgeConfig:
         top = self.name.strip() if self.name else None
@@ -98,11 +138,53 @@ class ForgeConfig(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def persistence_sources_must_agree(self) -> ForgeConfig:
+        """Reject ambiguous legacy ``database`` + ``persistence`` combinations."""
+        provided = self.model_fields_set
+        if "database" not in provided or "persistence" not in provided:
+            return self
+
+        legacy = self.database if isinstance(self.database, str) else None
+        pers = self.persistence
+
+        if pers is None:
+            if legacy is not None:
+                raise ValueError(
+                    "conflicting persistence: `database` selects SQL "
+                    f"{legacy!r} but `persistence` is null"
+                )
+            return self
+
+        if legacy is not None and pers.sql is not None and legacy != pers.sql:
+            raise ValueError(
+                "conflicting persistence: "
+                f"`database`={legacy!r} and `persistence.sql`={pers.sql!r}"
+            )
+        if legacy is None and pers.sql is not None:
+            raise ValueError(
+                "conflicting persistence: `database` disables SQL but "
+                f"`persistence.sql`={pers.sql!r}"
+            )
+        return self
+
     def resolved_config_name(self) -> str | None:
         if self.name and self.name.strip():
             return self.name.strip()
         if self.project and self.project.name and self.project.name.strip():
             return self.project.name.strip()
+        return None
+
+    def _resolved_sql(self) -> str | None:
+        if self.persistence is not None and self.persistence.sql is not None:
+            return self.persistence.sql
+        if isinstance(self.database, str):
+            return self.database
+        return None
+
+    def _resolved_nosql(self) -> str | None:
+        if self.persistence is not None:
+            return self.persistence.nosql
         return None
 
     def to_definition(self, *, cli_name: str | None = None) -> ProjectDefinition:
@@ -122,11 +204,8 @@ class ForgeConfig(BaseModel):
                 "or pass it as `forge new <name>`)"
             )
 
-        engine: str | None = None
-        database = False
-        if isinstance(self.database, str):
-            database = True
-            engine = self.database
+        sql = self._resolved_sql()
+        nosql = self._resolved_nosql()
 
         try:
             return ProjectDefinition(
@@ -136,8 +215,8 @@ class ForgeConfig(BaseModel):
                 framework=self.framework,
                 architecture=self.architecture,
                 capabilities=Capabilities(
-                    database=database,
-                    database_engine=engine,
+                    sql_database=sql,
+                    nosql_database=nosql,
                     orm=self.orm,
                     migrations=self.migrations,
                     docker=self.docker,

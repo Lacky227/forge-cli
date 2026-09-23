@@ -21,6 +21,11 @@ _NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
 class Capabilities(BaseModel):
     """Explicit user-facing capability choices.
 
+    Persistence is modeled as independent SQL and NoSQL selections:
+
+    * ``sql_database`` — optional ``postgresql`` / ``sqlite``
+    * ``nosql_database`` — optional ``mongodb`` / ``redis``
+
     Absence means “not selected.” Framework-implied details such as which ORM
     or migration system a stack uses belong on ``GenerationPlan``, not here.
 
@@ -31,15 +36,29 @@ class Capabilities(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    database: bool = False
-    database_engine: str | None = None
+    sql_database: str | None = None
+    nosql_database: str | None = None
     orm: str | None = None
-    # FastAPI: user chooses Alembic. Django: ignored; resolver enables Django
-    # migrations whenever a database is present.
+    # FastAPI/Flask: user chooses Alembic when SQL is selected.
+    # Django: ignored; resolver enables Django migrations whenever SQL is present.
     migrations: bool = False
     docker: bool = False
     testing: bool = True
     linting: bool = True
+
+    @property
+    def database(self) -> bool:
+        """True when an SQL database is selected (legacy-friendly name)."""
+        return self.sql_database is not None
+
+    @property
+    def database_engine(self) -> str | None:
+        """SQL engine id, or ``None`` when SQL is not selected."""
+        return self.sql_database
+
+    @property
+    def has_persistence(self) -> bool:
+        return self.sql_database is not None or self.nosql_database is not None
 
 
 class ProjectDefinition(BaseModel):
@@ -73,7 +92,7 @@ class ProjectDefinition(BaseModel):
 
     @field_validator("framework")
     @classmethod
-    def framework_must_be_nonempty(cls, value: str) -> str:
+    def framework_normalized(cls, value: str) -> str:
         cleaned = value.strip().lower()
         if not cleaned:
             raise ValueError("framework is required")
@@ -100,39 +119,47 @@ class ProjectDefinition(BaseModel):
         if (
             self.framework == "django"
             and self.project_type is ProjectType.REST_API
-            and not caps.database
+            and caps.sql_database is None
         ):
             raise ValueError(
-                "Django REST API projects require a database "
+                "Django REST API projects require an SQL database "
                 "(SQLite or PostgreSQL)"
             )
 
-        if caps.database:
-            if not catalog.supports_database(self.framework):
+        if caps.sql_database is not None:
+            if not catalog.supports_sql(self.framework):
                 raise ValueError(
-                    f"framework {self.framework!r} does not support a database "
-                    "capability in the current catalog"
+                    f"framework {self.framework!r} does not support SQL "
+                    "persistence in the current catalog"
                 )
-            if caps.database_engine not in catalog.DATABASE_ENGINES:
+            if caps.sql_database not in catalog.SQL_DATABASES:
                 raise ValueError(
-                    "database_engine must be one of: "
-                    + ", ".join(catalog.DATABASE_ENGINES)
+                    "sql_database must be one of: "
+                    + ", ".join(catalog.SQL_DATABASES)
                 )
-            # Explicit ORM override must match the framework; omission is fine
-            # and is resolved into GenerationPlan.
             expected_orm = catalog.default_orm_for(self.framework)
             if caps.orm is not None and expected_orm and caps.orm != expected_orm:
                 raise ValueError(
                     f"orm must be {expected_orm!r} when using {self.framework!r} "
-                    "with a database"
+                    "with an SQL database"
                 )
         else:
-            if caps.database_engine is not None or caps.orm is not None:
-                raise ValueError(
-                    "database_engine and orm require capabilities.database=True"
-                )
+            if caps.orm is not None:
+                raise ValueError("orm requires capabilities.sql_database")
             if caps.migrations:
-                raise ValueError("migrations require capabilities.database=True")
+                raise ValueError("migrations require capabilities.sql_database")
+
+        if caps.nosql_database is not None:
+            if not catalog.supports_nosql(self.framework):
+                raise ValueError(
+                    f"framework {self.framework!r} does not support NoSQL "
+                    "clients in the current catalog"
+                )
+            if caps.nosql_database not in catalog.NOSQL_DATABASES:
+                raise ValueError(
+                    "nosql_database must be one of: "
+                    + ", ".join(catalog.NOSQL_DATABASES)
+                )
 
         return self
 
@@ -151,18 +178,25 @@ class ProjectDefinition(BaseModel):
                 self.framework, self.framework
             ),
             "Architecture": catalog.ARCHITECTURE_LABELS[self.architecture],
-            "Database": (
-                catalog.DATABASE_ENGINE_LABELS.get(
-                    caps.database_engine or "", caps.database_engine
+            "SQL": (
+                catalog.SQL_DATABASE_LABELS.get(
+                    caps.sql_database or "", caps.sql_database
                 )
-                if caps.database
+                if caps.sql_database
+                else "No"
+            ),
+            "NoSQL": (
+                catalog.NOSQL_DATABASE_LABELS.get(
+                    caps.nosql_database or "", caps.nosql_database
+                )
+                if caps.nosql_database
                 else "No"
             ),
             "Docker": "Yes" if caps.docker else "No",
             "Testing": "Yes" if caps.testing else "No",
             "Linting": "Ruff" if caps.linting else "No",
         }
-        if caps.database:
+        if caps.sql_database:
             implied_orm = caps.orm or catalog.default_orm_for(self.framework)
             rows["ORM"] = _orm_display(implied_orm)
             rows["Migrations"] = _migrations_display(self.framework, caps)

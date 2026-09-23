@@ -157,27 +157,16 @@ def _collect_capabilities(
     """Ask only user-selectable capability questions.
 
     Framework-implied details (Django ORM/migrations/DRF; SQLAlchemy for
-    FastAPI/Flask when a database is selected) are not stored here —
-    ``resolve_plan`` fills them in. Flask does not imply a database.
+    FastAPI/Flask when SQL is selected) are not stored here —
+    ``resolve_plan`` fills them in.
     """
-    database = False
-    database_engine: str | None = None
+    sql_database: str | None = None
+    nosql_database: str | None = None
     migrations = False
 
     if framework == "django":
-        # Database engine is the only data-store choice; ORM/migrations/DRF
-        # are implied by Django REST API and resolved later.
-        database = True
-        database_engine = _select(
-            "Database engine",
-            [
-                Choice(
-                    title=catalog.DATABASE_ENGINE_LABELS[engine],
-                    value=engine,
-                )
-                for engine in catalog.DATABASE_ENGINES
-            ],
-        )
+        # SQL is required for Django REST API; NoSQL is optional.
+        sql_database = _select_sql_database()
         _console.print("[dim]ORM:[/dim] Django ORM")
         _console.print("[dim]Migrations:[/dim] Django migrations")
         if project_type is ProjectType.REST_API:
@@ -185,31 +174,42 @@ def _collect_capabilities(
                 "[dim]API:[/dim] Django REST Framework "
                 "[dim](required for REST API)[/dim]"
             )
-    elif catalog.supports_database(framework):
-        # FastAPI / Flask: database is optional; SQLAlchemy only when enabled.
-        database = _confirm("Include a database?", default=True)
-        if database:
-            database_engine = _select(
-                "Database engine",
+        if catalog.supports_nosql(framework) and _confirm(
+            "Also add a NoSQL database?", default=False
+        ):
+            nosql_database = _select_nosql_database()
+            _print_nosql_client_note(nosql_database)
+    elif catalog.supports_sql(framework) or catalog.supports_nosql(framework):
+        if _confirm("Add a database?", default=True):
+            db_kind = _select(
+                "Database type",
                 [
-                    Choice(
-                        title=catalog.DATABASE_ENGINE_LABELS[engine],
-                        value=engine,
-                    )
-                    for engine in catalog.DATABASE_ENGINES
+                    Choice(title="SQL", value="sql"),
+                    Choice(title="NoSQL", value="nosql"),
+                    Choice(title="Both", value="both"),
                 ],
             )
-            implied_orm = catalog.default_orm_for(framework)
-            if implied_orm:
-                label = (
-                    "SQLAlchemy" if implied_orm == "sqlalchemy" else implied_orm
+            if db_kind in {"sql", "both"}:
+                sql_database = _select_sql_database()
+                implied_orm = catalog.default_orm_for(framework)
+                if implied_orm:
+                    label = (
+                        "SQLAlchemy"
+                        if implied_orm == "sqlalchemy"
+                        else implied_orm
+                    )
+                    _console.print(
+                        f"[dim]ORM:[/dim] {label} "
+                        f"[dim](selected for "
+                        f"{catalog.FRAMEWORK_LABELS.get(framework, framework)})"
+                        f"[/dim]"
+                    )
+                migrations = _confirm(
+                    "Include Alembic migrations?", default=True
                 )
-                _console.print(
-                    f"[dim]ORM:[/dim] {label} "
-                    f"[dim](selected for "
-                    f"{catalog.FRAMEWORK_LABELS.get(framework, framework)})[/dim]"
-                )
-            migrations = _confirm("Include Alembic migrations?", default=True)
+            if db_kind in {"nosql", "both"}:
+                nosql_database = _select_nosql_database()
+                _print_nosql_client_note(nosql_database)
     else:
         _console.print(
             "[dim]Database options skipped — not applicable for this framework.[/dim]"
@@ -220,10 +220,50 @@ def _collect_capabilities(
     linting = _confirm("Include Ruff linting?", default=True)
 
     return Capabilities(
-        database=database,
-        database_engine=database_engine,
+        sql_database=sql_database,
+        nosql_database=nosql_database,
         migrations=migrations,
         docker=docker,
         testing=testing,
         linting=linting,
     )
+
+
+def _select_sql_database() -> str:
+    return _select(
+        "SQL database",
+        [
+            Choice(
+                title=catalog.SQL_DATABASE_LABELS[engine],
+                value=engine,
+            )
+            for engine in catalog.SQL_DATABASES
+        ],
+    )
+
+
+def _select_nosql_database() -> str:
+    return _select(
+        "NoSQL database",
+        [
+            Choice(
+                title=catalog.NOSQL_DATABASE_LABELS[engine],
+                value=engine,
+            )
+            for engine in catalog.NOSQL_DATABASES
+        ],
+    )
+
+
+def _print_nosql_client_note(nosql_database: str) -> None:
+    client = catalog.nosql_client_for(nosql_database)
+    if client == "pymongo":
+        _console.print(
+            "[dim]Client:[/dim] pymongo "
+            "[dim](official MongoDB Python driver)[/dim]"
+        )
+    elif client == "redis":
+        _console.print(
+            "[dim]Client:[/dim] redis "
+            "[dim](official Redis Python client)[/dim]"
+        )
