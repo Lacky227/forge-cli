@@ -86,6 +86,8 @@ class ForgeConfig(BaseModel):
     testing: bool = True
     linting: bool = True
     docker: bool = False
+    # Optional CI provider — ``github-actions`` or omit/null for none.
+    ci: str | None = None
 
     @field_validator("framework")
     @classmethod
@@ -122,6 +124,22 @@ class ForgeConfig(BaseModel):
                 "persistence must be a mapping with sql/nosql keys, or null"
             )
         return value
+
+    @field_validator("ci", mode="before")
+    @classmethod
+    def normalize_ci(cls, value: Any) -> str | None:
+        if value is None or value is False:
+            return None
+        if value is True:
+            raise ValueError(
+                "ci must be a provider name (github-actions) or null — not true"
+            )
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            if cleaned in _FALSEY_DATABASE:
+                return None
+            return cleaned
+        raise ValueError("ci must be a string provider name, false, or null")
 
     @model_validator(mode="after")
     def names_must_agree(self) -> ForgeConfig:
@@ -222,6 +240,7 @@ class ForgeConfig(BaseModel):
                     docker=self.docker,
                     testing=self.testing,
                     linting=self.linting,
+                    ci=self.ci,
                 ),
             )
         except ValidationError as exc:

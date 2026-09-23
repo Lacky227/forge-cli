@@ -142,6 +142,9 @@ forge plan my-api --config forge.yaml
 - With `--preset` and no CLI name, the plan uses the display name `project` (nothing is written to disk).
 - With `--config`, name precedence matches `forge new`.
 - Framework-implied values (ORM, migration system, DRF, commands, dependencies) come from `GenerationPlan`, not from re-reading the definition in the CLI.
+- Tooling includes testing, linting, Docker, and CI (provider label or `no`).
+- When applicable, the summary also shows **Environment** (variable name + purpose), **Docker** dependency services, and **HTTP** liveness (`GET <health_path>`).
+- File lists belong to a future `forge new --dry-run`, not `forge plan`.
 
 ## Presets
 
@@ -229,8 +232,11 @@ forge new --config forge.yaml          # uses name from YAML
 | `testing` | no | default `true` |
 | `linting` | no | default `true` |
 | `docker` | no | default `false` |
+| `ci` | no | omit / null = none; only `github-actions` today — requires `testing` or `linting` |
 
 Unknown fields are rejected. Do **not** put resolver-owned facts in the file (`migration_system`, `rest_framework`, Django ORM as a required choice, …).
+
+Selecting `ci: github-actions` records CI intent on the resolved plan (visible via `forge plan`). Emitting `.github/workflows/…` into the generated tree is a follow-on generation step.
 
 #### Persistence schema
 
@@ -282,6 +288,7 @@ migrations: true
 testing: true
 linting: true
 docker: true
+ci: github-actions
 ```
 
 FastAPI (legacy SQL shorthand still works):
@@ -325,6 +332,7 @@ docker: true
 - **FastAPI / Flask:** optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
 - **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three
+- **CI:** after testing/linting, if either is Yes, ask “Add CI?” with GitHub Actions / No; skipped when both tooling options are No
 
 Architecture questions are independent of framework. Framework implications are applied in `resolve_plan`, not by stuffing implied fields into `ProjectDefinition` during the interview.
 

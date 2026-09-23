@@ -37,9 +37,11 @@ All input paths share the same domain model and resolution pipeline. `forge plan
 
 **Current:** `forge.core.definition.ProjectDefinition`.
 
-**Explicit user intent only:** language, project type, framework, architecture, and selectable capabilities (`sql_database` / `nosql_database`, optional Alembic for SQLAlchemy stacks, `docker`, `testing`, `linting`).
+**Explicit user intent only:** language, project type, framework, architecture, and selectable capabilities (`sql_database` / `nosql_database`, optional Alembic for SQLAlchemy stacks, `docker`, `testing`, `linting`, optional `ci`).
 
 SQL and NoSQL are **independent** first-class choices. A project may have neither, either, or both (one engine from each category).
+
+Optional CI is an explicit provider choice (`github-actions`) or none. CI is valid only when testing and/or linting is enabled — Forge does not silently enable those tools. Selecting CI records intent on the `GenerationPlan`; emitting a GitHub Actions workflow file is a follow-on generation step (not yet wired in templates).
 
 Framework-implied implementation details are **not** required on the definition:
 
@@ -72,7 +74,11 @@ Architecture is independent of framework selection: the same `GenerationPlan` pa
 
 ### GenerationPlan
 
-Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`), dependency lists, entry/run/migrate/check commands, labels, and `primary_app` (Django).
+Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`, optional `ci_provider`), dependency lists, entry/run/migrate/check commands, labels, `primary_app` (Django), plus resolved developer-workflow metadata:
+
+- `environment_variables` — canonical `EnvVarSpec` list for the selected stack (source of truth for future `.env.example` / README; already shown by `forge plan`)
+- `docker_services` — Compose **dependency** service names (`db`, `mongodb`, `redis`) when Docker is enabled; empty when Docker is off or there are no dependency services
+- `health_path` — current generated liveness path for the stack (reflects templates today; path normalization is a later change)
 
 ```text
 ProjectDefinition = what the user asked for

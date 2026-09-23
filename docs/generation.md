@@ -62,8 +62,9 @@ Examples:
 - FastAPI or Flask + Django ORM
 - Migrations without SQL / Alembic without SQLAlchemy
 - Django REST API without SQL (NoSQL alone is not enough)
+- `ci: github-actions` with both testing and linting disabled
 - Non-generatable language / framework / project-type combinations
-
+- Unknown CI providers
 ### Representative smoke cases
 
 Official list: `SUPPORTED_GENERATION_CASES` in `forge.core.compatibility`.
@@ -116,6 +117,7 @@ Implications are the same across Simple, Modular Monolith, and Clean — archite
 | MongoDB | client → pymongo; `MONGODB_URL` / `MONGODB_DATABASE` |
 | Redis | client → redis (asyncio); `REDIS_URL` |
 | pytest / Ruff / Docker | as selected |
+| CI | optional `github-actions` (requires testing or linting); plan metadata until workflow templates land |
 
 ### Flask
 
@@ -127,6 +129,7 @@ Implications are the same across Simple, Modular Monolith, and Clean — archite
 | MongoDB | client → pymongo (sync); env settings |
 | Redis | client → redis (sync); `REDIS_URL` |
 | pytest / Ruff / Docker | as selected |
+| CI | optional `github-actions` (requires testing or linting); plan metadata until workflow templates land |
 
 Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no driver, no Alembic, no SQL persistence ports/packages. NoSQL clients are independent of SQL.
 
@@ -141,6 +144,7 @@ Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no dr
 | MongoDB / Redis | separate client modules; not Django ORM backends |
 | pytest | `pytest-django` |
 | Ruff / Docker | configured when selected |
+| CI | optional `github-actions` (requires testing or linting); plan metadata until workflow templates land |
 
 ### Clean Architecture quality notes
 
@@ -152,6 +156,14 @@ Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no dr
 ### Dependency policy
 
 Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are deduplicated. FastAPI and Flask share the SQLAlchemy / Alembic / `psycopg` strategy when SQL is selected. NoSQL dependencies (`pymongo`, `redis`) appear only when that engine is selected.
+
+### Resolved developer-workflow metadata
+
+`resolve_plan` also fills plan fields used by `forge plan` (and later by templates):
+
+- `environment_variables` — names/examples/purposes matching current generated settings and `.env.example` (framework-specific SQL models preserved)
+- `docker_services` — dependency Compose services only (`db` / `mongodb` / `redis`)
+- `health_path` — current liveness route for the stack (FastAPI simple/modular `/health`, FastAPI clean `/api/health`, Flask `/api/health`, Django `/api/health/`)
 
 ### Validation expectation
 

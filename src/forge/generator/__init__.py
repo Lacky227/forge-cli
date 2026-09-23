@@ -6,10 +6,16 @@ from forge.generator.engine import (
     generate_project,
 )
 from forge.generator.errors import GenerationError
-from forge.generator.plan import GenerationFeatures, GenerationPlan, PlanSummarySection
+from forge.generator.plan import (
+    EnvVarSpec,
+    GenerationFeatures,
+    GenerationPlan,
+    PlanSummarySection,
+)
 from forge.generator.resolve import resolve_plan
 
 __all__ = [
+    "EnvVarSpec",
     "GenerationError",
     "GenerationFeatures",
     "GenerationPlan",

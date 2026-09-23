@@ -39,6 +39,7 @@ class Preset:
     docker: bool = True
     testing: bool = True
     linting: bool = True
+    ci: str | None = None
 
     def to_definition(self, *, name: str) -> ProjectDefinition:
         """Build a validated ``ProjectDefinition`` for ``name``."""
@@ -57,6 +58,7 @@ class Preset:
                     docker=self.docker,
                     testing=self.testing,
                     linting=self.linting,
+                    ci=self.ci,
                 ),
             )
         except ValidationError as exc:

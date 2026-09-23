@@ -28,6 +28,7 @@ class GenerationCase:
     docker: bool = False
     testing: bool = True
     linting: bool = True
+    ci: str | None = None
     language: Language = Language.PYTHON
     project_type: ProjectType = ProjectType.REST_API
 
@@ -56,6 +57,7 @@ class GenerationCase:
                 docker=self.docker,
                 testing=self.testing,
                 linting=self.linting,
+                ci=self.ci,
             ),
         )
 

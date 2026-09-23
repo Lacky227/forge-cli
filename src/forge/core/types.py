@@ -31,3 +31,9 @@ class NoSqlDatabase(StrEnum):
 
     MONGODB = "mongodb"
     REDIS = "redis"
+
+
+class CiProvider(StrEnum):
+    """Optional CI providers for generated projects."""
+
+    GITHUB_ACTIONS = "github-actions"
