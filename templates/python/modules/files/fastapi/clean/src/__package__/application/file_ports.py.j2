@@ -1,0 +1,32 @@
+"""File ports (repository + storage)."""
+
+from __future__ import annotations
+
+from typing import Protocol
+
+from {{ package_name }}.domain.file import File
+
+
+class FileRepository(Protocol):
+    def create(self, file: File) -> File:
+        ...
+
+    def get(self, file_id: int) -> File | None:
+        ...
+
+    def list(self, *, page: int = 1, page_size: int = 20) -> tuple[list[File], int]:
+        ...
+
+    def delete(self, file_id: int) -> bool:
+        ...
+
+
+class ObjectStorage(Protocol):
+    def save(self, key: str, data: bytes, content_type: str | None = None) -> None:
+        ...
+
+    def load(self, key: str) -> bytes:
+        ...
+
+    def delete(self, key: str) -> None:
+        ...

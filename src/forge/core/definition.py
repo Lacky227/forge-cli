@@ -13,10 +13,49 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from forge.core import catalog
+from forge.core.modules import (
+    MODULE_LABELS,
+    STORAGE_BACKEND_LABELS,
+    ModuleId,
+    StorageBackend,
+    expand_module_dependencies,
+    modules_require_sql,
+    normalize_modules,
+    normalize_storage_backend,
+)
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 _NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
 _FALSEY_CI = frozenset({"", "false", "none", "null", "no", "off"})
+
+
+class StorageOptions(BaseModel):
+    """Shallow Files-module storage options (not a selectable module).
+
+    Only meaningful when ``files`` is selected. ``minio`` enables a local
+    MinIO Compose service when Docker is on and the backend is S3-compatible.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    backend: str = StorageBackend.LOCAL.value
+    minio: bool = False
+
+    @field_validator("backend", mode="before")
+    @classmethod
+    def backend_normalized(cls, value: object) -> str:
+        if value is None:
+            return StorageBackend.LOCAL.value
+        if not isinstance(value, str):
+            raise TypeError("storage.backend must be a string")
+        return normalize_storage_backend(value) or StorageBackend.LOCAL.value
+
+    @model_validator(mode="after")
+    def minio_requires_s3(self) -> StorageOptions:
+        if self.minio and self.backend != StorageBackend.S3.value:
+            raise ValueError("storage.minio requires storage.backend: s3")
+        return self
+
 
 
 class Capabilities(BaseModel):
@@ -107,6 +146,12 @@ class ProjectDefinition(BaseModel):
     framework: str
     architecture: ArchitectureStyle
     capabilities: Capabilities = Field(default_factory=Capabilities)
+    # Selectable domain/API modules (products, categories, files, …). Distinct
+    # from Capabilities. Omitted / empty means a scaffold-only project.
+    modules: tuple[str, ...] = ()
+    # Files storage options — required shape when ``files`` is selected;
+    # must be None when Files is not selected.
+    storage: StorageOptions | None = None
 
     @field_validator("name")
     @classmethod
@@ -128,6 +173,39 @@ class ProjectDefinition(BaseModel):
         if not cleaned:
             raise ValueError("framework is required")
         return cleaned
+
+    @field_validator("modules", mode="before")
+    @classmethod
+    def modules_normalized(cls, value: object) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            raise TypeError("modules must be a list of module ids, not a string")
+        if not isinstance(value, (list, tuple)):
+            raise TypeError("modules must be a list of module ids")
+        try:
+            return normalize_modules(tuple(str(item) for item in value))
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_storage_for_files(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        modules_raw = data.get("modules") or ()
+        try:
+            modules = normalize_modules(
+                tuple(str(item) for item in modules_raw)
+                if not isinstance(modules_raw, str)
+                else ()
+            )
+        except ValueError:
+            return data
+        has_files = ModuleId.FILES.value in expand_module_dependencies(modules)
+        if has_files and data.get("storage") is None:
+            data = {**data, "storage": {"backend": "local", "minio": False}}
+        return data
 
     @model_validator(mode="after")
     def validate_compatibility(self) -> ProjectDefinition:
@@ -192,6 +270,31 @@ class ProjectDefinition(BaseModel):
                     + ", ".join(catalog.NOSQL_DATABASES)
                 )
 
+        if (
+            self.modules
+            and modules_require_sql(self.modules)
+            and caps.sql_database is None
+        ):
+            labels = ", ".join(MODULE_LABELS.get(m, m) for m in self.modules)
+            raise ValueError(
+                f"modules require an SQL database (selected: {labels})"
+            )
+
+        has_files = ModuleId.FILES.value in expand_module_dependencies(
+            self.modules
+        )
+        if not has_files and self.storage is not None:
+            raise ValueError(
+                "storage options require the files module to be selected"
+            )
+        if self.storage is not None and self.storage.minio and not caps.docker:
+            raise ValueError("storage.minio requires capabilities.docker")
+        if has_files and self.storage is None:
+            raise ValueError(
+                "the files module requires storage options "
+                "(backend: local or s3)"
+            )
+
         return self
 
     def to_display_dict(self) -> dict[str, Any]:
@@ -238,6 +341,16 @@ class ProjectDefinition(BaseModel):
             rows["Migrations"] = _migrations_display(self.framework, caps)
         if self.framework == "django" and self.project_type is ProjectType.REST_API:
             rows["API"] = "Django REST Framework"
+        if self.modules:
+            rows["Modules"] = ", ".join(
+                MODULE_LABELS.get(m, m) for m in self.modules
+            )
+        if self.storage is not None:
+            rows["Storage"] = STORAGE_BACKEND_LABELS.get(
+                self.storage.backend, self.storage.backend
+            )
+            if self.storage.minio:
+                rows["MinIO"] = "Yes"
         return rows
 
 

@@ -8,6 +8,14 @@ from forge.core.compatibility import (
 )
 from forge.core.config import ConfigError, definition_from_config, load_forge_config
 from forge.core.definition import Capabilities, ProjectDefinition
+from forge.core.modules import (
+    MODULE_LABELS,
+    MODULE_ORDER,
+    ModuleId,
+    StorageBackend,
+    expand_module_dependencies,
+    normalize_modules,
+)
 from forge.core.naming import resolve_destination, to_package_name
 from forge.core.presets import (
     PRESETS,
@@ -25,6 +33,10 @@ __all__ = [
     "ConfigError",
     "GenerationCase",
     "Language",
+    "MODULE_LABELS",
+    "MODULE_ORDER",
+    "ModuleId",
+    "StorageBackend",
     "PRESETS",
     "Preset",
     "PresetError",
@@ -34,9 +46,11 @@ __all__ = [
     "definition_from_config",
     "definition_from_preset",
     "executable_smoke_cases",
+    "expand_module_dependencies",
     "get_preset",
     "list_presets",
     "load_forge_config",
+    "normalize_modules",
     "resolve_destination",
     "supported_generation_cases",
     "to_package_name",

@@ -1,0 +1,131 @@
+"""Files API: upload, list, metadata, download, delete."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.config import settings
+from {{ package_name }}.database import get_db
+from {{ package_name }}.files_models import File as FileModel
+from {{ package_name }}.pagination import (
+    PageParams,
+    get_page_params,
+    paginate,
+)
+from {{ package_name }}.storage import (
+    StorageBackend,
+    get_storage,
+    new_storage_key,
+    safe_filename,
+)
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+StorageDep = Annotated[StorageBackend, Depends(get_storage)]
+Upload = Annotated[UploadFile, File()]
+
+
+class FileRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    filename: str
+    content_type: str
+    size: int
+    storage_key: str
+    created_at: datetime
+
+
+def _validate_upload(upload: UploadFile, data: bytes) -> str:
+    if not data:
+        raise HTTPException(status_code=400, detail="empty upload")
+    if len(data) > settings.upload_max_bytes:
+        raise HTTPException(status_code=413, detail="file too large")
+    try:
+        return safe_filename(upload.filename or "upload")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("", response_model=FileRead, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    db: DbSession,
+    storage: StorageDep,
+    file: Upload,
+) -> FileModel:
+    data = await file.read()
+    filename = _validate_upload(file, data)
+    key = new_storage_key(filename)
+    content_type = file.content_type or "application/octet-stream"
+    storage.save(key, data, content_type=content_type)
+    row = FileModel(
+        filename=filename,
+        content_type=content_type,
+        size=len(data),
+        storage_key=key,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("")
+def list_files(db: DbSession, page: Page) -> dict:
+    query = db.query(FileModel).order_by(FileModel.id.desc())
+    result = paginate(query, page.page, page.page_size)
+    return {
+        "items": [FileRead.model_validate(item) for item in result["items"]],
+        "page": result["page"],
+        "page_size": result["page_size"],
+        "total": result["total"],
+    }
+
+
+@router.get("/{file_id}", response_model=FileRead)
+def get_file(file_id: int, db: DbSession) -> FileModel:
+    row = db.get(FileModel, file_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="file not found")
+    return row
+
+
+@router.get("/{file_id}/content")
+def download_file(
+    file_id: int, db: DbSession, storage: StorageDep
+) -> Response:
+    row = db.get(FileModel, file_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="file not found")
+    try:
+        data = storage.load(row.storage_key)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="object missing") from exc
+    return Response(
+        content=data,
+        media_type=row.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{row.filename}"'
+        },
+    )
+
+
+@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_file(file_id: int, db: DbSession, storage: StorageDep) -> None:
+    row = db.get(FileModel, file_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="file not found")
+    try:
+        storage.delete(row.storage_key)
+    except Exception:
+        pass
+    db.delete(row)
+    db.commit()

@@ -1,0 +1,43 @@
+"""Pydantic schemas for products."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ProductCreate(BaseModel):
+    name: str = Field(..., max_length=200)
+    description: str | None = None
+    price: Decimal = Field(..., max_digits=12, decimal_places=2)
+    is_active: bool = True
+{% if products_link_categories %}
+    category_id: int | None = None
+{% endif %}
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    description: str | None = None
+    price: Decimal | None = Field(None, max_digits=12, decimal_places=2)
+    is_active: bool | None = None
+{% if products_link_categories %}
+    category_id: int | None = None
+{% endif %}
+
+
+class ProductRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    price: Decimal
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+{% if products_link_categories %}
+    category_id: int | None
+{% endif %}

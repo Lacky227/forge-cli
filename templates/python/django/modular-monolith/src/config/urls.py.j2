@@ -5,5 +5,10 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 {% if rest_framework %}
     path("api/", include("{{ primary_app }}.urls")),
+{% for app in django_apps|sort(attribute='module_id') %}
+{% if app.urls_module %}
+    path("api/", include("{{ app.urls_module }}")),
+{% endif %}
+{% endfor %}
 {% endif %}
 ]

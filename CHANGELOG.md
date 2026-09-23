@@ -7,6 +7,39 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-24
+
+Selectable project modules with real generated capabilities: catalog CRUD, files/storage, background jobs, email, and outgoing webhooks.
+
+### Added
+
+- First-class multi-select **project modules**: Products, Categories, Files, Background Jobs, Email, and Webhooks
+- Products and Categories CRUD APIs (pagination, filtering, allow-listed sorting); combined selection adds a product→category relationship
+- Files module with SQL metadata plus local or S3-compatible object storage (optional MinIO when Docker is enabled)
+- Background Jobs via RQ on Redis, with a generated worker process and Compose `worker` service when Docker is on
+- Email via SMTP (`EmailService`; no open send-mail HTTP endpoint)
+- Outgoing Webhooks delivered through Background Jobs (operator-configured `WEBHOOK_URL`; no inbound webhook framework)
+- YAML `modules` / `storage` configuration; interactive multi-select with adaptive follow-ups (storage backend, Redis reuse vs infrastructure)
+- Presets `fastapi-catalog` (Products + Categories) and `fastapi-files` (Files + local storage)
+- `forge plan` and `forge new --dry-run` awareness of selected modules, implied dependencies, storage, workers, and related env/Docker metadata
+
+### Changed
+
+- Module selection is distinct from developer-workflow capabilities (Docker, testing, linting, CI) and from persistence engines
+- Background Jobs reuse an existing NoSQL Redis selection (`REDIS_URL`) instead of inventing a second broker URL
+
+### Fixed
+
+- Redis Compose service is shared when jobs and NoSQL Redis coincide (no duplicate brokers)
+- S3 endpoint defaults: empty `S3_ENDPOINT_URL` means the AWS default endpoint
+- Django Background Jobs integration aligned with generated apps and worker commands
+
+### Compatibility
+
+- Projects from 0.3 without `modules` remain valid (omit `modules` or use `modules: []`)
+- Users / Auth / security modules are reserved for a later release — not part of 0.4
+- Webhooks are outgoing-only; Background Jobs use RQ only; Files storage is local or S3-compatible
+
 ## [0.3.0] - 2026-09-23
 
 Developer-workflow metadata, optional GitHub Actions CI, generated DX consistency, and `forge new --dry-run`.

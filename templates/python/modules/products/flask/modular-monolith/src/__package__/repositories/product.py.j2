@@ -1,0 +1,80 @@
+"""Product repository."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.models.product import Product
+
+_ORDERING = {
+    "name": Product.name.asc(),
+    "-name": Product.name.desc(),
+    "price": Product.price.asc(),
+    "-price": Product.price.desc(),
+    "created_at": Product.created_at.asc(),
+    "-created_at": Product.created_at.desc(),
+}
+
+
+class ProductRepository:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def create(self, data: dict[str, Any]) -> Product:
+        product = Product(**data)
+        self._db.add(product)
+        self._db.commit()
+        self._db.refresh(product)
+        return product
+
+    def get(self, product_id: int) -> Product | None:
+        return self._db.get(Product, product_id)
+
+    def list_query(
+        self,
+        *,
+        q: str | None = None,
+        is_active: bool | None = None,
+        min_price: Decimal | None = None,
+        max_price: Decimal | None = None,
+{% if products_link_categories %}
+        category_id: int | None = None,
+{% endif %}
+        ordering: str = "-created_at",
+    ) -> Any:
+        query = self._db.query(Product)
+        if q:
+            pattern = f"%{q}%"
+            query = query.filter(
+                or_(Product.name.ilike(pattern), Product.description.ilike(pattern))
+            )
+        if is_active is not None:
+            query = query.filter(Product.is_active.is_(is_active))
+        if min_price is not None:
+            query = query.filter(Product.price >= min_price)
+        if max_price is not None:
+            query = query.filter(Product.price <= max_price)
+{% if products_link_categories %}
+        if category_id is not None:
+            query = query.filter(Product.category_id == category_id)
+{% endif %}
+        return query.order_by(_ORDERING.get(ordering, Product.created_at.desc()))
+
+    def update(self, product: Product, data: dict[str, Any]) -> Product:
+        for key, value in data.items():
+            setattr(product, key, value)
+        self._db.add(product)
+        self._db.commit()
+        self._db.refresh(product)
+        return product
+
+    def delete(self, product: Product) -> None:
+        self._db.delete(product)
+        self._db.commit()
+
+
+ORDERING_CHOICES = frozenset(_ORDERING)

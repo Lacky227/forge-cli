@@ -1,0 +1,158 @@
+{# Shared Compose dependency + worker services. Consumed by framework trees. #}
+{% macro dependency_services() %}
+{% if is_postgresql %}
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-{{ package_name }}}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+{% endif %}
+{% if is_mongodb %}
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+{% endif %}
+{% if is_redis %}
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+{% endif %}
+{% if has_minio %}
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+{% endif %}
+{% endmacro %}
+
+{% macro app_environment() %}
+{% if is_postgresql or is_mongodb or is_redis or has_minio %}
+    environment:
+{% if is_postgresql and framework != "django" %}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-{{ package_name }}}
+{% endif %}
+{% if is_postgresql and framework == "django" %}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+{% endif %}
+{% if is_mongodb %}
+      MONGODB_URL: mongodb://mongodb:27017
+      MONGODB_DATABASE: {{ package_name }}
+{% endif %}
+{% if is_redis %}
+      REDIS_URL: redis://redis:6379/0
+{% endif %}
+{% if has_minio %}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+{% endif %}
+{% endif %}
+{% endmacro %}
+
+{% macro app_depends_on() %}
+{% if is_postgresql or is_mongodb or is_redis or has_minio %}
+    depends_on:
+{% if is_postgresql %}
+      db:
+        condition: service_healthy
+{% endif %}
+{% if is_mongodb %}
+      mongodb:
+        condition: service_healthy
+{% endif %}
+{% if is_redis %}
+      redis:
+        condition: service_healthy
+{% endif %}
+{% if has_minio %}
+      minio:
+        condition: service_healthy
+{% endif %}
+{% endif %}
+{% endmacro %}
+
+{% macro app_service(name, command=None) %}
+  {{ name }}:
+    build: .
+{% if command %}
+    command: {{ command }}
+{% endif %}
+    ports:
+      - "8000:8000"
+{% if emits_env_example %}
+    env_file:
+      - .env
+{% endif %}
+{{ app_environment() }}
+{{ app_depends_on() }}
+{% endmacro %}
+
+{% macro worker_service() %}
+{% if has_worker and worker_command %}
+  worker:
+    build: .
+    command: {{ worker_command }}
+{% if emits_env_example %}
+    env_file:
+      - .env
+{% endif %}
+{{ app_environment() }}
+{{ app_depends_on() }}
+{% endif %}
+{% endmacro %}
+
+{% macro compose_volumes() %}
+{% if is_postgresql or is_mongodb or has_minio %}
+volumes:
+{% if is_postgresql %}
+  pgdata:
+{% endif %}
+{% if is_mongodb %}
+  mongodata:
+{% endif %}
+{% if has_minio %}
+  miniodata:
+{% endif %}
+{% endif %}
+{% endmacro %}

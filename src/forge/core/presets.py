@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from pydantic import ValidationError
 
-from forge.core.definition import Capabilities, ProjectDefinition
+from forge.core.definition import Capabilities, ProjectDefinition, StorageOptions
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 
@@ -40,9 +40,18 @@ class Preset:
     testing: bool = True
     linting: bool = True
     ci: str | None = None
+    modules: tuple[str, ...] = ()
+    storage_backend: str | None = None
+    storage_minio: bool = False
 
     def to_definition(self, *, name: str) -> ProjectDefinition:
         """Build a validated ``ProjectDefinition`` for ``name``."""
+        storage = None
+        if self.storage_backend is not None:
+            storage = StorageOptions(
+                backend=self.storage_backend,
+                minio=self.storage_minio,
+            )
         try:
             return ProjectDefinition(
                 name=name,
@@ -60,6 +69,8 @@ class Preset:
                     linting=self.linting,
                     ci=self.ci,
                 ),
+                modules=self.modules,
+                storage=storage,
             )
         except ValidationError as exc:
             raise PresetError(
@@ -130,6 +141,34 @@ PRESETS: tuple[Preset, ...] = (
         nosql_database="mongodb",
         migrations=False,
     ),
+    Preset(
+        id="fastapi-catalog",
+        title="FastAPI catalog API",
+        description=(
+            "FastAPI Modular Monolith with Products + Categories, "
+            "PostgreSQL, Alembic, Docker, pytest, and Ruff."
+        ),
+        framework="fastapi",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="postgresql",
+        migrations=True,
+        modules=("products", "categories"),
+    ),
+    Preset(
+        id="fastapi-files",
+        title="FastAPI files API",
+        description=(
+            "FastAPI Simple REST API with the Files module, "
+            "local object storage, SQLite, Alembic, pytest, and Ruff."
+        ),
+        framework="fastapi",
+        architecture=ArchitectureStyle.SIMPLE,
+        sql_database="sqlite",
+        migrations=True,
+        docker=False,
+        modules=("files",),
+        storage_backend="local",
+    ),
 )
 
 _BY_ID: dict[str, Preset] = {preset.id: preset for preset in PRESETS}
@@ -176,7 +215,6 @@ def _format_validation(exc: ValidationError) -> str:
     for err in exc.errors():
         loc = ".".join(str(x) for x in err.get("loc", ()))
         msg = err.get("msg", "invalid value")
-        if msg.startswith("Value error, "):
-            msg = msg[len("Value error, ") :]
+        msg = msg.removeprefix("Value error, ")
         lines.append(f"  {loc}: {msg}" if loc else f"  {msg}")
     return "\n".join(lines) if lines else str(exc)

@@ -1,0 +1,70 @@
+"""SQLAlchemy File model and repository adapter."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy.orm import Mapped, Session, mapped_column
+
+from {{ package_name }}.domain.file import File
+from {{ package_name }}.infrastructure.persistence.base import Base
+
+
+class FileModel(Base):
+    __tablename__ = "files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+def _to_domain(row: FileModel) -> File:
+    return File(
+        id=row.id,
+        filename=row.filename,
+        content_type=row.content_type,
+        size=row.size,
+        storage_key=row.storage_key,
+        created_at=row.created_at,
+    )
+
+
+class SqlAlchemyFileRepository:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def create(self, file: File) -> File:
+        row = FileModel(
+            filename=file.filename,
+            content_type=file.content_type,
+            size=file.size,
+            storage_key=file.storage_key,
+        )
+        self._db.add(row)
+        self._db.commit()
+        self._db.refresh(row)
+        return _to_domain(row)
+
+    def get(self, file_id: int) -> File | None:
+        row = self._db.get(FileModel, file_id)
+        return _to_domain(row) if row else None
+
+    def list(self, *, page: int = 1, page_size: int = 20) -> tuple[list[File], int]:
+        query = self._db.query(FileModel).order_by(FileModel.created_at.desc())
+        total = query.count()
+        rows = query.offset((page - 1) * page_size).limit(page_size).all()
+        return [_to_domain(r) for r in rows], total
+
+    def delete(self, file_id: int) -> bool:
+        row = self._db.get(FileModel, file_id)
+        if row is None:
+            return False
+        self._db.delete(row)
+        self._db.commit()
+        return True

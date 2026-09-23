@@ -1,0 +1,28 @@
+"""Outgoing webhook delivery via RQ (no public SSRF proxy)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+from django.conf import settings
+from rq import Queue, Retry
+
+from core.jobs import get_queue
+
+
+def post_webhook(payload: dict[str, Any]) -> int:
+    timeout = settings.WEBHOOK_TIMEOUT_SECONDS
+    with httpx.Client(timeout=timeout) as client:
+        response = client.post(settings.WEBHOOK_URL, json=payload)
+        response.raise_for_status()
+        return response.status_code
+
+
+def deliver_webhook(
+    payload: dict[str, Any], *, queue: Queue | None = None
+) -> Any:
+    q = queue or get_queue()
+    max_retries = max(0, settings.WEBHOOK_MAX_RETRIES)
+    retry = Retry(max=max_retries) if max_retries else None
+    return q.enqueue(post_webhook, payload, retry=retry)

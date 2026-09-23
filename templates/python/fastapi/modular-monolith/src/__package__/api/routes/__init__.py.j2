@@ -1,6 +1,18 @@
 from fastapi import APIRouter
 
 from {{ package_name }}.api.routes import health
+{% for router in fastapi_routers|sort(attribute='module_id') %}
+from {{ router.import_module }} import (
+    {{ router.router_attr }} as {{ router.module_id }}_router,
+)
+{% endfor %}
 
 api_router = APIRouter()
 api_router.include_router(health.router)
+{% for router in fastapi_routers|sort(attribute='module_id') %}
+api_router.include_router(
+    {{ router.module_id }}_router,
+    prefix="{{ router.prefix }}",
+    tags={{ router.tags }},
+)
+{% endfor %}

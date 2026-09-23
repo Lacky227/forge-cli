@@ -1,0 +1,103 @@
+"""Files HTTP routes."""
+
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import Response as RawResponse
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.api.pagination import (
+    PageParams,
+    get_page_params,
+    paginate,
+)
+from {{ package_name }}.core.database import get_db
+from {{ package_name }}.schemas.file import FileRead
+from {{ package_name }}.services.file import FileService
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+
+
+@router.post("", response_model=FileRead, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    db: DbSession,
+    file: Annotated[UploadFile, File()],
+) -> FileRead:
+    try:
+        row = FileService(db).upload(
+            filename=file.filename or "",
+            data=await file.read(),
+            content_type=file.content_type,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        code = (
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            if "UPLOAD_MAX_BYTES" in detail
+            else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        raise HTTPException(status_code=code, detail=detail) from exc
+    return FileRead.model_validate(row)
+
+
+@router.get("")
+def list_files(db: DbSession, params: Page) -> dict[str, Any]:
+    query = FileService(db).list_query()
+    result = paginate(query, params.page, params.page_size)
+    return {
+        "items": [FileRead.model_validate(item) for item in result["items"]],
+        "page": result["page"],
+        "page_size": result["page_size"],
+        "total": result["total"],
+    }
+
+
+@router.get("/{file_id}", response_model=FileRead)
+def get_file(file_id: int, db: DbSession) -> FileRead:
+    row = FileService(db).get(file_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return FileRead.model_validate(row)
+
+
+@router.get("/{file_id}/content")
+def download_file(file_id: int, db: DbSession) -> RawResponse:
+    service = FileService(db)
+    row = service.get(file_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    try:
+        data = service.load_bytes(row)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Object missing"
+        ) from exc
+    media = row.content_type or "application/octet-stream"
+    return RawResponse(
+        content=data,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{row.filename}"'},
+    )
+
+
+@router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_file(file_id: int, db: DbSession) -> Response:
+    service = FileService(db)
+    row = service.get(file_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    service.delete(row)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

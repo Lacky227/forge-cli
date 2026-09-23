@@ -1,0 +1,104 @@
+"""Files HTTP routes."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+from flask import Blueprint, Response, jsonify, request
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.api.pagination import get_page_params, paginate
+from {{ package_name }}.core.database import get_session
+from {{ package_name }}.schemas.file import FileRead
+from {{ package_name }}.services.file import FileService
+
+bp = Blueprint("files", __name__, url_prefix="/api/files")
+
+
+@contextmanager
+def _db() -> Iterator[Session]:
+    gen = get_session()
+    session = next(gen)
+    try:
+        yield session
+    finally:
+        gen.close()
+
+
+@bp.post("")
+def upload_file():
+    upload = request.files.get("upload") or request.files.get("file")
+    if upload is None:
+        return jsonify({"detail": "Missing upload"}), 422
+    with _db() as db:
+        try:
+            row = FileService(db).upload(
+                filename=upload.filename or "",
+                data=upload.read(),
+                content_type=upload.mimetype,
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            code = 413 if "UPLOAD_MAX_BYTES" in detail else 422
+            return jsonify({"detail": detail}), code
+        return jsonify(FileRead.model_validate(row).model_dump(mode="json")), 201
+
+
+@bp.get("")
+def list_files():
+    params = get_page_params()
+    with _db() as db:
+        query = FileService(db).list_query()
+        result = paginate(query, params.page, params.page_size)
+        return jsonify(
+            {
+                "items": [
+                    FileRead.model_validate(item).model_dump(mode="json")
+                    for item in result["items"]
+                ],
+                "page": result["page"],
+                "page_size": result["page_size"],
+                "total": result["total"],
+            }
+        )
+
+
+@bp.get("/<int:file_id>")
+def get_file(file_id: int):
+    with _db() as db:
+        row = FileService(db).get(file_id)
+        if row is None:
+            return jsonify({"detail": "Not found"}), 404
+        return jsonify(FileRead.model_validate(row).model_dump(mode="json"))
+
+
+@bp.get("/<int:file_id>/content")
+def download_file(file_id: int):
+    with _db() as db:
+        service = FileService(db)
+        row = service.get(file_id)
+        if row is None:
+            return jsonify({"detail": "Not found"}), 404
+        try:
+            data = service.load_bytes(row)
+        except (FileNotFoundError, OSError):
+            return jsonify({"detail": "Object missing"}), 404
+        return Response(
+            data,
+            mimetype=row.content_type or "application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{row.filename}"',
+            },
+        )
+
+
+@bp.delete("/<int:file_id>")
+def delete_file(file_id: int):
+    with _db() as db:
+        service = FileService(db)
+        row = service.get(file_id)
+        if row is None:
+            return jsonify({"detail": "Not found"}), 404
+        service.delete(row)
+        return ("", 204)

@@ -1,0 +1,18 @@
+"""RQ worker process entrypoint."""
+
+from __future__ import annotations
+
+from redis import Redis
+from rq import Worker
+
+from {{ package_name }}.infrastructure.config import settings
+from {{ package_name }}.infrastructure.jobs.queue import QUEUE_NAME
+
+
+def main() -> None:
+    connection = Redis.from_url(settings.redis_url)
+    Worker([QUEUE_NAME], connection=connection).work(with_scheduler=False)
+
+
+if __name__ == "__main__":
+    main()

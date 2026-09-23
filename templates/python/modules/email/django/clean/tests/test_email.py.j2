@@ -1,0 +1,20 @@
+"""Email service tests (mock SMTP)."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+from infrastructure.email import EmailService
+
+
+def test_send_builds_message() -> None:
+    smtp = MagicMock()
+    message = EmailService(smtp_factory=lambda: smtp).send(
+        to="user@example.com",
+        subject="Hello",
+        body="Body text",
+    )
+    assert message["To"] == "user@example.com"
+    assert message["Subject"] == "Hello"
+    assert "Body text" in message.get_content()
+    smtp.send_message.assert_called_once()

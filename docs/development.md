@@ -36,8 +36,13 @@ uv run forge new --config forge.yaml
 uv run pytest
 ```
 
-Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`, `tests/test_dry_run.py`.
+Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`, `tests/test_dry_run.py`, `tests/test_modules.py`, `tests/test_modules_stage2.py`.
 See [cli.md](./cli.md) for the full command surface, presets, and destination/exit behavior.
+Module catalog and composition: [modules.md](./modules.md).
+
+When adding a module: update `forge.core.modules`, contribution builders in
+`forge.generator.modules`, templates under `templates/python/modules/`, base
+contribution loops, tests, and docs in the same change.
 
 ### Packaging and distribution
 
@@ -72,13 +77,13 @@ Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com
 
 ### Versioning
 
-Current version: **`0.3.0`** — public development release; PyPI distribution **`forge-scaffolder`**.
+Current version: **`0.4.0`** — public development release; PyPI distribution **`forge-scaffolder`**.
 
 | Version | Meaning |
 |---------|---------|
 | `0.x` | Public development releases |
 | `0.1.x` | Backwards-compatible fixes and small improvements |
-| `0.2.0` / `0.3.0` | Meaningful new capabilities or intentional public-interface changes |
+| `0.2.0` / `0.3.0` / `0.4.0` | Meaningful new capabilities or intentional public-interface changes |
 | `1.0.0` | Stable public CLI / domain contract |
 
 Record user-facing changes in [CHANGELOG.md](../CHANGELOG.md). Do not introduce automated semantic-release tooling for routine work.

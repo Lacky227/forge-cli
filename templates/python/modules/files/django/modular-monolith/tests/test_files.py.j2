@@ -1,0 +1,93 @@
+"""Files API tests."""
+
+from __future__ import annotations
+
+{% if is_storage_local %}
+from pathlib import Path
+{% endif %}
+{% if is_storage_s3 %}
+from unittest.mock import MagicMock
+{% endif %}
+
+import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from rest_framework.test import APIClient
+{% if is_storage_s3 %}
+
+import apps.files.views as files_views
+{% endif %}
+
+
+{% if is_storage_local %}
+@pytest.fixture(autouse=True)
+def _local_storage(tmp_path: Path, settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    settings.STORAGE_LOCAL_ROOT = str(tmp_path / "storage")
+
+
+{% endif %}
+{% if is_storage_s3 %}
+@pytest.fixture(autouse=True)
+def _mock_s3(monkeypatch: pytest.MonkeyPatch) -> None:
+    store: dict[str, bytes] = {}
+    client = MagicMock()
+
+    def put_object(**kwargs):
+        store[kwargs["Key"]] = kwargs["Body"]
+
+    def get_object(**kwargs):
+        body = MagicMock()
+        body.read.return_value = store[kwargs["Key"]]
+        return {"Body": body}
+
+    def delete_object(**kwargs):
+        store.pop(kwargs["Key"], None)
+
+    client.put_object.side_effect = put_object
+    client.get_object.side_effect = get_object
+    client.delete_object.side_effect = delete_object
+
+    from apps.files.storage import S3Storage
+
+    monkeypatch.setattr(
+        files_views,
+        "get_storage",
+        lambda: S3Storage(
+            bucket="test",
+            endpoint_url="http://localhost:9000",
+            access_key="x",
+            secret_key="y",
+            region="us-east-1",
+            client=client,
+        ),
+    )
+
+
+{% endif %}
+@pytest.mark.django_db
+def test_upload_list_get_download_delete(api_client: APIClient) -> None:
+    upload = SimpleUploadedFile("hello.txt", b"hello world", content_type="text/plain")
+    response = api_client.post("/api/files/", {"upload": upload}, format="multipart")
+    assert response.status_code == 201
+    body = response.json()
+    assert body["filename"] == "hello.txt"
+    assert body["size"] == 11
+
+    listed = api_client.get("/api/files/")
+    assert listed.status_code == 200
+    assert listed.json()["count"] >= 1
+
+    detail = api_client.get(f"/api/files/{body['id']}/")
+    assert detail.status_code == 200
+
+    content = api_client.get(f"/api/files/{body['id']}/content/")
+    assert content.status_code == 200
+    assert content.content == b"hello world"
+
+    assert api_client.delete(f"/api/files/{body['id']}/").status_code == 204
+
+
+@pytest.mark.django_db
+def test_empty_upload_rejected(api_client: APIClient) -> None:
+    upload = SimpleUploadedFile("empty.txt", b"", content_type="text/plain")
+    response = api_client.post("/api/files/", {"upload": upload}, format="multipart")
+    assert response.status_code == 422

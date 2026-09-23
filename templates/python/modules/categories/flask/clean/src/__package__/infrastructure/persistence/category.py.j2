@@ -1,0 +1,126 @@
+"""SQLAlchemy Category model and repository adapter."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import DateTime, Integer, String, Text, func, or_
+from sqlalchemy.orm import Mapped, Session, mapped_column
+
+from {{ package_name }}.domain.category import Category
+from {{ package_name }}.infrastructure.persistence.base import Base
+
+_ORDERING = {
+    "name": "name",
+    "-name": "name",
+    "created_at": "created_at",
+    "-created_at": "created_at",
+}
+
+
+class CategoryModel(Base):
+    __tablename__ = "categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(220), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+def _to_domain(row: CategoryModel) -> Category:
+    return Category(
+        id=row.id,
+        name=row.name,
+        slug=row.slug,
+        description=row.description,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+class SqlAlchemyCategoryRepository:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def create(self, category: Category) -> Category:
+        row = CategoryModel(
+            name=category.name,
+            slug=category.slug,
+            description=category.description,
+        )
+        self._db.add(row)
+        self._db.commit()
+        self._db.refresh(row)
+        return _to_domain(row)
+
+    def get(self, category_id: int) -> Category | None:
+        row = self._db.get(CategoryModel, category_id)
+        return _to_domain(row) if row is not None else None
+
+    def get_by_slug(self, slug: str) -> Category | None:
+        row = (
+            self._db.query(CategoryModel)
+            .filter(CategoryModel.slug == slug)
+            .first()
+        )
+        return _to_domain(row) if row is not None else None
+
+    def list(
+        self,
+        *,
+        q: str | None = None,
+        ordering: str = "name",
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Category], int]:
+        query = self._db.query(CategoryModel)
+        if q:
+            pattern = f"%{q}%"
+            query = query.filter(
+                or_(
+                    CategoryModel.name.ilike(pattern),
+                    CategoryModel.description.ilike(pattern),
+                )
+            )
+        column_name = _ORDERING.get(ordering, "name")
+        column = getattr(CategoryModel, column_name)
+        if ordering.startswith("-"):
+            query = query.order_by(column.desc())
+        else:
+            query = query.order_by(column.asc())
+        total = query.count()
+        rows = query.offset((page - 1) * page_size).limit(page_size).all()
+        return [_to_domain(row) for row in rows], total
+
+    def update(self, category: Category) -> Category:
+        assert category.id is not None
+        row = self._db.get(CategoryModel, category.id)
+        if row is None:
+            raise LookupError(category.id)
+        row.name = category.name
+        row.slug = category.slug
+        row.description = category.description
+        self._db.add(row)
+        self._db.commit()
+        self._db.refresh(row)
+        return _to_domain(row)
+
+    def delete(self, category_id: int) -> bool:
+        row = self._db.get(CategoryModel, category_id)
+        if row is None:
+            return False
+        self._db.delete(row)
+        self._db.commit()
+        return True
+
+
+ORDERING_CHOICES = frozenset(_ORDERING)

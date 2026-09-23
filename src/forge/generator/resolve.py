@@ -14,10 +14,21 @@ from pathlib import Path
 
 from forge.core import catalog
 from forge.core.definition import ProjectDefinition
+from forge.core.modules import (
+    ModuleId,
+    expand_module_dependencies,
+    modules_require_redis,
+)
 from forge.core.naming import to_package_name
 from forge.core.types import ArchitectureStyle, ProjectType
 from forge.generator.errors import GenerationError
-from forge.generator.plan import EnvVarSpec, GenerationFeatures, GenerationPlan
+from forge.generator.modules import resolve_module_contributions
+from forge.generator.plan import (
+    EnvVarSpec,
+    GenerationFeatures,
+    GenerationPlan,
+    ProcessSpec,
+)
 
 _SQLALCHEMY_ORM = "sqlalchemy"
 _DJANGO_ORM = "django-orm"
@@ -33,18 +44,31 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
     _assert_capability_coherence(definition)
 
     package_name = to_package_name(definition.name)
-    features = _resolve_features(definition)
-    runtime_deps, dev_deps = _resolve_dependencies(definition, features)
+    contributions = resolve_module_contributions(
+        definition,
+        package_name=package_name,
+    )
+    features = _resolve_features(definition, contributions)
+    runtime_deps, dev_deps = _resolve_dependencies(
+        definition, features, contributions
+    )
     database_url = _database_url_example(definition, package_name)
     mongodb_url, mongodb_db = _mongodb_examples(definition, package_name)
-    redis_url = _redis_url_example(definition)
+    redis_url = _redis_url_example(definition, features)
     entry_file, app_module, run_command, migrate_command, check_command = (
         _commands_and_entry(definition, features, package_name)
+    )
+    processes = _resolve_processes(
+        definition,
+        features,
+        package_name=package_name,
+        run_command=run_command,
     )
     primary_app = _primary_app(definition)
     environment_variables = _environment_variables(
         definition,
         features,
+        contributions,
         package_name=package_name,
         database_url=database_url,
         mongodb_url=mongodb_url,
@@ -78,10 +102,12 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
         ),
         environment_variables=environment_variables,
         docker_services=docker_services,
+        processes=processes,
         health_path=health_path,
         migrate_command=migrate_command,
         check_command=check_command,
         primary_app=primary_app,
+        contributions=contributions,
     )
 
 
@@ -148,7 +174,12 @@ def _assert_capability_coherence(definition: ProjectDefinition) -> None:
             )
 
 
-def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
+def _resolve_features(
+    definition: ProjectDefinition,
+    contributions: object | None = None,
+) -> GenerationFeatures:
+    from forge.generator.modules import ModuleContributions
+
     caps = definition.capabilities
     sql = caps.sql_database
     nosql = caps.nosql_database
@@ -159,12 +190,39 @@ def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
         definition.framework == "django"
         and definition.project_type is ProjectType.REST_API
     )
+
+    expanded = expand_module_dependencies(definition.modules)
+    has_jobs = ModuleId.BACKGROUND_JOBS.value in expanded
+    has_email = ModuleId.EMAIL.value in expanded
+    has_webhooks = ModuleId.WEBHOOKS.value in expanded
+    has_files = ModuleId.FILES.value in expanded
+    redis_nosql = nosql == "redis"
+    needs_redis = redis_nosql or modules_require_redis(definition.modules)
+
+    storage_backend = None
+    minio = False
+    if has_files and definition.storage is not None:
+        storage_backend = definition.storage.backend
+        minio = bool(
+            definition.storage.minio
+            and storage_backend == "s3"
+            and caps.docker
+        )
+
+    # contributions may already know the same flags; keep features authoritative
+    if isinstance(contributions, ModuleContributions):
+        has_jobs = contributions.has_background_jobs
+        has_email = contributions.has_email
+        has_webhooks = contributions.has_webhooks
+        has_files = contributions.has_files
+
     return GenerationFeatures(
         database=sql is not None,
         postgresql=sql == "postgresql",
         sqlite=sql == "sqlite",
         mongodb=nosql == "mongodb",
-        redis=nosql == "redis",
+        redis=needs_redis,
+        redis_nosql=redis_nosql,
         nosql=nosql is not None,
         migrations=migration_system is not None,
         docker=caps.docker,
@@ -175,6 +233,12 @@ def _resolve_features(definition: ProjectDefinition) -> GenerationFeatures:
         migration_system=migration_system,
         nosql_client=nosql_client,
         rest_framework=rest_framework,
+        storage_backend=storage_backend,
+        minio=minio,
+        background_jobs=has_jobs,
+        email=has_email,
+        webhooks=has_webhooks,
+        rq=has_jobs,
     )
 
 
@@ -222,19 +286,25 @@ def _resolve_migration_system(
 def _resolve_dependencies(
     definition: ProjectDefinition,
     features: GenerationFeatures,
+    contributions: object | None = None,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    from forge.generator.modules import ModuleContributions
+
+    has_modules = bool(definition.modules)
     if definition.framework == "fastapi":
         runtime, dev = _fastapi_dependencies(features)
     elif definition.framework == "django":
         runtime, dev = _django_dependencies(features)
     elif definition.framework == "flask":
-        runtime, dev = _flask_dependencies(features)
+        runtime, dev = _flask_dependencies(features, has_modules=has_modules)
     else:
         raise GenerationError(
             "Cannot generate this project:\n\n"
             f"No dependency mapping for framework {definition.framework!r}."
         )
     _append_nosql_dependencies(runtime, features)
+    if isinstance(contributions, ModuleContributions):
+        runtime.extend(contributions.runtime_dependencies)
     return _dedupe(runtime), _dedupe(dev)
 
 
@@ -306,6 +376,8 @@ def _django_dependencies(
 
 def _flask_dependencies(
     features: GenerationFeatures,
+    *,
+    has_modules: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Flask is intentionally minimal — persistence deps only when selected."""
     runtime: list[str] = [
@@ -319,6 +391,8 @@ def _flask_dependencies(
             runtime.append("psycopg[binary]>=3.2")
         if features.migration_system == _ALEMBIC:
             runtime.append("alembic>=1.14")
+    if has_modules:
+        runtime.append("pydantic>=2.0")
 
     dev: list[str] = []
     if features.testing:
@@ -362,10 +436,54 @@ def _mongodb_examples(
     return "mongodb://localhost:27017", package_name
 
 
-def _redis_url_example(definition: ProjectDefinition) -> str:
-    if definition.capabilities.nosql_database != "redis":
+def _redis_url_example(
+    definition: ProjectDefinition,
+    features: GenerationFeatures | None = None,
+) -> str:
+    if features is not None:
+        if not features.redis:
+            return ""
+        return "redis://localhost:6379/0"
+    if (
+        definition.capabilities.nosql_database != "redis"
+        and not modules_require_redis(definition.modules)
+    ):
         return ""
     return "redis://localhost:6379/0"
+
+
+def _resolve_processes(
+    definition: ProjectDefinition,
+    features: GenerationFeatures,
+    *,
+    package_name: str,
+    run_command: str,
+) -> tuple[ProcessSpec, ...]:
+    processes: list[ProcessSpec] = [
+        ProcessSpec(id="api", label="API", command=run_command),
+    ]
+    if features.background_jobs:
+        processes.append(
+            ProcessSpec(
+                id="worker",
+                label="Worker",
+                command=_worker_command(definition, package_name),
+            )
+        )
+    return tuple(processes)
+
+
+def _worker_command(definition: ProjectDefinition, package_name: str) -> str:
+    """RQ worker entry — framework/architecture-specific module."""
+    framework = definition.framework
+    architecture = definition.architecture
+    if framework == "django":
+        return "uv run python manage.py run_worker"
+    if architecture is ArchitectureStyle.SIMPLE:
+        return f"uv run python -m {package_name}.worker"
+    if architecture is ArchitectureStyle.MODULAR_MONOLITH:
+        return f"uv run python -m {package_name}.workers.worker"
+    return f"uv run python -m {package_name}.infrastructure.jobs.worker"
 
 
 def _commands_and_entry(
@@ -425,7 +543,7 @@ def _primary_app(definition: ProjectDefinition) -> str | None:
 
 
 def _docker_services(features: GenerationFeatures) -> tuple[str, ...]:
-    """Compose dependency service names (not the application container)."""
+    """Compose dependency service names (not the application / worker)."""
     if not features.docker:
         return ()
     services: list[str] = []
@@ -435,6 +553,8 @@ def _docker_services(features: GenerationFeatures) -> tuple[str, ...]:
         services.append("mongodb")
     if features.redis:
         services.append("redis")
+    if features.minio:
+        services.append("minio")
     return tuple(services)
 
 
@@ -452,6 +572,7 @@ def _health_path(definition: ProjectDefinition) -> str:
 def _environment_variables(
     definition: ProjectDefinition,
     features: GenerationFeatures,
+    contributions: object | None = None,
     *,
     package_name: str,
     database_url: str,
@@ -460,109 +581,63 @@ def _environment_variables(
     redis_url: str,
 ) -> tuple[EnvVarSpec, ...]:
     """Env vars that match current generated settings / ``.env.example``."""
+    from forge.generator.modules import ModuleContributions
+
     specs: list[EnvVarSpec] = []
+    seen: set[str] = set()
+
+    def _add(name: str, example: str, purpose: str) -> None:
+        if name in seen:
+            return
+        seen.add(name)
+        specs.append(EnvVarSpec(name=name, example=example, purpose=purpose))
 
     if definition.framework == "django":
         # Django always requires SQL for REST API; .env.example always includes
         # these when the file is emitted.
-        specs.append(
-            EnvVarSpec(
-                name="DJANGO_SECRET_KEY",
-                example="dev-insecure-change-me",
-                purpose="Django secret key",
-            )
-        )
-        specs.append(
-            EnvVarSpec(
-                name="DJANGO_DEBUG",
-                example="true",
-                purpose="Enable Django debug mode",
-            )
-        )
+        _add("DJANGO_SECRET_KEY", "dev-insecure-change-me", "Django secret key")
+        _add("DJANGO_DEBUG", "true", "Enable Django debug mode")
         if features.postgresql:
-            specs.extend(
-                [
-                    EnvVarSpec(
-                        name="POSTGRES_DB",
-                        example=package_name,
-                        purpose="PostgreSQL database name",
-                    ),
-                    EnvVarSpec(
-                        name="POSTGRES_USER",
-                        example="postgres",
-                        purpose="PostgreSQL user",
-                    ),
-                    EnvVarSpec(
-                        name="POSTGRES_PASSWORD",
-                        example="postgres",
-                        purpose="PostgreSQL password",
-                    ),
-                    EnvVarSpec(
-                        name="POSTGRES_HOST",
-                        example="localhost",
-                        purpose="PostgreSQL host",
-                    ),
-                    EnvVarSpec(
-                        name="POSTGRES_PORT",
-                        example="5432",
-                        purpose="PostgreSQL port",
-                    ),
-                ]
-            )
+            _add("POSTGRES_DB", package_name, "PostgreSQL database name")
+            _add("POSTGRES_USER", "postgres", "PostgreSQL user")
+            _add("POSTGRES_PASSWORD", "postgres", "PostgreSQL password")
+            _add("POSTGRES_HOST", "localhost", "PostgreSQL host")
+            _add("POSTGRES_PORT", "5432", "PostgreSQL port")
     else:
         # FastAPI / Flask — SQLAlchemy URL model.
         if features.database:
-            specs.append(
-                EnvVarSpec(
-                    name="DATABASE_URL",
-                    example=database_url,
-                    purpose="SQLAlchemy database URL",
-                )
-            )
+            _add("DATABASE_URL", database_url, "SQLAlchemy database URL")
         # Compose Postgres credentials (app still uses DATABASE_URL).
         if features.docker and features.postgresql:
-            specs.extend(
-                [
-                    EnvVarSpec(
-                        name="POSTGRES_USER",
-                        example="postgres",
-                        purpose="PostgreSQL user for Docker Compose",
-                    ),
-                    EnvVarSpec(
-                        name="POSTGRES_PASSWORD",
-                        example="postgres",
-                        purpose="PostgreSQL password for Docker Compose",
-                    ),
-                    EnvVarSpec(
-                        name="POSTGRES_DB",
-                        example=package_name,
-                        purpose="PostgreSQL database name for Docker Compose",
-                    ),
-                ]
+            _add(
+                "POSTGRES_USER",
+                "postgres",
+                "PostgreSQL user for Docker Compose",
+            )
+            _add(
+                "POSTGRES_PASSWORD",
+                "postgres",
+                "PostgreSQL password for Docker Compose",
+            )
+            _add(
+                "POSTGRES_DB",
+                package_name,
+                "PostgreSQL database name for Docker Compose",
             )
 
     if features.mongodb:
-        specs.extend(
-            [
-                EnvVarSpec(
-                    name="MONGODB_URL",
-                    example=mongodb_url,
-                    purpose="MongoDB connection URL",
-                ),
-                EnvVarSpec(
-                    name="MONGODB_DATABASE",
-                    example=mongodb_database,
-                    purpose="MongoDB database name",
-                ),
-            ]
-        )
+        _add("MONGODB_URL", mongodb_url, "MongoDB connection URL")
+        _add("MONGODB_DATABASE", mongodb_database, "MongoDB database name")
     if features.redis:
-        specs.append(
-            EnvVarSpec(
-                name="REDIS_URL",
-                example=redis_url,
-                purpose="Redis connection URL",
-            )
+        purpose = (
+            "Redis connection URL"
+            if features.redis_nosql
+            else "Redis connection URL (required by Background Jobs)"
         )
+        _add("REDIS_URL", redis_url or "redis://localhost:6379/0", purpose)
+
+    if isinstance(contributions, ModuleContributions):
+        for name, example, purpose in contributions.environment_variables:
+            _add(name, example, purpose)
 
     return tuple(specs)

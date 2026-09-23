@@ -1,0 +1,28 @@
+"""Webhook delivery tests (mock httpx + queue)."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
+
+import infrastructure.webhooks as webhooks
+
+
+def test_post_webhook_posts_json() -> None:
+    response = MagicMock()
+    response.status_code = 200
+    response.raise_for_status = MagicMock()
+    client = MagicMock()
+    client.__enter__ = MagicMock(return_value=client)
+    client.__exit__ = MagicMock(return_value=False)
+    client.post.return_value = response
+
+    with patch.object(webhooks.httpx, "Client", return_value=client):
+        assert webhooks.post_webhook({"event": "test"}) == 200
+    assert client.post.call_args.kwargs["json"] == {"event": "test"}
+
+
+def test_deliver_webhook_enqueues() -> None:
+    queue = MagicMock()
+    webhooks.deliver_webhook({"a": 1}, queue=queue)
+    queue.enqueue.assert_called_once()
+    assert queue.enqueue.call_args[0][0] is webhooks.post_webhook

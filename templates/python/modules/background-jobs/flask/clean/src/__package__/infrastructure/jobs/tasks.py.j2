@@ -1,0 +1,18 @@
+"""Example RQ tasks."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from rq import Queue
+
+from {{ package_name }}.infrastructure.jobs.queue import get_queue
+
+
+def ping(message: str = "pong") -> str:
+    return f"ping:{message}"
+
+
+def enqueue_ping(message: str = "pong", *, queue: Queue | None = None) -> Any:
+    q = queue or get_queue()
+    return q.enqueue(ping, message)

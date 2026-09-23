@@ -1,0 +1,21 @@
+"""File serializers."""
+
+from __future__ import annotations
+
+from rest_framework import serializers
+
+from infrastructure.persistence.file import File
+
+
+class FileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = File
+        fields = [
+            "id",
+            "filename",
+            "content_type",
+            "size",
+            "storage_key",
+            "created_at",
+        ]
+        read_only_fields = fields

@@ -13,7 +13,7 @@ with deliberate architecture, persistence, tooling, and infrastructure choices.
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/Lacky227/forge-cli)
 
-**Current release:** [0.3.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.3.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
+**Current release:** [0.4.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.4.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
 
 </div>
 
@@ -48,7 +48,7 @@ uvx --from forge-scaffolder forge new my-api
 
 Starting a backend project means deciding framework, project structure, persistence, migrations, Docker, testing, and linting — often from scratch, every time.
 
-Forge turns those explicit decisions into a coherent, runnable project. It resolves implications (ORM, clients, dependencies, commands) and generates a codebase you can install, run, and keep developing by hand.
+Forge turns those explicit decisions into a coherent, runnable project. It resolves implications (ORM, clients, dependencies, commands) and generates a codebase you can install, run, and keep developing by hand. Optional **project modules** (Products, Categories, Files, Background Jobs, Email, Webhooks) add real capabilities — see [`docs/modules.md`](docs/modules.md).
 
 It is a **scaffolder**, not a runtime dependency of the projects it creates.
 
@@ -157,6 +157,23 @@ Choose **none**, **SQL only**, **NoSQL only**, or **both** (at most one engine f
 
 **Django note:** Django REST APIs always require SQL. MongoDB or Redis can be added alongside it as separate clients — not as Django ORM backends.
 
+## Project modules
+
+Optional multi-select modules add real application capabilities:
+
+| Module | Requires / implies |
+|--------|--------------------|
+| Products | SQL |
+| Categories | SQL |
+| Files | SQL + local or S3-compatible storage (optional MinIO with Docker) |
+| Background Jobs | RQ + Redis |
+| Email | SMTP |
+| Webhooks | Background Jobs → RQ + Redis (outgoing delivery only) |
+
+When Products and Categories are both selected, products may reference a category.
+Collection CRUD endpoints include pagination, filtering, and allow-listed sorting.
+Details: [docs/modules.md](docs/modules.md).
+
 ---
 
 ## Generated project
@@ -214,6 +231,8 @@ Presets are named compositions of valid Forge choices — not separate generator
 | `fastapi-postgres` | FastAPI · Modular Monolith · PostgreSQL · Alembic · Docker |
 | `fastapi-postgres-clean` | FastAPI · Clean Architecture · PostgreSQL · Alembic · Docker |
 | `fastapi-mongo` | FastAPI · Modular Monolith · MongoDB · Docker |
+| `fastapi-catalog` | FastAPI · Modular Monolith · Products + Categories · PostgreSQL · Alembic · Docker |
+| `fastapi-files` | FastAPI · Simple · Files (local storage) · SQLite · Alembic |
 | `flask-postgres` | Flask · Modular Monolith · PostgreSQL · Alembic · Docker |
 | `django-postgres` | Django · Modular Monolith · PostgreSQL · Docker |
 
@@ -267,6 +286,18 @@ persistence:
   sql: postgresql
   nosql: redis
 
+modules:
+  - products
+  - categories
+  - files
+  - background-jobs
+  - email
+  - webhooks
+
+storage:
+  backend: s3
+  minio: true
+
 migrations: true
 testing: true
 linting: true
@@ -277,7 +308,7 @@ docker: true
 forge new --config forge.yaml
 ```
 
-Legacy `database: postgresql` remains supported as an SQL-only shorthand. Prefer the `persistence` model for new configs.
+Omit `modules` (or use `modules: []`) for a scaffold-only project. `storage` is only valid when Files is selected. Legacy `database: postgresql` remains supported as an SQL-only shorthand; prefer `persistence` for new configs.
 
 `--preset` and `--config` cannot be combined.
 
@@ -308,7 +339,7 @@ Legacy `database: postgresql` remains supported as an SQL-only shorthand. Prefer
 
 ## Project status
 
-**Current release: [0.3.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.3.0)** — public development / alpha.
+**Current release: [0.4.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.4.0)** — public development / alpha.
 
 Current limitations:
 
@@ -317,6 +348,8 @@ Current limitations:
 - Redis integration is a client wiring — not cache/session/queue abstractions
 - MongoDB uses PyMongo directly — no ODM layer
 - At most one SQL database and one NoSQL database per project
+- Users / Auth modules are not in 0.4 (reserved for a later release)
+- Webhooks are outgoing-only; Background Jobs use RQ only; Files storage is local or S3-compatible
 
 ---
 

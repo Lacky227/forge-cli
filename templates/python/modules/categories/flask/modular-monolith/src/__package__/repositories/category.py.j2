@@ -1,0 +1,62 @@
+"""Category repository."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.models.category import Category
+
+_ORDERING = {
+    "name": Category.name.asc(),
+    "-name": Category.name.desc(),
+    "created_at": Category.created_at.asc(),
+    "-created_at": Category.created_at.desc(),
+}
+
+
+class CategoryRepository:
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    def create(self, data: dict[str, Any]) -> Category:
+        category = Category(**data)
+        self._db.add(category)
+        self._db.commit()
+        self._db.refresh(category)
+        return category
+
+    def get(self, category_id: int) -> Category | None:
+        return self._db.get(Category, category_id)
+
+    def get_by_slug(self, slug: str) -> Category | None:
+        return self._db.query(Category).filter(Category.slug == slug).first()
+
+    def list_query(self, *, q: str | None = None, ordering: str = "name") -> Any:
+        query = self._db.query(Category)
+        if q:
+            pattern = f"%{q}%"
+            query = query.filter(
+                or_(
+                    Category.name.ilike(pattern),
+                    Category.description.ilike(pattern),
+                )
+            )
+        return query.order_by(_ORDERING.get(ordering, Category.name.asc()))
+
+    def update(self, category: Category, data: dict[str, Any]) -> Category:
+        for key, value in data.items():
+            setattr(category, key, value)
+        self._db.add(category)
+        self._db.commit()
+        self._db.refresh(category)
+        return category
+
+    def delete(self, category: Category) -> None:
+        self._db.delete(category)
+        self._db.commit()
+
+
+ORDERING_CHOICES = frozenset(_ORDERING)

@@ -1,0 +1,199 @@
+"""Products API: schemas, service helpers, and router."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.database import get_db
+from {{ package_name }}.pagination import (
+    PageParams,
+    get_page_params,
+    paginate,
+)
+from {{ package_name }}.products_models import Product
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+
+_ORDERING = {
+    "name": Product.name.asc(),
+    "-name": Product.name.desc(),
+    "price": Product.price.asc(),
+    "-price": Product.price.desc(),
+    "created_at": Product.created_at.asc(),
+    "-created_at": Product.created_at.desc(),
+}
+
+
+class ProductCreate(BaseModel):
+    name: str = Field(..., max_length=200)
+    description: str | None = None
+    price: Decimal = Field(..., max_digits=12, decimal_places=2)
+    is_active: bool = True
+{% if products_link_categories %}
+    category_id: int | None = None
+{% endif %}
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    description: str | None = None
+    price: Decimal | None = Field(None, max_digits=12, decimal_places=2)
+    is_active: bool | None = None
+{% if products_link_categories %}
+    category_id: int | None = None
+{% endif %}
+
+
+class ProductRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    price: Decimal
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+{% if products_link_categories %}
+    category_id: int | None
+{% endif %}
+
+
+def create_product(db: Session, data: ProductCreate) -> Product:
+    product = Product(**data.model_dump())
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return product
+
+
+def get_product(db: Session, product_id: int) -> Product | None:
+    return db.get(Product, product_id)
+
+
+def list_products(
+    db: Session,
+    *,
+    q: str | None = None,
+    is_active: bool | None = None,
+    min_price: Decimal | None = None,
+    max_price: Decimal | None = None,
+{% if products_link_categories %}
+    category_id: int | None = None,
+{% endif %}
+    ordering: str = "-created_at",
+) -> Any:
+    query = db.query(Product)
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter(
+            or_(Product.name.ilike(pattern), Product.description.ilike(pattern))
+        )
+    if is_active is not None:
+        query = query.filter(Product.is_active.is_(is_active))
+    if min_price is not None:
+        query = query.filter(Product.price >= min_price)
+    if max_price is not None:
+        query = query.filter(Product.price <= max_price)
+{% if products_link_categories %}
+    if category_id is not None:
+        query = query.filter(Product.category_id == category_id)
+{% endif %}
+    query = query.order_by(_ORDERING.get(ordering, Product.created_at.desc()))
+    return query
+
+
+def update_product(
+    db: Session, product: Product, data: ProductUpdate
+) -> Product:
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(product, key, value)
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return product
+
+
+def delete_product(db: Session, product: Product) -> None:
+    db.delete(product)
+    db.commit()
+
+
+@router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+def create_product_endpoint(body: ProductCreate, db: DbSession) -> Product:
+    return create_product(db, body)
+
+
+@router.get("")
+def list_products_endpoint(
+    db: DbSession,
+    params: Page,
+    q: Annotated[str | None, Query()] = None,
+    is_active: Annotated[bool | None, Query()] = None,
+    min_price: Annotated[Decimal | None, Query()] = None,
+    max_price: Annotated[Decimal | None, Query()] = None,
+{% if products_link_categories %}
+    category_id: Annotated[int | None, Query()] = None,
+{% endif %}
+    ordering: Annotated[str, Query()] = "-created_at",
+) -> dict[str, Any]:
+    if ordering not in _ORDERING:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid ordering: {ordering}",
+        )
+    query = list_products(
+        db,
+        q=q,
+        is_active=is_active,
+        min_price=min_price,
+        max_price=max_price,
+{% if products_link_categories %}
+        category_id=category_id,
+{% endif %}
+        ordering=ordering,
+    )
+    result = paginate(query, params.page, params.page_size)
+    return {
+        "items": [ProductRead.model_validate(item) for item in result["items"]],
+        "page": result["page"],
+        "page_size": result["page_size"],
+        "total": result["total"],
+    }
+
+
+@router.get("/{product_id}", response_model=ProductRead)
+def get_product_endpoint(product_id: int, db: DbSession) -> Product:
+    product = get_product(db, product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return product
+
+
+@router.patch("/{product_id}", response_model=ProductRead)
+def update_product_endpoint(
+    product_id: int, body: ProductUpdate, db: DbSession
+) -> Product:
+    product = get_product(db, product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return update_product(db, product, body)
+
+
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product_endpoint(product_id: int, db: DbSession) -> Response:
+    product = get_product(db, product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    delete_product(db, product)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

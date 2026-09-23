@@ -1,0 +1,101 @@
+"""Products HTTP routes."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.api.pagination import (
+    PageParams,
+    get_page_params,
+    paginate,
+)
+from {{ package_name }}.core.database import get_db
+from {{ package_name }}.repositories.product import ORDERING_CHOICES
+from {{ package_name }}.schemas.product import (
+    ProductCreate,
+    ProductRead,
+    ProductUpdate,
+)
+from {{ package_name }}.services.product import ProductService
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+
+
+@router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+def create_product(body: ProductCreate, db: DbSession) -> ProductRead:
+    product = ProductService(db).create(body)
+    return ProductRead.model_validate(product)
+
+
+@router.get("")
+def list_products(
+    db: DbSession,
+    params: Page,
+    q: Annotated[str | None, Query()] = None,
+    is_active: Annotated[bool | None, Query()] = None,
+    min_price: Annotated[Decimal | None, Query()] = None,
+    max_price: Annotated[Decimal | None, Query()] = None,
+{% if products_link_categories %}
+    category_id: Annotated[int | None, Query()] = None,
+{% endif %}
+    ordering: Annotated[str, Query()] = "-created_at",
+) -> dict[str, Any]:
+    if ordering not in ORDERING_CHOICES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid ordering: {ordering}",
+        )
+    query = ProductService(db).list_query(
+        q=q,
+        is_active=is_active,
+        min_price=min_price,
+        max_price=max_price,
+{% if products_link_categories %}
+        category_id=category_id,
+{% endif %}
+        ordering=ordering,
+    )
+    result = paginate(query, params.page, params.page_size)
+    return {
+        "items": [ProductRead.model_validate(item) for item in result["items"]],
+        "page": result["page"],
+        "page_size": result["page_size"],
+        "total": result["total"],
+    }
+
+
+@router.get("/{product_id}", response_model=ProductRead)
+def get_product(product_id: int, db: DbSession) -> ProductRead:
+    product = ProductService(db).get(product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return ProductRead.model_validate(product)
+
+
+@router.patch("/{product_id}", response_model=ProductRead)
+def update_product(
+    product_id: int, body: ProductUpdate, db: DbSession
+) -> ProductRead:
+    service = ProductService(db)
+    product = service.get(product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    updated = service.update(product, body)
+    return ProductRead.model_validate(updated)
+
+
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(product_id: int, db: DbSession) -> Response:
+    service = ProductService(db)
+    product = service.get(product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    service.delete(product)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

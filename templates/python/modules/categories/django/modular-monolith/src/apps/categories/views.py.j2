@@ -1,0 +1,28 @@
+"""Category API views."""
+
+from __future__ import annotations
+
+from django.db.models import Q, QuerySet
+from rest_framework import filters, viewsets
+
+from .models import Category
+from .serializers import CategorySerializer
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    serializer_class = CategorySerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name", "description", "slug"]
+    ordering_fields = ["name", "slug", "created_at", "updated_at"]
+    ordering = ["name"]
+
+    def get_queryset(self) -> QuerySet[Category]:
+        qs = Category.objects.all()
+        q = self.request.query_params.get("q")
+        if q:
+            qs = qs.filter(
+                Q(name__icontains=q)
+                | Q(description__icontains=q)
+                | Q(slug__icontains=q)
+            )
+        return qs

@@ -1,0 +1,153 @@
+"""Products HTTP presentation."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.application import products as use_cases
+from {{ package_name }}.domain.product import Product
+from {{ package_name }}.infrastructure.database import get_db
+from {{ package_name }}.infrastructure.persistence.product import (
+    ORDERING_CHOICES,
+    SqlAlchemyProductRepository,
+)
+from {{ package_name }}.presentation.pagination import (
+    PageParams,
+    get_page_params,
+)
+
+router = APIRouter()
+
+DbSession = Annotated[Session, Depends(get_db)]
+Page = Annotated[PageParams, Depends(get_page_params)]
+
+
+class ProductCreate(BaseModel):
+    name: str = Field(..., max_length=200)
+    description: str | None = None
+    price: Decimal = Field(..., max_digits=12, decimal_places=2)
+    is_active: bool = True
+{% if products_link_categories %}
+    category_id: int | None = None
+{% endif %}
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    description: str | None = None
+    price: Decimal | None = Field(None, max_digits=12, decimal_places=2)
+    is_active: bool | None = None
+{% if products_link_categories %}
+    category_id: int | None = None
+{% endif %}
+
+
+class ProductRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    price: Decimal
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+{% if products_link_categories %}
+    category_id: int | None
+{% endif %}
+
+
+def _repo(db: Session) -> SqlAlchemyProductRepository:
+    return SqlAlchemyProductRepository(db)
+
+
+@router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+def create_product(body: ProductCreate, db: DbSession) -> ProductRead:
+    product = use_cases.create_product(
+        _repo(db),
+        Product(
+            name=body.name,
+            description=body.description,
+            price=body.price,
+            is_active=body.is_active,
+{% if products_link_categories %}
+            category_id=body.category_id,
+{% endif %}
+        ),
+    )
+    return ProductRead.model_validate(product)
+
+
+@router.get("")
+def list_products(
+    db: DbSession,
+    params: Page,
+    q: Annotated[str | None, Query()] = None,
+    is_active: Annotated[bool | None, Query()] = None,
+    min_price: Annotated[Decimal | None, Query()] = None,
+    max_price: Annotated[Decimal | None, Query()] = None,
+{% if products_link_categories %}
+    category_id: Annotated[int | None, Query()] = None,
+{% endif %}
+    ordering: Annotated[str, Query()] = "-created_at",
+) -> dict[str, Any]:
+    if ordering not in ORDERING_CHOICES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid ordering: {ordering}",
+        )
+    items, total = use_cases.list_products(
+        _repo(db),
+        q=q,
+        is_active=is_active,
+        min_price=min_price,
+        max_price=max_price,
+{% if products_link_categories %}
+        category_id=category_id,
+{% endif %}
+        ordering=ordering,
+        page=params.page,
+        page_size=params.page_size,
+    )
+    return {
+        "items": [ProductRead.model_validate(item) for item in items],
+        "page": params.page,
+        "page_size": params.page_size,
+        "total": total,
+    }
+
+
+@router.get("/{product_id}", response_model=ProductRead)
+def get_product(product_id: int, db: DbSession) -> ProductRead:
+    product = use_cases.get_product(_repo(db), product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return ProductRead.model_validate(product)
+
+
+@router.patch("/{product_id}", response_model=ProductRead)
+def update_product(
+    product_id: int, body: ProductUpdate, db: DbSession
+) -> ProductRead:
+    repo = _repo(db)
+    existing = use_cases.get_product(repo, product_id)
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    changes = body.model_dump(exclude_unset=True)
+    for key, value in changes.items():
+        setattr(existing, key, value)
+    updated = use_cases.update_product(repo, existing)
+    return ProductRead.model_validate(updated)
+
+
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(product_id: int, db: DbSession) -> Response:
+    if not use_cases.delete_product(_repo(db), product_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

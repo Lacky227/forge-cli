@@ -1,0 +1,25 @@
+"""Pagination helpers for list endpoints."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from flask import abort, request
+
+
+@dataclass(frozen=True, slots=True)
+class PageParams:
+    page: int = 1
+    page_size: int = 20
+
+
+def get_page_params() -> PageParams:
+    """Parse and validate ``page`` / ``page_size`` query parameters."""
+    try:
+        page = int(request.args.get("page", 1))
+        page_size = int(request.args.get("page_size", 20))
+    except (TypeError, ValueError):
+        abort(422, description="Invalid page or page_size")
+    if page < 1 or page_size < 1 or page_size > 100:
+        abort(422, description="Invalid page or page_size")
+    return PageParams(page=page, page_size=page_size)

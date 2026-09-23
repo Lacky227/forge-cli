@@ -38,7 +38,13 @@ All input paths share the same domain model and resolution pipeline. `forge plan
 
 **Current:** `forge.core.definition.ProjectDefinition`.
 
-**Explicit user intent only:** language, project type, framework, architecture, and selectable capabilities (`sql_database` / `nosql_database`, optional Alembic for SQLAlchemy stacks, `docker`, `testing`, `linting`, optional `ci`).
+**Explicit user intent only:** language, project type, framework, architecture,
+selectable **modules** (`products`, `categories`, `files`, …), and selectable capabilities
+(`sql_database` / `nosql_database`, optional Alembic for SQLAlchemy stacks,
+`docker`, `testing`, `linting`, optional `ci`).
+
+Modules are first-class and distinct from capabilities. See [modules.md](./modules.md).
+SQL-requiring modules fail validation when no SQL engine is selected.
 
 SQL and NoSQL are **independent** first-class choices. A project may have neither, either, or both (one engine from each category).
 
@@ -75,16 +81,23 @@ Architecture is independent of framework selection: the same `GenerationPlan` pa
 
 ### GenerationPlan
 
-Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`, optional `ci_provider`), dependency lists, entry/run/migrate/check commands, labels, `primary_app` (Django), plus resolved developer-workflow metadata:
+Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`, optional `ci_provider`), dependency lists, entry/run/migrate/check commands, labels, `primary_app` (Django), **module contributions** (`ModuleContributions`: routers, Django apps, model imports, template mounts, API endpoint summaries), plus resolved developer-workflow metadata:
 
 - `environment_variables` / `emits_env_example` — canonical `EnvVarSpec` list; `.env.example` is emitted only when the list is non-empty (shown by `forge plan` and consumed by templates)
-- `docker_services` — Compose **dependency** service names (`db`, `mongodb`, `redis`) when Docker is enabled; empty when Docker is off or there are no dependency services
+- `docker_services` — Compose **dependency** service names (`db`, `mongodb`, `redis`, `minio`) when Docker is enabled; empty when Docker is off or there are no dependency services
+- `processes` — runtime processes (`API`, optional `Worker` when Background Jobs are resolved)
 - `health_path` — generated liveness path (FastAPI `/health`; Flask `/api/health`; Django `/api/health/`)
 
 ```text
 ProjectDefinition = what the user asked for
 GenerationPlan    = what Forge resolved that request into
 ```
+
+Module template mounts live under `templates/python/modules/` and are discovered
+alongside the framework tree and `_shared` overlay. Base templates loop structured
+contributions for shared-file wiring (routers, `INSTALLED_APPS`, blueprints).
+See [modules.md](./modules.md).
+
 ### Generator / Templates
 
 ```text
@@ -156,6 +169,7 @@ presentation/     HTTP API (FastAPI / Flask / DRF)
 - Persistence directories and SQL ports are omitted when no SQL database is selected (FastAPI/Flask).
 - MongoDB / Redis clients live in infrastructure (Clean) or core/package modules — domain must not import them.
 - Django Clean keeps ORM models in `infrastructure.persistence` (Django app) and DRF views in `presentation.api`.
+- Django Clean **module** packs follow the same presentation + ORM shape; they do not add full domain/application ports (unlike FastAPI/Flask Clean modules). See [modules.md](./modules.md).
 
 ### Django decisions
 

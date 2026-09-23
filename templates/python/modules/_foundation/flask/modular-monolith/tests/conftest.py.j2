@@ -1,0 +1,27 @@
+"""Shared pytest fixtures for module API tests."""
+
+from __future__ import annotations
+
+import pytest
+
+from {{ package_name }} import create_app
+from {{ package_name }}.core import database as database_module
+from {{ package_name }}.models import Base  # registers module models via __init__
+
+
+@pytest.fixture()
+def client():
+    database_module._engine = None
+    database_module._SessionLocal = None
+
+    app = create_app()
+    app.config["DATABASE_URL"] = "sqlite://"
+    app.config["TESTING"] = True
+
+    with app.app_context():
+        database_module._get_engine()
+        Base.metadata.create_all(bind=database_module._engine)
+        yield app.test_client()
+        Base.metadata.drop_all(bind=database_module._engine)
+        database_module._engine = None
+        database_module._SessionLocal = None

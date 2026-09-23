@@ -1,0 +1,59 @@
+"""Category service."""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.models.category import Category
+from {{ package_name }}.repositories.category import (
+    CategoryRepository,
+)
+from {{ package_name }}.schemas.category import CategoryCreate, CategoryUpdate
+
+
+def slugify(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^\w\s-]", "", ascii_text.lower())
+    slug = re.sub(r"[-\s]+", "-", slug).strip("-")
+    return (slug or "category")[:220]
+
+
+class SlugConflictError(Exception):
+    """Raised when a category slug is already taken."""
+
+
+class CategoryService:
+    def __init__(self, db: Session) -> None:
+        self._repo = CategoryRepository(db)
+
+    def create(self, data: CategoryCreate) -> Category:
+        payload = data.model_dump()
+        if not payload.get("slug"):
+            payload["slug"] = slugify(payload["name"])
+        if self._repo.get_by_slug(payload["slug"]) is not None:
+            raise SlugConflictError(payload["slug"])
+        return self._repo.create(payload)
+
+    def get(self, category_id: int) -> Category | None:
+        return self._repo.get(category_id)
+
+    def list_query(self, *, q: str | None = None, ordering: str = "name") -> Any:
+        return self._repo.list_query(q=q, ordering=ordering)
+
+    def update(self, category: Category, data: CategoryUpdate) -> Category:
+        payload = data.model_dump(exclude_unset=True)
+        if "slug" in payload and payload["slug"] is None:
+            del payload["slug"]
+        if "slug" in payload:
+            existing = self._repo.get_by_slug(payload["slug"])
+            if existing is not None and existing.id != category.id:
+                raise SlugConflictError(payload["slug"])
+        return self._repo.update(category, payload)
+
+    def delete(self, category: Category) -> None:
+        self._repo.delete(category)

@@ -29,7 +29,7 @@ with zipfile.ZipFile(wheel) as zf:
     names = zf.namelist()
     metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
 assert "Name: forge-scaffolder" in metadata, metadata
-assert "Version: 0.3.0" in metadata, metadata
+assert "Version: 0.4.0" in metadata, metadata
 assert (
     "License-Expression: GPL-3.0-only" in metadata
     or "License: GPL-3.0-only" in metadata
@@ -89,7 +89,7 @@ from pathlib import Path
 
 print(f"    forge package: {Path(forge.__file__).resolve()}")
 print(f"    forge version: {forge.__version__}")
-assert forge.__version__ == "0.3.0", forge.__version__
+assert forge.__version__ == "0.4.0", forge.__version__
 from importlib.metadata import metadata
 meta = metadata("forge-scaffolder")
 assert meta["Name"] == "forge-scaffolder"
@@ -104,7 +104,7 @@ assert "site-packages" in str(root) or "forge/templates" in str(root).replace("\
 PY
 
 echo "==> CLI smoke"
-forge --version | grep -F "forge 0.3.0"
+forge --version | grep -F "forge 0.4.0"
 forge --help >/dev/null
 forge new --help >/dev/null
 forge plan --preset fastapi-postgres >/dev/null

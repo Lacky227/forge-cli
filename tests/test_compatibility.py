@@ -141,6 +141,8 @@ def test_supported_case_generates_structurally(
 
     if plan.features.redis:
         assert "redis" in pyproject.lower()
+        assert any(v.name == "REDIS_URL" for v in plan.environment_variables)
+    if plan.features.redis_nosql:
         assert list(root.rglob("redis_client.py"))
     else:
         assert not list(root.rglob("redis_client.py"))

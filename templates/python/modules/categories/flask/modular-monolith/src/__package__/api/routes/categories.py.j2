@@ -1,0 +1,117 @@
+"""Categories HTTP routes."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+from flask import Blueprint, jsonify, request
+from pydantic import ValidationError
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.api.pagination import (
+    get_page_params,
+    paginate,
+)
+from {{ package_name }}.core.database import get_session
+from {{ package_name }}.repositories.category import ORDERING_CHOICES
+from {{ package_name }}.schemas.category import (
+    CategoryCreate,
+    CategoryRead,
+    CategoryUpdate,
+)
+from {{ package_name }}.services.category import (
+    CategoryService,
+    SlugConflictError,
+)
+
+bp = Blueprint("categories", __name__, url_prefix="/api/categories")
+
+
+@contextmanager
+def _db() -> Iterator[Session]:
+    gen = get_session()
+    session = next(gen)
+    try:
+        yield session
+    finally:
+        gen.close()
+
+
+@bp.post("")
+def create_category():
+    try:
+        body = CategoryCreate.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return jsonify({"detail": exc.errors()}), 422
+    with _db() as db:
+        try:
+            category = CategoryService(db).create(body)
+        except SlugConflictError:
+            return jsonify({"detail": "slug already exists"}), 422
+        return (
+            jsonify(CategoryRead.model_validate(category).model_dump(mode="json")),
+            201,
+        )
+
+
+@bp.get("")
+def list_categories():
+    params = get_page_params()
+    ordering = request.args.get("ordering", "name")
+    if ordering not in ORDERING_CHOICES:
+        return jsonify({"detail": f"Invalid ordering: {ordering}"}), 422
+    with _db() as db:
+        query = CategoryService(db).list_query(
+            q=request.args.get("q"), ordering=ordering
+        )
+        result = paginate(query, params.page, params.page_size)
+        return jsonify(
+            {
+                "items": [
+                    CategoryRead.model_validate(item).model_dump(mode="json")
+                    for item in result["items"]
+                ],
+                "page": result["page"],
+                "page_size": result["page_size"],
+                "total": result["total"],
+            }
+        )
+
+
+@bp.get("/<int:category_id>")
+def get_category(category_id: int):
+    with _db() as db:
+        category = CategoryService(db).get(category_id)
+        if category is None:
+            return jsonify({"detail": "Not found"}), 404
+        return jsonify(CategoryRead.model_validate(category).model_dump(mode="json"))
+
+
+@bp.patch("/<int:category_id>")
+def update_category(category_id: int):
+    try:
+        body = CategoryUpdate.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return jsonify({"detail": exc.errors()}), 422
+    with _db() as db:
+        service = CategoryService(db)
+        category = service.get(category_id)
+        if category is None:
+            return jsonify({"detail": "Not found"}), 404
+        try:
+            updated = service.update(category, body)
+        except SlugConflictError:
+            return jsonify({"detail": "slug already exists"}), 422
+        return jsonify(CategoryRead.model_validate(updated).model_dump(mode="json"))
+
+
+@bp.delete("/<int:category_id>")
+def delete_category(category_id: int):
+    with _db() as db:
+        service = CategoryService(db)
+        category = service.get(category_id)
+        if category is None:
+            return jsonify({"detail": "Not found"}), 404
+        service.delete(category)
+        return ("", 204)

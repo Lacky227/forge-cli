@@ -1,1 +1,13 @@
 """Django admin registrations for infrastructure models."""
+{% if model_imports %}
+
+from django.contrib import admin
+
+{% for m in model_imports|sort(attribute='module_id') %}
+from {{ m.import_module }} import {{ m.symbol }}
+{% endfor %}
+
+{% for m in model_imports|sort(attribute='module_id') %}
+admin.site.register({{ m.symbol }})
+{% endfor %}
+{% endif %}

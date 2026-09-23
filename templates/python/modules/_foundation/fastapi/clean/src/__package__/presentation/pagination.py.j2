@@ -1,0 +1,35 @@
+"""Pagination helpers for list endpoints."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Annotated, Any
+
+from fastapi import Query
+from sqlalchemy.orm import Query as SAQuery
+
+
+@dataclass(frozen=True, slots=True)
+class PageParams:
+    page: int = 1
+    page_size: int = 20
+
+
+def get_page_params(
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> PageParams:
+    """FastAPI dependency returning validated page / page_size."""
+    return PageParams(page=page, page_size=page_size)
+
+
+def paginate(query: SAQuery, page: int, page_size: int) -> dict[str, Any]:
+    """Apply offset/limit and return a standard list envelope."""
+    total = query.count()
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }

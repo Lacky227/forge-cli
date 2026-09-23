@@ -1,0 +1,153 @@
+"""Categories HTTP presentation."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import datetime
+
+from flask import Blueprint, jsonify, request
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlalchemy.orm import Session
+
+from {{ package_name }}.application import categories as use_cases
+from {{ package_name }}.application.categories import (
+    SlugConflictError,
+)
+from {{ package_name }}.domain.category import Category
+from {{ package_name }}.infrastructure.database import create_session
+from {{ package_name }}.infrastructure.persistence.category import (
+    ORDERING_CHOICES,
+    SqlAlchemyCategoryRepository,
+)
+from {{ package_name }}.presentation.pagination import get_page_params
+
+bp = Blueprint("categories", __name__, url_prefix="/api/categories")
+
+
+class CategoryCreate(BaseModel):
+    name: str = Field(..., max_length=200)
+    slug: str | None = Field(None, max_length=220)
+    description: str | None = None
+
+
+class CategoryUpdate(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    slug: str | None = Field(None, max_length=220)
+    description: str | None = None
+
+
+class CategoryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@contextmanager
+def _db() -> Iterator[Session]:
+    gen = create_session()
+    session = next(gen)
+    try:
+        yield session
+    finally:
+        gen.close()
+
+
+def _repo(db: Session) -> SqlAlchemyCategoryRepository:
+    return SqlAlchemyCategoryRepository(db)
+
+
+@bp.post("")
+def create_category():
+    try:
+        body = CategoryCreate.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return jsonify({"detail": exc.errors()}), 422
+    with _db() as db:
+        try:
+            category = use_cases.create_category(
+                _repo(db),
+                Category(
+                    name=body.name,
+                    slug=body.slug or "",
+                    description=body.description,
+                ),
+            )
+        except SlugConflictError:
+            return jsonify({"detail": "slug already exists"}), 422
+        return (
+            jsonify(CategoryRead.model_validate(category).model_dump(mode="json")),
+            201,
+        )
+
+
+@bp.get("")
+def list_categories():
+    params = get_page_params()
+    ordering = request.args.get("ordering", "name")
+    if ordering not in ORDERING_CHOICES:
+        return jsonify({"detail": f"Invalid ordering: {ordering}"}), 422
+    with _db() as db:
+        items, total = use_cases.list_categories(
+            _repo(db),
+            q=request.args.get("q"),
+            ordering=ordering,
+            page=params.page,
+            page_size=params.page_size,
+        )
+        return jsonify(
+            {
+                "items": [
+                    CategoryRead.model_validate(item).model_dump(mode="json")
+                    for item in items
+                ],
+                "page": params.page,
+                "page_size": params.page_size,
+                "total": total,
+            }
+        )
+
+
+@bp.get("/<int:category_id>")
+def get_category(category_id: int):
+    with _db() as db:
+        category = use_cases.get_category(_repo(db), category_id)
+        if category is None:
+            return jsonify({"detail": "Not found"}), 404
+        return jsonify(CategoryRead.model_validate(category).model_dump(mode="json"))
+
+
+@bp.patch("/<int:category_id>")
+def update_category(category_id: int):
+    try:
+        body = CategoryUpdate.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return jsonify({"detail": exc.errors()}), 422
+    with _db() as db:
+        repo = _repo(db)
+        existing = use_cases.get_category(repo, category_id)
+        if existing is None:
+            return jsonify({"detail": "Not found"}), 404
+        changes = body.model_dump(exclude_unset=True)
+        if "slug" in changes and changes["slug"] is None:
+            del changes["slug"]
+        for key, value in changes.items():
+            setattr(existing, key, value)
+        try:
+            updated = use_cases.update_category(repo, existing)
+        except SlugConflictError:
+            return jsonify({"detail": "slug already exists"}), 422
+        return jsonify(CategoryRead.model_validate(updated).model_dump(mode="json"))
+
+
+@bp.delete("/<int:category_id>")
+def delete_category(category_id: int):
+    with _db() as db:
+        if not use_cases.delete_category(_repo(db), category_id):
+            return jsonify({"detail": "Not found"}), 404
+        return ("", 204)

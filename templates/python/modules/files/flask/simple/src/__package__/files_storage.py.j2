@@ -1,0 +1,129 @@
+"""Object storage backends for uploaded files."""
+
+from __future__ import annotations
+
+import re
+import uuid
+{% if is_storage_local %}
+from pathlib import Path, PurePosixPath
+{% else %}
+from pathlib import PurePosixPath
+{% endif %}
+from typing import Protocol
+{% if is_storage_s3 %}
+
+import boto3
+from botocore.client import BaseClient
+{% endif %}
+
+_UNSAFE = re.compile(r"[^\w.\-]+", re.UNICODE)
+
+
+def safe_filename(filename: str) -> str:
+    """Return a basename-only filename safe for storage keys."""
+    name = PurePosixPath(filename.replace("\\", "/")).name.strip()
+    if not name or name in {".", ".."}:
+        raise ValueError("Invalid filename")
+    cleaned = _UNSAFE.sub("_", name).strip("._")
+    if not cleaned:
+        raise ValueError("Invalid filename")
+    return cleaned[:200]
+
+
+def new_storage_key(filename: str) -> str:
+    """UUID-prefixed object key — never a filesystem path."""
+    return f"{uuid.uuid4().hex}/{safe_filename(filename)}"
+
+
+class StorageBackend(Protocol):
+    def save(self, key: str, data: bytes, content_type: str | None = None) -> None:
+        ...
+
+    def load(self, key: str) -> bytes:
+        ...
+
+    def delete(self, key: str) -> None:
+        ...
+
+
+{% if is_storage_local %}
+class LocalStorage:
+    """Filesystem storage under STORAGE_LOCAL_ROOT."""
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, key: str) -> Path:
+        parts = PurePosixPath(key).parts
+        if ".." in parts or not parts:
+            raise ValueError("Invalid storage key")
+        path = self.root.joinpath(*parts)
+        if not path.resolve().is_relative_to(self.root.resolve()):
+            raise ValueError("Invalid storage key")
+        return path
+
+    def save(self, key: str, data: bytes, content_type: str | None = None) -> None:
+        _ = content_type
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    def load(self, key: str) -> bytes:
+        return self._path(key).read_bytes()
+
+    def delete(self, key: str) -> None:
+        path = self._path(key)
+        if path.is_file():
+            path.unlink()
+
+
+{% endif %}
+{% if is_storage_s3 %}
+class S3Storage:
+    """S3-compatible object storage via boto3.
+
+    The target bucket must already exist unless ``create_bucket`` is True
+    (``S3_CREATE_BUCKET=true``). Bucket creation is opt-in and off by default.
+    """
+
+    def __init__(
+        self,
+        *,
+        bucket: str,
+        endpoint_url: str | None,
+        access_key: str,
+        secret_key: str,
+        region: str,
+        create_bucket: bool = False,
+        client: BaseClient | None = None,
+    ) -> None:
+        self.bucket = bucket
+        self._client = client or boto3.client(
+            "s3",
+            endpoint_url=endpoint_url or None,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name=region,
+        )
+        if create_bucket:
+            try:
+                self._client.head_bucket(Bucket=bucket)
+            except Exception:
+                self._client.create_bucket(Bucket=bucket)
+
+    def save(self, key: str, data: bytes, content_type: str | None = None) -> None:
+        kwargs: dict = {"Bucket": self.bucket, "Key": key, "Body": data}
+        if content_type:
+            kwargs["ContentType"] = content_type
+        self._client.put_object(**kwargs)
+
+    def load(self, key: str) -> bytes:
+        obj = self._client.get_object(Bucket=self.bucket, Key=key)
+        return obj["Body"].read()
+
+    def delete(self, key: str) -> None:
+        self._client.delete_object(Bucket=self.bucket, Key=key)
+
+
+{% endif %}

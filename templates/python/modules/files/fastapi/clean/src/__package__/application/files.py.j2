@@ -1,0 +1,69 @@
+"""File use cases."""
+
+from __future__ import annotations
+
+from {{ package_name }}.application.file_ports import (
+    FileRepository,
+    ObjectStorage,
+)
+from {{ package_name }}.domain.file import File
+
+
+def upload_file(
+    repo: FileRepository,
+    storage: ObjectStorage,
+    *,
+    filename: str,
+    data: bytes,
+    content_type: str | None,
+    max_bytes: int,
+    make_key,
+    safe_name,
+) -> File:
+    name = safe_name(filename)
+    if not data:
+        raise ValueError("Empty upload")
+    if len(data) > max_bytes:
+        raise ValueError("File exceeds UPLOAD_MAX_BYTES")
+    key = make_key(name)
+    storage.save(key, data, content_type=content_type)
+    return repo.create(
+        File(
+            filename=name,
+            content_type=content_type,
+            size=len(data),
+            storage_key=key,
+        )
+    )
+
+
+def get_file(repo: FileRepository, file_id: int) -> File | None:
+    return repo.get(file_id)
+
+
+def list_files(
+    repo: FileRepository, *, page: int = 1, page_size: int = 20
+) -> tuple[list[File], int]:
+    return repo.list(page=page, page_size=page_size)
+
+
+def download_file(
+    repo: FileRepository, storage: ObjectStorage, file_id: int
+) -> tuple[File, bytes] | None:
+    row = repo.get(file_id)
+    if row is None:
+        return None
+    return row, storage.load(row.storage_key)
+
+
+def delete_file(
+    repo: FileRepository, storage: ObjectStorage, file_id: int
+) -> bool:
+    row = repo.get(file_id)
+    if row is None:
+        return False
+    try:
+        storage.delete(row.storage_key)
+    except Exception:
+        pass
+    return repo.delete(file_id)

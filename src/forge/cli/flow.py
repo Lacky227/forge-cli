@@ -14,7 +14,18 @@ from questionary import Choice, Style
 from rich.console import Console
 
 from forge.core import catalog
-from forge.core.definition import Capabilities, ProjectDefinition
+from forge.core.definition import Capabilities, ProjectDefinition, StorageOptions
+from forge.core.modules import (
+    MODULE_ORDER,
+    MODULE_SPECS,
+    STORAGE_BACKEND_LABELS,
+    ModuleId,
+    StorageBackend,
+    expand_module_dependencies,
+    implied_modules,
+    modules_require_redis,
+    modules_require_sql,
+)
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 T = TypeVar("T")
@@ -52,6 +63,16 @@ def _select(message: str, choices: list[Choice]) -> str:
         instruction="(use arrow keys)",
     ).ask()
     return _require(result)
+
+
+def _checkbox(message: str, choices: list[Choice]) -> list[str]:
+    result = questionary.checkbox(
+        message,
+        choices=choices,
+        style=_STYLE,
+        instruction="(space to toggle, enter to confirm)",
+    ).ask()
+    return list(_require(result))
 
 
 def _confirm(message: str, default: bool = True) -> bool:
@@ -139,7 +160,17 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
             )
         )
 
-    capabilities = _collect_capabilities(framework, project_type)
+    modules = _collect_modules()
+    # Announce implied modules / Redis *before* persistence prompts so the
+    # user can choose NoSQL Redis knowingly when jobs need it.
+    _announce_early_module_implications(modules)
+    capabilities = _collect_capabilities(
+        framework,
+        project_type,
+        modules=modules,
+    )
+    storage = _collect_storage_options(modules, docker=capabilities.docker)
+    _announce_redis_resolution(modules, capabilities)
     return ProjectDefinition(
         name=name,
         language=language,
@@ -147,12 +178,105 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
         framework=framework,
         architecture=architecture,
         capabilities=capabilities,
+        modules=tuple(modules),
+        storage=storage,
     )
+
+
+def _collect_modules() -> list[str]:
+    """Multi-select project modules (optional)."""
+    selected = _checkbox(
+        "Project modules (optional)",
+        [
+            Choice(
+                title=f"{MODULE_SPECS[mid].label} — {MODULE_SPECS[mid].description}",
+                value=mid.value,
+            )
+            for mid in MODULE_ORDER
+        ],
+    )
+    if not selected:
+        _console.print("[dim]Modules:[/dim] none")
+    else:
+        labels = ", ".join(
+            MODULE_SPECS[m].label
+            for m in MODULE_ORDER
+            if m.value in selected
+        )
+        _console.print(f"[dim]Modules:[/dim] {labels}")
+    return selected
+
+
+def _collect_storage_options(
+    modules: list[str],
+    *,
+    docker: bool,
+) -> StorageOptions | None:
+    """Ask Files-only storage questions (after Docker is known)."""
+    if ModuleId.FILES.value not in modules:
+        return None
+    backend = _select(
+        "Storage backend",
+        [
+            Choice(
+                title=STORAGE_BACKEND_LABELS[StorageBackend.LOCAL.value],
+                value=StorageBackend.LOCAL.value,
+            ),
+            Choice(
+                title=STORAGE_BACKEND_LABELS[StorageBackend.S3.value],
+                value=StorageBackend.S3.value,
+            ),
+        ],
+    )
+    minio = False
+    if backend == StorageBackend.S3.value and docker:
+        minio = _confirm("Add MinIO for local development?", default=True)
+    return StorageOptions(backend=backend, minio=minio)
+
+
+def _announce_early_module_implications(modules: list[str]) -> None:
+    """Surface dependency implications before capability questions."""
+    expanded = expand_module_dependencies(tuple(modules))
+    implied = implied_modules(tuple(modules), expanded)
+    if implied:
+        labels = ", ".join(MODULE_SPECS[ModuleId(m)].label for m in implied)
+        causes: list[str] = []
+        if ModuleId.WEBHOOKS.value in modules:
+            causes.append("Webhooks")
+        note = f" [dim](required by {', '.join(causes)})[/dim]" if causes else ""
+        _console.print(f"[dim]Implied modules:[/dim] {labels}{note}")
+    if modules_require_redis(tuple(modules)):
+        _console.print(
+            "[dim]Redis:[/dim] required for Background Jobs / RQ "
+            "[dim](select as NoSQL to reuse, or Forge adds infrastructure Redis)"
+            "[/dim]"
+        )
+
+
+def _announce_redis_resolution(
+    modules: list[str],
+    capabilities: Capabilities,
+) -> None:
+    """Confirm Redis reuse vs infrastructure after NoSQL is known."""
+    if not modules_require_redis(tuple(modules)):
+        return
+    if capabilities.nosql_database == "redis":
+        _console.print(
+            "[dim]Redis:[/dim] reusing selected NoSQL Redis "
+            "[dim](Background Jobs)[/dim]"
+        )
+    else:
+        _console.print(
+            "[dim]Redis:[/dim] required infrastructure "
+            "[dim](Background Jobs / RQ)[/dim]"
+        )
 
 
 def _collect_capabilities(
     framework: str,
     project_type: ProjectType,
+    *,
+    modules: list[str] | None = None,
 ) -> Capabilities:
     """Ask only user-selectable capability questions.
 
@@ -163,6 +287,8 @@ def _collect_capabilities(
     sql_database: str | None = None
     nosql_database: str | None = None
     migrations = False
+    selected_modules = tuple(modules or ())
+    require_sql = modules_require_sql(selected_modules)
 
     if framework == "django":
         # SQL is required for Django REST API; NoSQL is optional.
@@ -180,7 +306,33 @@ def _collect_capabilities(
             nosql_database = _select_nosql_database()
             _print_nosql_client_note(nosql_database)
     elif catalog.supports_sql(framework) or catalog.supports_nosql(framework):
-        if _confirm("Add a database?", default=True):
+        if require_sql:
+            _console.print(
+                "[dim]SQL persistence required by selected modules.[/dim]"
+            )
+            sql_database = _select_sql_database()
+            implied_orm = catalog.default_orm_for(framework)
+            if implied_orm:
+                label = (
+                    "SQLAlchemy"
+                    if implied_orm == "sqlalchemy"
+                    else implied_orm
+                )
+                _console.print(
+                    f"[dim]ORM:[/dim] {label} "
+                    f"[dim](selected for "
+                    f"{catalog.FRAMEWORK_LABELS.get(framework, framework)})"
+                    f"[/dim]"
+                )
+            migrations = _confirm(
+                "Include Alembic migrations?", default=True
+            )
+            if catalog.supports_nosql(framework) and _confirm(
+                "Also add a NoSQL database?", default=False
+            ):
+                nosql_database = _select_nosql_database()
+                _print_nosql_client_note(nosql_database)
+        elif _confirm("Add a database?", default=True):
             db_kind = _select(
                 "Database type",
                 [
