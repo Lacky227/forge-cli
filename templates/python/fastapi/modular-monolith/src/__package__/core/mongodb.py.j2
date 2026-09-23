@@ -1,0 +1,15 @@
+"""MongoDB client helpers (PyMongo Async API)."""
+
+from pymongo import AsyncMongoClient
+
+from {{ package_name }}.core.config import settings
+
+
+def create_mongodb_client() -> AsyncMongoClient:
+    """Create an AsyncMongoClient from application settings."""
+    return AsyncMongoClient(settings.mongodb_url)
+
+
+def get_database(client: AsyncMongoClient):
+    """Return the configured database handle."""
+    return client[settings.mongodb_database]

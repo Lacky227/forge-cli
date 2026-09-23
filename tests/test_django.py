@@ -32,8 +32,7 @@ def _django(
         framework="django",
         architecture=architecture,
         capabilities=Capabilities(
-            database=True,
-            database_engine=engine,
+            sql_database=engine,
             docker=docker,
             testing=testing,
             linting=linting,
@@ -90,8 +89,7 @@ def test_reject_django_with_sqlalchemy() -> None:
         framework="django",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities.model_construct(
-            database=True,
-            database_engine="postgresql",
+            sql_database="postgresql",
             orm="sqlalchemy",
             migrations=True,
             docker=False,
@@ -111,8 +109,7 @@ def test_reject_fastapi_with_django_orm() -> None:
         framework="fastapi",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities.model_construct(
-            database=True,
-            database_engine="postgresql",
+            sql_database="postgresql",
             orm="django-orm",
             migrations=True,
             docker=False,

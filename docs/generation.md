@@ -26,19 +26,33 @@ Python **REST API** only. CLI / Worker project types are catalogued but not gene
 
 ### Persistence
 
-| Framework | No database | SQLite | PostgreSQL |
-|-----------|-------------|--------|------------|
-| FastAPI | Supported | Supported | Supported |
-| Flask | Supported | Supported | Supported |
-| Django | **Unsupported** (REST API requires a database) | Supported | Supported |
+SQL and NoSQL are independent. At most one engine from each category.
+
+| Framework | No persistence | SQLite | PostgreSQL | MongoDB | Redis | SQL + NoSQL |
+|-----------|----------------|--------|------------|---------|-------|-------------|
+| FastAPI | Supported | Supported | Supported | Supported | Supported | Supported |
+| Flask | Supported | Supported | Supported | Supported | Supported | Supported |
+| Django | **Unsupported** (REST API requires SQL) | Supported | Supported | With SQL | With SQL | Supported |
+
+```text
+Persistence
+├── SQL
+│   ├── PostgreSQL
+│   └── SQLite
+└── NoSQL
+    ├── MongoDB
+    └── Redis
+```
 
 ### Framework-implied (resolved into `GenerationPlan`, not user toggles)
 
 | Framework | Implied when applicable |
 |-----------|-------------------------|
-| FastAPI + database | SQLAlchemy; Alembic only if migrations selected |
-| Flask + database | SQLAlchemy; Alembic only if migrations selected |
-| Django REST API | Django ORM, Django migrations, Django REST Framework |
+| FastAPI + SQL | SQLAlchemy; Alembic only if migrations selected |
+| Flask + SQL | SQLAlchemy; Alembic only if migrations selected |
+| Django REST API + SQL | Django ORM, Django migrations, Django REST Framework |
+| MongoDB | pymongo (AsyncMongoClient for FastAPI; MongoClient for Flask/Django) |
+| Redis | redis package (redis.asyncio for FastAPI; sync Redis for Flask/Django) |
 
 ### Unsupported (fail in `resolve_plan` before writes)
 
@@ -46,7 +60,8 @@ Examples:
 
 - Django + SQLAlchemy
 - FastAPI or Flask + Django ORM
-- Migrations without a database / Alembic without SQLAlchemy
+- Migrations without SQL / Alembic without SQLAlchemy
+- Django REST API without SQL (NoSQL alone is not enough)
 - Non-generatable language / framework / project-type combinations
 
 ### Representative smoke cases
@@ -59,19 +74,24 @@ Official list: `SUPPORTED_GENERATION_CASES` in `forge.core.compatibility`.
 | `fastapi-modular-postgres` | FastAPI Modular + PostgreSQL + Alembic |
 | `fastapi-clean-sqlite-migrations` | FastAPI Clean + SQLite + Alembic |
 | `fastapi-clean-postgres-docker` | FastAPI Clean + PostgreSQL + Docker |
+| `fastapi-modular-mongodb` | FastAPI Modular + MongoDB + Docker |
+| `fastapi-simple-postgres-redis` | FastAPI Simple + PostgreSQL + Redis + Docker |
+| `fastapi-clean-mongodb` | FastAPI Clean + MongoDB |
 | `django-simple-sqlite` | Django Simple + SQLite |
 | `django-modular-postgres` | Django Modular + PostgreSQL |
 | `django-clean-sqlite` | Django Clean + SQLite |
 | `django-clean-postgres-docker` | Django Clean + PostgreSQL + Docker |
-| `flask-simple-nodb` | Flask Simple, no database |
+| `django-modular-postgres-redis` | Django Modular + PostgreSQL + Redis + Docker |
+| `flask-simple-nodb` | Flask Simple, no persistence |
 | `flask-modular-postgres` | Flask Modular + PostgreSQL + Alembic |
 | `flask-clean-sqlite` | Flask Clean + SQLite + Alembic |
 | `flask-clean-postgres-docker` | Flask Clean + PostgreSQL + Docker |
+| `flask-simple-sqlite-mongodb` | Flask Simple + SQLite + MongoDB |
 
 Default tests generate every case structurally. Executable install/test smoke
-(`pytest -m generation_smoke`) runs SQLite / no-database cases only so CI does
-not require a live PostgreSQL server. PostgreSQL + Docker cases are still
-generated and checked for files/compose consistency.
+(`pytest -m generation_smoke`) runs SQLite / no-persistence cases only so CI does
+not require live PostgreSQL, MongoDB, or Redis servers. Docker / external-DB cases
+are still generated and checked for files/compose consistency.
 
 ```bash
 uv run pytest -q                          # excludes packaging + generation_smoke
@@ -91,8 +111,10 @@ Implications are the same across Simple, Modular Monolith, and Clean — archite
 | Selection | Resolved into GenerationPlan |
 |-----------|------------------------------|
 | Baseline | `fastapi[standard]`, `pydantic-settings` |
-| Database | ORM → SQLAlchemy; URL + optional `psycopg` |
+| SQL | ORM → SQLAlchemy; URL + optional `psycopg` |
 | Migrations (user choice) | migration system → Alembic |
+| MongoDB | client → pymongo; `MONGODB_URL` / `MONGODB_DATABASE` |
+| Redis | client → redis (asyncio); `REDIS_URL` |
 | pytest / Ruff / Docker | as selected |
 
 ### Flask
@@ -100,11 +122,13 @@ Implications are the same across Simple, Modular Monolith, and Clean — archite
 | Selection | Resolved into GenerationPlan |
 |-----------|------------------------------|
 | Baseline | Flask, `python-dotenv` (no ORM unless asked) |
-| Database | ORM → SQLAlchemy; URL + optional `psycopg` |
+| SQL | ORM → SQLAlchemy; URL + optional `psycopg` |
 | Migrations (user choice) | migration system → Alembic |
+| MongoDB | client → pymongo (sync); env settings |
+| Redis | client → redis (sync); `REDIS_URL` |
 | pytest / Ruff / Docker | as selected |
 
-Flask does not imply persistence infrastructure. No database → no SQLAlchemy, no driver, no Alembic, no persistence ports/packages.
+Flask does not imply persistence infrastructure. No SQL → no SQLAlchemy, no driver, no Alembic, no SQL persistence ports/packages. NoSQL clients are independent of SQL.
 
 ### Django
 
@@ -112,20 +136,22 @@ Flask does not imply persistence infrastructure. No database → no SQLAlchemy, 
 |-----------|------------------------------|
 | Baseline | Django, `python-dotenv`, `manage.py`, `config` settings |
 | REST API | REST → Django REST Framework, `GET /api/health/` |
-| Database engine | ORM → Django ORM; `DATABASES` (env-aware) |
+| SQL engine | ORM → Django ORM; `DATABASES` (env-aware) |
 | (implied) | migration system → Django (`makemigrations` / `migrate`) |
+| MongoDB / Redis | separate client modules; not Django ORM backends |
 | pytest | `pytest-django` |
 | Ruff / Docker | configured when selected |
 
 ### Clean Architecture quality notes
 
-- Domain code must not import FastAPI, Flask, Django, or SQLAlchemy.
+- Domain code must not import FastAPI, Flask, Django, SQLAlchemy, pymongo, or redis.
 - Health goes through application/domain layers.
-- Persistence ports and infrastructure packages appear only when a database is selected (except Django, which always has a database for REST API).
+- SQL persistence ports and infrastructure packages appear only when SQL is selected (except Django, which always has SQL for REST API).
+- MongoDB / Redis helpers live in infrastructure (or framework core packages) — not in domain.
 
 ### Dependency policy
 
-Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are deduplicated. FastAPI and Flask share the SQLAlchemy / Alembic / `psycopg` strategy when persistence is selected.
+Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are deduplicated. FastAPI and Flask share the SQLAlchemy / Alembic / `psycopg` strategy when SQL is selected. NoSQL dependencies (`pymongo`, `redis`) appear only when that engine is selected.
 
 ### Validation expectation
 

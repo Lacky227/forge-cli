@@ -33,7 +33,7 @@ def test_build_definition_from_plain_data() -> None:
         "framework": "arq",
         "architecture": "simple",
         "capabilities": {
-            "database": False,
+            "sql_database": None,
             "docker": True,
             "testing": True,
         },

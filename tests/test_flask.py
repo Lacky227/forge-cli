@@ -31,8 +31,7 @@ def _flask(
         framework="flask",
         architecture=architecture,
         capabilities=Capabilities(
-            database=database,
-            database_engine=engine if database else None,
+            sql_database=engine if database else None,
             orm=orm,
             migrations=migrations and database,
             docker=docker,
@@ -119,8 +118,7 @@ def test_reject_flask_with_django_orm() -> None:
         framework="flask",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities.model_construct(
-            database=True,
-            database_engine="postgresql",
+            sql_database="postgresql",
             orm="django-orm",
             migrations=True,
             docker=False,
@@ -141,7 +139,7 @@ def test_reject_flask_migrations_without_database() -> None:
             framework="flask",
             architecture=ArchitectureStyle.SIMPLE,
             capabilities=Capabilities(
-                database=False,
+                sql_database=None,
                 migrations=True,
             ),
         )

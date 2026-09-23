@@ -1,0 +1,14 @@
+"""Redis client helpers — separate from Django ORM."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+
+from django.conf import settings
+from redis import Redis
+
+
+@lru_cache(maxsize=1)
+def get_redis() -> Redis:
+    """Return a process-wide Redis client."""
+    return Redis.from_url(settings.REDIS_URL, decode_responses=True)

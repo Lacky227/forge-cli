@@ -202,8 +202,8 @@ def test_plan_matches_resolve_plan_for_preset() -> None:
     plan = resolve_plan(definition)
     sections = {section.title: dict(section.rows) for section in plan.summary_sections()}
     assert sections["Project"]["Framework"] == "FastAPI"
-    assert sections["Persistence"]["ORM"] == "SQLAlchemy"
-    assert sections["Persistence"]["Migrations"] == "Alembic"
+    assert sections["SQL"]["ORM"] == "SQLAlchemy"
+    assert sections["SQL"]["Migrations"] == "Alembic"
     assert "modular-monolith" in sections["Template"]["Path"]
 
 

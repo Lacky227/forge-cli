@@ -17,3 +17,17 @@ class ArchitectureStyle(StrEnum):
     SIMPLE = "simple"
     MODULAR_MONOLITH = "modular-monolith"
     CLEAN = "clean"
+
+
+class SqlDatabase(StrEnum):
+    """SQL engine choices — independent of NoSQL selection."""
+
+    POSTGRESQL = "postgresql"
+    SQLITE = "sqlite"
+
+
+class NoSqlDatabase(StrEnum):
+    """NoSQL / infrastructure client choices — independent of SQL selection."""
+
+    MONGODB = "mongodb"
+    REDIS = "redis"

@@ -28,8 +28,7 @@ def _fastapi(
         framework="fastapi",
         architecture=architecture,
         capabilities=Capabilities(
-            database=database,
-            database_engine=engine if database else None,
+            sql_database=engine if database else None,
             orm=orm,
             migrations=migrations and database,
             docker=docker,
@@ -105,8 +104,7 @@ def test_resolve_rejects_migrations_without_sqlalchemy_orm() -> None:
         framework="fastapi",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities.model_construct(
-            database=True,
-            database_engine="postgresql",
+            sql_database="postgresql",
             orm="django-orm",
             migrations=True,
             docker=False,

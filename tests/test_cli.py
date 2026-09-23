@@ -242,7 +242,7 @@ def test_interactive_path_still_generates(
         framework="fastapi",
         architecture=ArchitectureStyle.SIMPLE,
         capabilities=Capabilities(
-            database=False,
+            sql_database=None,
             docker=False,
             testing=True,
             linting=False,

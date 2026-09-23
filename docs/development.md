@@ -71,7 +71,7 @@ Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com
 
 ### Versioning
 
-Current version: **`0.1.1`** — public development release; PyPI distribution **`forge-scaffolder`**.
+Current version: **`0.2.0`** — public development release; PyPI distribution **`forge-scaffolder`**.
 
 | Version | Meaning |
 |---------|---------|
@@ -114,6 +114,7 @@ GenerationPlan    = resolved implementation
 - Whether Django should ever support a non-REST project type without DRF
 - Whether Flask should ever offer an ORM other than SQLAlchemy
 - How far Clean Architecture persistence demos should go beyond a session/port boundary
+- Whether Redis should gain first-class cache/session/queue semantics beyond a client
 - Config export / round-trip tooling
 - Whether to add `--dry-run` (resolve plan + list intended outputs without writes) without distorting the generator
 - Whether preset + config merging is ever worth the precedence complexity (currently rejected)

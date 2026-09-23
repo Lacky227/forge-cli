@@ -14,12 +14,17 @@ class GenerationFeatures:
     """Resolved implementation implications of a ProjectDefinition.
 
     Includes both explicit user choices (docker, testing, …) and
-    framework-implied facts (orm, migration_system, rest_framework).
+    framework-implied facts (orm, migration_system, rest_framework, nosql client).
     """
 
-    database: bool
+    # SQL persistence (independent of NoSQL)
+    database: bool  # True when SQL is selected (template-friendly name)
     postgresql: bool
     sqlite: bool
+    # NoSQL / infrastructure clients (independent of SQL)
+    mongodb: bool
+    redis: bool
+    nosql: bool
     migrations: bool
     docker: bool
     testing: bool
@@ -27,12 +32,13 @@ class GenerationFeatures:
     # Framework-implied / resolved implementation details
     orm: str | None = None
     migration_system: str | None = None  # "alembic" | "django" | None
+    nosql_client: str | None = None  # "pymongo" | "redis" | None
     # REST API stacks may enable a framework-native API layer (e.g. DRF).
     rest_framework: bool = False
 
     @property
     def env_example(self) -> bool:
-        return self.database or self.docker
+        return self.database or self.nosql or self.docker
 
 
 @dataclass(frozen=True)
@@ -61,6 +67,9 @@ class GenerationPlan:
     runtime_dependencies: tuple[str, ...]
     dev_dependencies: tuple[str, ...]
     database_url_example: str
+    mongodb_url_example: str
+    mongodb_database_example: str
+    redis_url_example: str
     app_module: str
     entry_file: str
     run_command: str
@@ -89,25 +98,46 @@ class GenerationPlan:
         if features.rest_framework:
             project_rows.append(("API", "Django REST Framework"))
 
-        persistence_rows: list[tuple[str, str]] = []
-        if features.database:
-            engine = caps.database_engine or "yes"
-            persistence_rows.append(
-                (
-                    "Database",
-                    catalog.DATABASE_ENGINE_LABELS.get(engine, engine),
-                )
-            )
-            if features.orm:
-                persistence_rows.append(("ORM", _orm_label(features.orm)))
-            if features.migration_system:
-                persistence_rows.append(
-                    ("Migrations", _migration_label(features.migration_system))
-                )
-            else:
-                persistence_rows.append(("Migrations", "none"))
+        sections: list[PlanSummarySection] = [
+            PlanSummarySection("Project", tuple(project_rows)),
+        ]
+
+        if features.database or features.nosql:
+            if features.database:
+                engine = caps.sql_database or "yes"
+                sql_rows: list[tuple[str, str]] = [
+                    (
+                        "Database",
+                        catalog.SQL_DATABASE_LABELS.get(engine, engine),
+                    )
+                ]
+                if features.orm:
+                    sql_rows.append(("ORM", _orm_label(features.orm)))
+                if features.migration_system:
+                    sql_rows.append(
+                        ("Migrations", _migration_label(features.migration_system))
+                    )
+                else:
+                    sql_rows.append(("Migrations", "none"))
+                sections.append(PlanSummarySection("SQL", tuple(sql_rows)))
+
+            if features.nosql:
+                nosql_engine = caps.nosql_database or "yes"
+                nosql_rows: list[tuple[str, str]] = [
+                    (
+                        "Database",
+                        catalog.NOSQL_DATABASE_LABELS.get(nosql_engine, nosql_engine),
+                    )
+                ]
+                if features.nosql_client:
+                    nosql_rows.append(
+                        ("Client", _nosql_client_label(features.nosql_client))
+                    )
+                sections.append(PlanSummarySection("NoSQL", tuple(nosql_rows)))
         else:
-            persistence_rows.append(("Database", "none"))
+            sections.append(
+                PlanSummarySection("Persistence", (("Database", "none"),))
+            )
 
         tooling_rows: list[tuple[str, str]] = [
             ("Testing", "pytest" if features.testing else "no"),
@@ -129,16 +159,16 @@ class GenerationPlan:
         if self.dev_dependencies:
             dep_rows.append(("Development", ", ".join(self.dev_dependencies)))
 
-        sections = [
-            PlanSummarySection("Project", tuple(project_rows)),
-            PlanSummarySection("Persistence", tuple(persistence_rows)),
-            PlanSummarySection("Tooling", tuple(tooling_rows)),
-            PlanSummarySection(
-                "Template",
-                (("Path", self.template_subdir.as_posix()),),
-            ),
-            PlanSummarySection("Commands", tuple(command_rows)),
-        ]
+        sections.extend(
+            [
+                PlanSummarySection("Tooling", tuple(tooling_rows)),
+                PlanSummarySection(
+                    "Template",
+                    (("Path", self.template_subdir.as_posix()),),
+                ),
+                PlanSummarySection("Commands", tuple(command_rows)),
+            ]
+        )
         if dep_rows:
             sections.append(PlanSummarySection("Dependencies", tuple(dep_rows)))
         return tuple(sections)
@@ -157,19 +187,28 @@ class GenerationPlan:
             "architecture_label": self.architecture_label,
             "framework_label": self.framework_label,
             "database": features.database,
-            "database_engine": definition.capabilities.database_engine,
+            "database_engine": definition.capabilities.sql_database,
+            "sql_database": definition.capabilities.sql_database,
+            "nosql_database": definition.capabilities.nosql_database,
             "orm": features.orm,
             "migrations": features.migrations,
             "migration_system": features.migration_system,
+            "nosql": features.nosql,
+            "nosql_client": features.nosql_client,
             "docker": features.docker,
             "testing": features.testing,
             "linting": features.linting,
             "rest_framework": features.rest_framework,
             "is_postgresql": features.postgresql,
             "is_sqlite": features.sqlite,
+            "is_mongodb": features.mongodb,
+            "is_redis": features.redis,
             "is_simple": definition.architecture.value == "simple",
             "is_modular": definition.architecture.value == "modular-monolith",
             "database_url_example": self.database_url_example,
+            "mongodb_url_example": self.mongodb_url_example,
+            "mongodb_database_example": self.mongodb_database_example,
+            "redis_url_example": self.redis_url_example,
             "app_module": self.app_module,
             "entry_file": self.entry_file,
             "run_command": self.run_command,
@@ -195,3 +234,11 @@ def _migration_label(system: str) -> str:
     if system == "alembic":
         return "Alembic"
     return system
+
+
+def _nosql_client_label(client: str) -> str:
+    if client == "pymongo":
+        return "pymongo"
+    if client == "redis":
+        return "redis"
+    return client

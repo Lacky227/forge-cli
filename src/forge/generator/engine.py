@@ -39,8 +39,17 @@ class GenerationResult:
             "uv sync",
         ]
         features = self.plan.features
-        if features.postgresql and features.docker:
-            steps.append("docker compose up -d db")
+        if features.docker and (
+            features.postgresql or features.mongodb or features.redis
+        ):
+            services: list[str] = []
+            if features.postgresql:
+                services.append("db")
+            if features.mongodb:
+                services.append("mongodb")
+            if features.redis:
+                services.append("redis")
+            steps.append(f"docker compose up -d {' '.join(services)}")
         if self.plan.migrate_command:
             steps.append(self.plan.migrate_command)
         steps.append(self.plan.run_command)

@@ -1,5 +1,5 @@
 services:
-{% if database and is_postgresql %}
+{% if is_postgresql %}
   db:
     image: postgres:16-alpine
     environment:
@@ -17,21 +17,71 @@ services:
       retries: 5
 
 {% endif %}
+{% if is_mongodb %}
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+{% endif %}
+{% if is_redis %}
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+{% endif %}
   api:
     build: .
     ports:
       - "8000:8000"
     env_file:
       - .env
-{% if database and is_postgresql %}
+{% if is_postgresql or is_mongodb or is_redis %}
     environment:
+{% if is_postgresql %}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-{{ package_name }}}
+{% endif %}
+{% if is_mongodb %}
+      MONGODB_URL: mongodb://mongodb:27017
+      MONGODB_DATABASE: {{ package_name }}
+{% endif %}
+{% if is_redis %}
+      REDIS_URL: redis://redis:6379/0
+{% endif %}
     depends_on:
+{% if is_postgresql %}
       db:
         condition: service_healthy
 {% endif %}
+{% if is_mongodb %}
+      mongodb:
+        condition: service_healthy
+{% endif %}
+{% if is_redis %}
+      redis:
+        condition: service_healthy
+{% endif %}
+{% endif %}
 
-{% if database and is_postgresql %}
+{% if is_postgresql or is_mongodb %}
 volumes:
+{% if is_postgresql %}
   pgdata:
+{% endif %}
+{% if is_mongodb %}
+  mongodata:
+{% endif %}
 {% endif %}

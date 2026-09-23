@@ -37,19 +37,24 @@ All input paths share the same domain model and resolution pipeline. `forge plan
 
 **Current:** `forge.core.definition.ProjectDefinition`.
 
-**Explicit user intent only:** language, project type, framework, architecture, and selectable capabilities (`database` / `database_engine`, optional Alembic for SQLAlchemy stacks, `docker`, `testing`, `linting`).
+**Explicit user intent only:** language, project type, framework, architecture, and selectable capabilities (`sql_database` / `nosql_database`, optional Alembic for SQLAlchemy stacks, `docker`, `testing`, `linting`).
+
+SQL and NoSQL are **independent** first-class choices. A project may have neither, either, or both (one engine from each category).
 
 Framework-implied implementation details are **not** required on the definition:
 
 | User chooses | Resolver implies |
 |--------------|------------------|
-| FastAPI + database | SQLAlchemy |
-| FastAPI + migrations | Alembic |
-| Flask + database | SQLAlchemy |
-| Flask + migrations | Alembic |
-| Django + REST API + database | Django ORM, Django migrations, DRF |
+| FastAPI + SQL | SQLAlchemy |
+| FastAPI + SQL migrations | Alembic |
+| Flask + SQL | SQLAlchemy |
+| Flask + SQL migrations | Alembic |
+| Django + REST API + SQL | Django ORM, Django migrations, DRF |
+| MongoDB | pymongo client (async for FastAPI; sync for Flask/Django) |
+| Redis | redis client (async for FastAPI; sync for Flask/Django) |
 
 Flask does **not** imply a database, ORM, or migrations merely because Flask is selected.
+NoSQL never implies SQLAlchemy, Alembic, Django ORM, or Django migrations.
 
 An optional `capabilities.orm` exists for programmatic/config paths that state an ORM explicitly; the interactive CLI leaves it unset. If set, it must be compatible with the framework.
 
@@ -67,7 +72,7 @@ Architecture is independent of framework selection: the same `GenerationPlan` pa
 
 ### GenerationPlan
 
-Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `rest_framework`), dependency lists, entry/run/migrate/check commands, labels, and `primary_app` (Django).
+Includes definition reference, package/template paths, `GenerationFeatures` (including resolved `orm`, `migration_system`, `nosql_client`, `rest_framework`), dependency lists, entry/run/migrate/check commands, labels, and `primary_app` (Django).
 
 ```text
 ProjectDefinition = what the user asked for
@@ -101,14 +106,19 @@ CLI / Worker project types are catalogued but not generated yet.
 
 ```text
 Django REST API
-    → framework-implied ORM / migrations / DRF
+    → framework-implied ORM / migrations / DRF (SQL required)
+    → optional NoSQL clients (MongoDB / Redis) as separate infrastructure
 
 FastAPI
-    → explicit persistence choices (DB optional; SQLAlchemy + optional Alembic)
+    → explicit persistence choices (SQL and/or NoSQL optional)
+    → SQL ⇒ SQLAlchemy + optional Alembic
+    → MongoDB ⇒ pymongo AsyncMongoClient
+    → Redis ⇒ redis.asyncio
 
 Flask
     → intentionally minimal; persistence only when selected
-      (SQLAlchemy + optional Alembic — same strategy as FastAPI)
+    → SQL ⇒ SQLAlchemy + optional Alembic (same strategy as FastAPI)
+    → MongoDB / Redis ⇒ sync clients
 ```
 
 ### Architecture styles
@@ -133,7 +143,8 @@ presentation/     HTTP API (FastAPI / Flask / DRF)
 ```
 
 - Health flows through `presentation` → `application` → `domain` (not a one-line route stub).
-- Persistence directories and ports are omitted when no database is selected (FastAPI/Flask).
+- Persistence directories and SQL ports are omitted when no SQL database is selected (FastAPI/Flask).
+- MongoDB / Redis clients live in infrastructure (Clean) or core/package modules — domain must not import them.
 - Django Clean keeps ORM models in `infrastructure.persistence` (Django app) and DRF views in `presentation.api`.
 
 ### Django decisions
@@ -142,16 +153,18 @@ presentation/     HTTP API (FastAPI / Flask / DRF)
 - **Simple** — `src/config` + one app `src/core`
 - **Modular Monolith** — `src/config` + domain apps under `src/apps/` (starts with `apps.core`)
 - **Clean** — `src/{domain,application,infrastructure,presentation,config}`; `primary_app` = `infrastructure.persistence`
-- Database always selected for Django REST API (SQLite or PostgreSQL)
+- SQL always selected for Django REST API (SQLite or PostgreSQL)
+- Optional NoSQL (MongoDB / Redis) as separate clients — not Django ORM backends
 - No SQLAlchemy / Alembic for Django
 
 ### Flask decisions
 
-- Database is optional (None / SQLite / PostgreSQL)
-- SQLAlchemy only when a database is selected
+- SQL is optional (None / SQLite / PostgreSQL)
+- NoSQL is optional (None / MongoDB / Redis)
+- SQLAlchemy only when SQL is selected
 - Alembic only when migrations are explicitly enabled
 - **Simple** — flat package with `create_app` + `routes.py`
-- **Modular Monolith** — `api/`, `core/`, and layered packages when persistence is selected
+- **Modular Monolith** — `api/`, `core/`, and layered packages when SQL is selected
 - **Clean** — same Clean layering as FastAPI, with Flask presentation
 
 ## Package layout
