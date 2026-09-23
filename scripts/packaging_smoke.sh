@@ -29,7 +29,7 @@ with zipfile.ZipFile(wheel) as zf:
     names = zf.namelist()
     metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
 assert "Name: forge-scaffolder" in metadata, metadata
-assert "Version: 0.1.1" in metadata, metadata
+assert "Version: 0.2.0" in metadata, metadata
 assert (
     "License-Expression: GPL-3.0-only" in metadata
     or "License: GPL-3.0-only" in metadata
@@ -43,6 +43,8 @@ for frag in (
     "forge/templates/python/flask/",
 ):
     assert any(n.startswith(frag) for n in templates), f"missing {frag}"
+assert any(n.endswith("mongodb.py.j2") for n in templates), "missing mongodb templates"
+assert any(n.endswith("redis_client.py.j2") for n in templates), "missing redis templates"
 # Must not ship tests or local smoke trees inside the package
 assert not any(n.startswith("forge/tests/") for n in names)
 assert not any(".smoke" in n for n in names)
@@ -78,7 +80,7 @@ from pathlib import Path
 
 print(f"    forge package: {Path(forge.__file__).resolve()}")
 print(f"    forge version: {forge.__version__}")
-assert forge.__version__ == "0.1.1", forge.__version__
+assert forge.__version__ == "0.2.0", forge.__version__
 from importlib.metadata import metadata
 meta = metadata("forge-scaffolder")
 assert meta["Name"] == "forge-scaffolder"
@@ -93,9 +95,11 @@ assert "site-packages" in str(root) or "forge/templates" in str(root).replace("\
 PY
 
 echo "==> CLI smoke"
-forge --version | grep -F "forge 0.1.1"
+forge --version | grep -F "forge 0.2.0"
 forge --help >/dev/null
 forge new --help >/dev/null
+forge plan --preset fastapi-postgres >/dev/null
+forge plan --preset fastapi-mongo >/dev/null
 
 GEN="${WORK}/generated"
 mkdir -p "${GEN}"
@@ -151,8 +155,31 @@ EOF
 forge new --config flask.yaml
 test -f pack-fl/pyproject.toml
 
+echo "==> Generate FastAPI MongoDB (config)"
+cat > fastapi-mongo.yaml <<'EOF'
+name: pack-fa-mongo
+type: rest-api
+framework: fastapi
+architecture: modular-monolith
+persistence:
+  nosql: mongodb
+testing: true
+linting: true
+docker: false
+EOF
+forge new --config fastapi-mongo.yaml
+test -f pack-fa-mongo/pyproject.toml
+grep -q pymongo pack-fa-mongo/pyproject.toml
+test -f pack-fa-mongo/src/pack_fa_mongo/core/mongodb.py
+
 echo "==> Validate FastAPI generated project"
 cd "${GEN}/pack-fa-sqlite"
+uv sync
+uv run pytest
+uv run ruff check .
+
+echo "==> Validate FastAPI MongoDB generated project"
+cd "${GEN}/pack-fa-mongo"
 uv sync
 uv run pytest
 uv run ruff check .

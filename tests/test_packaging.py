@@ -19,7 +19,7 @@ from forge.generator.render import templates_root
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DIST_NAME = "forge-scaffolder"
-DIST_VERSION = "0.1.1"
+DIST_VERSION = "0.2.0"
 WHEEL_GLOB = "forge_scaffolder-*.whl"
 
 
@@ -66,6 +66,8 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     assert any("fastapi" in n for n in templates)
     assert any("django" in n for n in templates)
     assert any("flask" in n for n in templates)
+    assert any(n.endswith("mongodb.py.j2") for n in templates)
+    assert any(n.endswith("redis_client.py.j2") for n in templates)
     assert not any(n.startswith("tests/") for n in names)
     assert not any(".cursor" in n for n in names)
     assert not any(".smoke" in n for n in names)

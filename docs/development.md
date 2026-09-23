@@ -71,7 +71,7 @@ Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com
 
 ### Versioning
 
-Current version: **`0.1.1`** — public development release; PyPI distribution **`forge-scaffolder`**.
+Current version: **`0.2.0`** — public development release; PyPI distribution **`forge-scaffolder`**.
 
 | Version | Meaning |
 |---------|---------|

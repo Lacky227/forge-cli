@@ -2,7 +2,7 @@
 
 Cross-platform CLI for interactively designing and generating application project architectures.
 
-**Status:** public development release **`0.1.1`** (`forge-scaffolder` on PyPI). Generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Persistence supports independent **SQL** (PostgreSQL, SQLite) and **NoSQL** (MongoDB, Redis) selections. Supports interactive / `--preset` / YAML `--config` generation and `forge plan` inspection.
+**Status:** public development release **`0.2.0`** (`forge-scaffolder` on PyPI). Generates runnable **Python FastAPI**, **Django**, and **Flask** REST API projects with **Simple**, **Modular Monolith**, or **Clean Architecture** layouts. Persistence supports independent **SQL** (PostgreSQL, SQLite) and **NoSQL** (MongoDB, Redis) selections. Supports interactive / `--preset` / YAML `--config` generation and `forge plan` inspection.
 
 **Requires:** Python **3.11+** (tested on 3.11, 3.12, 3.13)
 
@@ -90,7 +90,7 @@ uv run pytest
 
 ## Versioning
 
-`0.1.1` is the current public development release (PyPI distribution `forge-scaffolder`). See the versioning policy in [docs/development.md](docs/development.md).
+`0.2.0` is the current public development release (PyPI distribution `forge-scaffolder`). See the versioning policy in [docs/development.md](docs/development.md).
 
 ## License
 
