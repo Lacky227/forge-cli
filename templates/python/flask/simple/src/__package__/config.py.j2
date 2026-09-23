@@ -39,12 +39,20 @@ class Config:
     STORAGE_LOCAL_ROOT = os.environ.get("STORAGE_LOCAL_ROOT", "./var/storage")
 {% endif %}
 {% if is_storage_s3 %}
+{% if has_minio %}
     S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL", "http://localhost:9000")
+{% else %}
+    S3_ENDPOINT_URL = os.environ.get("S3_ENDPOINT_URL", "") or None
+{% endif %}
     S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "minioadmin")
     S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "minioadmin")
     S3_BUCKET = os.environ.get("S3_BUCKET", "{{ package_name }}-files")
     S3_REGION = os.environ.get("S3_REGION", "us-east-1")
-    S3_CREATE_BUCKET = os.environ.get("S3_CREATE_BUCKET", "false").lower() in {"1", "true", "yes"}
+    S3_CREATE_BUCKET = os.environ.get("S3_CREATE_BUCKET", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 {% endif %}
 {% endif %}
 {% if has_email %}
@@ -52,8 +60,15 @@ class Config:
     SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
     SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
     SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-    SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes"}
-    EMAIL_FROM = os.environ.get("EMAIL_FROM", "noreply@{{ package_name }}.local")
+    SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    EMAIL_FROM = os.environ.get(
+        "EMAIL_FROM",
+        "noreply@{{ package_name }}.local",
+    )
 {% endif %}
 {% if has_webhooks %}
     WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://example.com/hooks/forge")

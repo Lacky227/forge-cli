@@ -1,16 +1,16 @@
-"""RQ worker entrypoint: ``python -m {{ package_name }}.worker``."""
+"""RQ worker process entrypoint."""
 
 from __future__ import annotations
 
 from redis import Redis
 from rq import Worker
 
-from {{ package_name }}.config import settings
+from {{ package_name }}.config import Config
 from {{ package_name }}.jobs import QUEUE_NAME
 
 
 def main() -> None:
-    connection = Redis.from_url(settings.redis_url)
+    connection = Redis.from_url(Config.REDIS_URL)
     Worker([QUEUE_NAME], connection=connection).work(with_scheduler=False)
 
 

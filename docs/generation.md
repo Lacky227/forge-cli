@@ -169,7 +169,7 @@ Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are
 `resolve_plan` also fills plan fields used by `forge plan`, templates, and `forge new --dry-run`:
 
 - `environment_variables` — names/examples/purposes matching current generated settings and `.env.example` (framework-specific SQL models preserved)
-- `docker_services` — dependency Compose services only (`db` / `mongodb` / `redis`)
+- `docker_services` — dependency Compose services only (`db` / `mongodb` / `redis` / `minio`)
 - `health_path` — liveness route (FastAPI `/health` for all architectures; Flask `/api/health`; Django `/api/health/`)
 - `emits_env_example` — true when `environment_variables` is non-empty (Docker alone does not emit an empty `.env.example`)
 - `ci_provider` — when `github-actions`, generation emits `.github/workflows/ci.yml` from `templates/python/_shared/` (Python **3.12**, `uv sync`, then selected Ruff/pytest; no DB service containers)

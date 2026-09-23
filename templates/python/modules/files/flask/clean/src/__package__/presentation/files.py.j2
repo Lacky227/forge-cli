@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any
 
 from flask import Blueprint, Response, jsonify, request
 from pydantic import BaseModel, ConfigDict
@@ -13,8 +12,10 @@ from sqlalchemy.orm import Session
 
 from {{ package_name }}.application import files as use_cases
 from {{ package_name }}.infrastructure.config import Config
-from {{ package_name }}.infrastructure.database import get_session
-from {{ package_name }}.infrastructure.persistence.file import SqlAlchemyFileRepository
+from {{ package_name }}.infrastructure.database import create_session
+from {{ package_name }}.infrastructure.persistence.file import (
+    SqlAlchemyFileRepository,
+)
 from {{ package_name }}.infrastructure.storage import (
 {% if is_storage_local %}
     LocalStorage,
@@ -43,7 +44,7 @@ class FileRead(BaseModel):
 
 @contextmanager
 def _db() -> Iterator[Session]:
-    gen = get_session()
+    gen = create_session()
     session = next(gen)
     try:
         yield session

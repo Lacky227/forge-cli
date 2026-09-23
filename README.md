@@ -159,14 +159,20 @@ Choose **none**, **SQL only**, **NoSQL only**, or **both** (at most one engine f
 
 ## Project modules
 
-Optional multi-select modules add real CRUD APIs:
+Optional multi-select modules add real application capabilities:
 
-| Module | Requires |
-|--------|----------|
+| Module | Requires / implies |
+|--------|--------------------|
 | Products | SQL |
 | Categories | SQL |
+| Files | SQL + local or S3-compatible storage (optional MinIO with Docker) |
+| Background Jobs | RQ + Redis |
+| Email | SMTP |
+| Webhooks | Background Jobs → RQ + Redis (outgoing delivery only) |
 
-Select either or both. When both are selected, products may reference a category. Collection endpoints include pagination, filtering, and allow-listed sorting. Details: [docs/modules.md](docs/modules.md).
+When Products and Categories are both selected, products may reference a category.
+Collection CRUD endpoints include pagination, filtering, and allow-listed sorting.
+Details: [docs/modules.md](docs/modules.md).
 
 ---
 
@@ -225,6 +231,8 @@ Presets are named compositions of valid Forge choices — not separate generator
 | `fastapi-postgres` | FastAPI · Modular Monolith · PostgreSQL · Alembic · Docker |
 | `fastapi-postgres-clean` | FastAPI · Clean Architecture · PostgreSQL · Alembic · Docker |
 | `fastapi-mongo` | FastAPI · Modular Monolith · MongoDB · Docker |
+| `fastapi-catalog` | FastAPI · Modular Monolith · Products + Categories · PostgreSQL · Alembic · Docker |
+| `fastapi-files` | FastAPI · Simple · Files (local storage) · SQLite · Alembic |
 | `flask-postgres` | Flask · Modular Monolith · PostgreSQL · Alembic · Docker |
 | `django-postgres` | Django · Modular Monolith · PostgreSQL · Docker |
 

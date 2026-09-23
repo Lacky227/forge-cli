@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from redis import Redis
 from rq import Worker
-from django.conf import settings
 
 from infrastructure.jobs import QUEUE_NAME
 

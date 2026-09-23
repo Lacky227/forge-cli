@@ -1,15 +1,17 @@
+"""Background jobs tests (no live Redis)."""
+
+from __future__ import annotations
+
 from unittest.mock import MagicMock
 
-from apps.jobs.queue import echo_message, enqueue_echo
+from apps.core import tasks
 
 
-def test_echo_message() -> None:
-    assert echo_message("ping") == "echo:ping"
+def test_ping_task() -> None:
+    assert tasks.ping("hello") == "ping:hello"
 
 
-def test_enqueue_echo_uses_queue() -> None:
+def test_enqueue_ping() -> None:
     queue = MagicMock()
-    job = MagicMock()
-    job.id = "job-1"
-    queue.enqueue.return_value = job
-    assert enqueue_echo("hi", queue=queue) == "job-1"
+    tasks.enqueue_ping("x", queue=queue)
+    queue.enqueue.assert_called_once_with(tasks.ping, "x")

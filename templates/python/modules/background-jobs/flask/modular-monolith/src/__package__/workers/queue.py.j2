@@ -7,13 +7,13 @@ from typing import Any
 from redis import Redis
 from rq import Queue
 
-from {{ package_name }}.core.config import settings
+from {{ package_name }}.core.config import Config
 
 QUEUE_NAME = "default"
 
 
 def get_redis() -> Redis:
-    return Redis.from_url(settings.redis_url)
+    return Redis.from_url(Config.REDIS_URL)
 
 
 def get_queue(connection: Redis | None = None) -> Queue:

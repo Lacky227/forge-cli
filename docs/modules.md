@@ -119,7 +119,7 @@ treated as strong content security.
 | Backend | Behavior |
 |---------|----------|
 | `local` | Files under `STORAGE_LOCAL_ROOT` (default `./var/storage`); gitignored |
-| `s3` | Generic S3-compatible client (`boto3`) via `S3_ENDPOINT_URL`, keys, bucket, region |
+| `s3` | Generic S3-compatible client (`boto3`) via `S3_ENDPOINT_URL` (empty = AWS default endpoint), keys, bucket, region |
 
 Bucket auto-creation is **off** by default (`S3_CREATE_BUCKET=false`). Enable
 explicitly when you want startup to create a missing bucket.
@@ -135,7 +135,7 @@ without it.
 Single Stage 2 implementation: **RQ** on Redis.
 
 Generated artifacts include queue helpers, an example deterministic task
-(`echo_message`), a worker process, tests (mocked Redis/RQ), and README/worker
+(`ping` / `enqueue_ping`), a worker process, tests (mocked Redis/RQ), and README/worker
 commands. The resolved plan exposes processes:
 
 ```text

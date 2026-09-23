@@ -25,7 +25,11 @@ class Settings(BaseSettings):
     storage_local_root: str = "./var/storage"
 {% endif %}
 {% if is_storage_s3 %}
+{% if has_minio %}
     s3_endpoint_url: str = "http://localhost:9000"
+{% else %}
+    s3_endpoint_url: str = ""
+{% endif %}
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
     s3_bucket: str = "{{ package_name }}-files"

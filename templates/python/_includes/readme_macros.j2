@@ -68,7 +68,7 @@
 ## Modules
 
 {% for m in modules %}
-- {{ m.label }} (`{{ m.id }}`){% if m.implied %} — implied dependency{% endif %}
+- {{ m.label }} (`{{ m.id }}`){{ " — implied dependency" if m.implied else "" }}
 {% endfor %}
 
 {% if has_files %}

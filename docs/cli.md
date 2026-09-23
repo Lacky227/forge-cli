@@ -193,6 +193,8 @@ Presets do **not** store resolved facts (`migration_system`, `rest_framework`, i
 | `fastapi-postgres` | FastAPI + Modular Monolith + PostgreSQL + Alembic + Docker |
 | `fastapi-postgres-clean` | FastAPI + Clean Architecture + PostgreSQL + Alembic + Docker |
 | `fastapi-mongo` | FastAPI + Modular Monolith + MongoDB + Docker |
+| `fastapi-catalog` | FastAPI + Modular Monolith + Products + Categories + PostgreSQL + Alembic + Docker |
+| `fastapi-files` | FastAPI + Simple + Files (local storage) + SQLite + Alembic |
 | `flask-postgres` | Flask + Modular Monolith + PostgreSQL + Alembic + Docker |
 | `django-postgres` | Django + Modular Monolith + PostgreSQL + Docker (ORM / migrations / DRF implied) |
 

@@ -2,23 +2,31 @@
 
 from __future__ import annotations
 
+{% if is_storage_local %}
 from pathlib import Path
+{% endif %}
+{% if is_storage_s3 %}
 from unittest.mock import MagicMock
+{% endif %}
 
 import pytest
 from fastapi.testclient import TestClient
 
+{% if is_storage_local %}
 from {{ package_name }}.infrastructure.config import settings
+{% endif %}
+{% if is_storage_s3 %}
 from {{ package_name }}.presentation import files as files_mod
+{% endif %}
 
 
 {% if is_storage_local %}
 @pytest.fixture(autouse=True)
 def _local_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "storage_local_root", str(tmp_path / "storage"))
+
+
 {% endif %}
-
-
 {% if is_storage_s3 %}
 @pytest.fixture(autouse=True)
 def _mock_s3(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,9 +62,9 @@ def _mock_s3(monkeypatch: pytest.MonkeyPatch) -> None:
             client=client,
         ),
     )
+
+
 {% endif %}
-
-
 def test_upload_list_get_download_delete(client: TestClient) -> None:
     response = client.post(
         "/files",

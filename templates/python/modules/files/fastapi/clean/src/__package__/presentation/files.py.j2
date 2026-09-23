@@ -21,7 +21,9 @@ from sqlalchemy.orm import Session
 from {{ package_name }}.application import files as use_cases
 from {{ package_name }}.infrastructure.config import settings
 from {{ package_name }}.infrastructure.database import get_db
-from {{ package_name }}.infrastructure.persistence.file import SqlAlchemyFileRepository
+from {{ package_name }}.infrastructure.persistence.file import (
+    SqlAlchemyFileRepository,
+)
 from {{ package_name }}.infrastructure.storage import (
 {% if is_storage_local %}
     LocalStorage,

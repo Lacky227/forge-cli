@@ -161,14 +161,16 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
         )
 
     modules = _collect_modules()
+    # Announce implied modules / Redis *before* persistence prompts so the
+    # user can choose NoSQL Redis knowingly when jobs need it.
+    _announce_early_module_implications(modules)
     capabilities = _collect_capabilities(
         framework,
         project_type,
         modules=modules,
     )
     storage = _collect_storage_options(modules, docker=capabilities.docker)
-    # Surface implied Background Jobs / Redis before returning.
-    _announce_module_implications(modules, capabilities)
+    _announce_redis_resolution(modules, capabilities)
     return ProjectDefinition(
         name=name,
         language=language,
@@ -232,31 +234,42 @@ def _collect_storage_options(
     return StorageOptions(backend=backend, minio=minio)
 
 
-def _announce_module_implications(
-    modules: list[str],
-    capabilities: Capabilities,
-) -> None:
+def _announce_early_module_implications(modules: list[str]) -> None:
+    """Surface dependency implications before capability questions."""
     expanded = expand_module_dependencies(tuple(modules))
     implied = implied_modules(tuple(modules), expanded)
     if implied:
         labels = ", ".join(MODULE_SPECS[ModuleId(m)].label for m in implied)
-        note = (
-            " [dim](required by Webhooks)[/dim]"
-            if ModuleId.WEBHOOKS.value in modules
-            else ""
-        )
+        causes: list[str] = []
+        if ModuleId.WEBHOOKS.value in modules:
+            causes.append("Webhooks")
+        note = f" [dim](required by {', '.join(causes)})[/dim]" if causes else ""
         _console.print(f"[dim]Implied modules:[/dim] {labels}{note}")
     if modules_require_redis(tuple(modules)):
-        if capabilities.nosql_database == "redis":
-            _console.print(
-                "[dim]Redis:[/dim] reusing selected NoSQL Redis "
-                "[dim](Background Jobs)[/dim]"
-            )
-        else:
-            _console.print(
-                "[dim]Redis:[/dim] required infrastructure "
-                "[dim](Background Jobs / RQ)[/dim]"
-            )
+        _console.print(
+            "[dim]Redis:[/dim] required for Background Jobs / RQ "
+            "[dim](select as NoSQL to reuse, or Forge adds infrastructure Redis)"
+            "[/dim]"
+        )
+
+
+def _announce_redis_resolution(
+    modules: list[str],
+    capabilities: Capabilities,
+) -> None:
+    """Confirm Redis reuse vs infrastructure after NoSQL is known."""
+    if not modules_require_redis(tuple(modules)):
+        return
+    if capabilities.nosql_database == "redis":
+        _console.print(
+            "[dim]Redis:[/dim] reusing selected NoSQL Redis "
+            "[dim](Background Jobs)[/dim]"
+        )
+    else:
+        _console.print(
+            "[dim]Redis:[/dim] required infrastructure "
+            "[dim](Background Jobs / RQ)[/dim]"
+        )
 
 
 def _collect_capabilities(

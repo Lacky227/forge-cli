@@ -297,21 +297,26 @@ def _append_module_dependencies(
             )
         if storage is not None and storage.backend == "s3":
             runtime_deps.append("boto3>=1.35")
+            s3_endpoint_example = (
+                "http://localhost:9000"
+                if storage.minio and definition.capabilities.docker
+                else ""
+            )
             env_vars.extend(
                 [
                     (
                         "S3_ENDPOINT_URL",
-                        "http://localhost:9000",
-                        "S3-compatible endpoint URL",
+                        s3_endpoint_example,
+                        "S3-compatible endpoint URL (empty for AWS default)",
                     ),
                     (
                         "S3_ACCESS_KEY",
-                        "minioadmin",
+                        "minioadmin" if storage.minio else "changeme",
                         "S3 access key id",
                     ),
                     (
                         "S3_SECRET_KEY",
-                        "minioadmin",
+                        "minioadmin" if storage.minio else "changeme",
                         "S3 secret access key",
                     ),
                     (
@@ -323,6 +328,11 @@ def _append_module_dependencies(
                         "S3_REGION",
                         "us-east-1",
                         "S3 region (required by some clients)",
+                    ),
+                    (
+                        "S3_CREATE_BUCKET",
+                        "false",
+                        "Create the S3 bucket on startup if missing (opt-in)",
                     ),
                 ]
             )
@@ -568,24 +578,8 @@ def _django_contributions(
     endpoints: list[tuple[str, str, str]],
 ) -> None:
     if module_id == ModuleId.BACKGROUND_JOBS.value:
-        # RQ management command app (no HTTP routes).
-        if architecture is ArchitectureStyle.SIMPLE:
-            app_config = "jobsq"
-            urls_module = ""
-        elif architecture is ArchitectureStyle.MODULAR_MONOLITH:
-            app_config = "apps.jobs"
-            urls_module = ""
-        else:
-            app_config = "infrastructure.jobs"
-            urls_module = ""
-        apps.append(
-            DjangoAppContribution(
-                module_id=module_id,
-                app_config=app_config,
-                urls_module=urls_module,
-                url_prefix="",
-            )
-        )
+        # RQ helpers and run_worker live on the primary Django app
+        # (core / apps.core / infrastructure.persistence) — no extra app package.
         return
 
     if module_id not in _HTTP_API_MODULES:

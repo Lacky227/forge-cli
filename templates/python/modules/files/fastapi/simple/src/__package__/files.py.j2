@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from io import BytesIO
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -65,15 +64,12 @@ async def upload_file(
     data = await file.read()
     filename = _validate_upload(file, data)
     key = new_storage_key(filename)
-    size = storage.save(
-        key,
-        BytesIO(data),
-        file.content_type or "application/octet-stream",
-    )
+    content_type = file.content_type or "application/octet-stream"
+    storage.save(key, data, content_type=content_type)
     row = FileModel(
         filename=filename,
-        content_type=file.content_type or "application/octet-stream",
-        size=size,
+        content_type=content_type,
+        size=len(data),
         storage_key=key,
     )
     db.add(row)
@@ -105,13 +101,16 @@ def get_file(file_id: int, db: DbSession) -> FileModel:
 @router.get("/{file_id}/content")
 def download_file(
     file_id: int, db: DbSession, storage: StorageDep
-) -> StreamingResponse:
+) -> Response:
     row = db.get(FileModel, file_id)
     if row is None:
         raise HTTPException(status_code=404, detail="file not found")
-    stream = storage.open(row.storage_key)
-    return StreamingResponse(
-        stream,
+    try:
+        data = storage.load(row.storage_key)
+    except (FileNotFoundError, OSError) as exc:
+        raise HTTPException(status_code=404, detail="object missing") from exc
+    return Response(
+        content=data,
         media_type=row.content_type,
         headers={
             "Content-Disposition": f'attachment; filename="{row.filename}"'
@@ -124,6 +123,9 @@ def delete_file(file_id: int, db: DbSession, storage: StorageDep) -> None:
     row = db.get(FileModel, file_id)
     if row is None:
         raise HTTPException(status_code=404, detail="file not found")
-    storage.delete(row.storage_key)
+    try:
+        storage.delete(row.storage_key)
+    except Exception:
+        pass
     db.delete(row)
     db.commit()

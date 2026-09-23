@@ -2,24 +2,29 @@
 
 from __future__ import annotations
 
-from io import BytesIO
+{% if is_storage_local %}
 from pathlib import Path
+{% endif %}
+{% if is_storage_s3 %}
 from unittest.mock import MagicMock
+{% endif %}
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
+{% if is_storage_s3 %}
 
 import apps.files.views as files_views
+{% endif %}
 
 
 {% if is_storage_local %}
 @pytest.fixture(autouse=True)
 def _local_storage(tmp_path: Path, settings, monkeypatch: pytest.MonkeyPatch) -> None:
     settings.STORAGE_LOCAL_ROOT = str(tmp_path / "storage")
+
+
 {% endif %}
-
-
 {% if is_storage_s3 %}
 @pytest.fixture(autouse=True)
 def _mock_s3(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,9 +60,9 @@ def _mock_s3(monkeypatch: pytest.MonkeyPatch) -> None:
             client=client,
         ),
     )
+
+
 {% endif %}
-
-
 @pytest.mark.django_db
 def test_upload_list_get_download_delete(api_client: APIClient) -> None:
     upload = SimpleUploadedFile("hello.txt", b"hello world", content_type="text/plain")

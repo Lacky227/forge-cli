@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import smtplib
+from collections.abc import Callable
 from email.message import EmailMessage
-from typing import Callable
 
 from {{ package_name }}.config import settings
 
@@ -29,7 +29,14 @@ class EmailService:
             client.login(settings.smtp_username, settings.smtp_password)
         return client
 
-    def send(self, to: str, subject: str, body: str, *, from_addr: str | None = None) -> None:
+    def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        *,
+        from_addr: str | None = None,
+    ) -> None:
         message = EmailMessage()
         message["From"] = from_addr or settings.email_from
         message["To"] = to
