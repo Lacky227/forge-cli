@@ -1,6 +1,6 @@
 [project]
 name = "forge-scaffolder"
-version = "0.4.0"
+version = "0.5.0"
 description = "Cross-platform CLI for interactively designing and generating application architectures"
 readme = "README.md"
 requires-python = ">=3.11"

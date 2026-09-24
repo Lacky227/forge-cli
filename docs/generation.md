@@ -196,6 +196,16 @@ existing-module composition, and installed-wheel generation. Real generation
 writes a random `AUTH_JWT_SECRET` only to gitignored `.env`; `.env.example` is
 blank for that value, and plan/dry-run never create or display it.
 
+Authorization and account-security flows use the same nine-family quality bar.
+Generated FastAPI/Flask migrations add RBAC and shared action-token tables;
+Django uses native Groups/Permissions and adds only the action-token model.
+Executable coverage includes role/permission mutation and policies,
+verification/reset lifecycle and invalidation, direct Email delivery, optional
+RQ delivery, and idempotent baseline provisioning. PostgreSQL/Docker validation
+checks DB/API wiring and confirms Redis/worker appear only when Background Jobs
+is selected. Dry-run lists every policy, delivery, migration, and generated test
+artifact without sampling tokens, secrets, sending mail, or creating a target.
+
 ## Forge tests vs generated tests
 
 Forge tests live in this repo’s `tests/`. Generated app tests live inside each generated project.

@@ -1,4 +1,6 @@
 {% set auth_database_import = package_name ~ ".infrastructure.database" %}
 {% set auth_models_import = package_name ~ ".infrastructure.persistence.authentication" %}
 {% set auth_service_import = package_name ~ ".infrastructure.auth_security" %}
+{% set auth_delivery_import = package_name ~ ".infrastructure.security_email" %}
+{% set auth_delivery_symbol = "security_email_delivery" %}
 {% include "auth_fastapi_router.py.j2" %}

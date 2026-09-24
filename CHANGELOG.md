@@ -13,11 +13,24 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
 - Email identities, Argon2id passwords, strict access JWTs, rotating opaque SQL refresh sessions, replay-family revocation, logout-all, and password change.
 - Generic generated-secret plans; `AUTH_JWT_SECRET` is created only in gitignored local `.env` and remains blank in `.env.example`.
 - `fastapi-auth` preset and Authentication-aware interactive, YAML, plan, and dry-run flows.
+- Stage 2 `authorization` module with reusable authenticated, verified,
+  permission, any-permission, and owner-or-permission policies across all nine
+  framework/architecture families.
+- SQLAlchemy RBAC roles, permissions, assignments, deterministic `member` and
+  `admin` provisioning, and Django-native Group/Permission adapters.
+- Optional email verification and password reset using digest-only, expiring,
+  single-use opaque action tokens and the existing Email capability.
+- Optional RQ delivery for account-security email when Background Jobs is
+  independently selected, plus the curated `django-auth` preset.
 
 ### Compatibility
 
-- Authentication requires SQL; FastAPI and Flask also require Alembic. Existing configurations without Authentication keep their 0.4 behavior.
-- Authorization/RBAC, email verification, and password recovery remain intentionally deferred.
+- Authentication and Authorization require SQL; FastAPI and Flask also require
+  Alembic. Authorization implies Authentication. Verification/reset imply
+  Email, but not Background Jobs or Redis.
+- Existing configurations without security modules and Stage 1
+  Authentication-only configurations retain their prior behavior. Existing
+  Products, Categories, and Files routes are not automatically protected.
 
 ## [0.4.0] - 2026-09-24
 

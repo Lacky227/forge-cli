@@ -25,6 +25,7 @@ class ModuleId(StrEnum):
     EMAIL = "email"
     WEBHOOKS = "webhooks"
     AUTHENTICATION = "authentication"
+    AUTHORIZATION = "authorization"
 
 
 class StorageBackend(StrEnum):
@@ -94,6 +95,13 @@ MODULE_SPECS: dict[ModuleId, ModuleSpec] = {
         description="Email/password identity with JWT access and rotating refresh sessions.",
         requires_sql=True,
     ),
+    ModuleId.AUTHORIZATION: ModuleSpec(
+        id=ModuleId.AUTHORIZATION,
+        label="Authorization",
+        description="Roles, permissions, reusable policies, and ownership primitives.",
+        requires_sql=True,
+        depends_on=(ModuleId.AUTHENTICATION,),
+    ),
 }
 
 MODULE_LABELS: dict[str, str] = {
@@ -109,6 +117,7 @@ MODULE_ORDER: tuple[ModuleId, ...] = (
     ModuleId.EMAIL,
     ModuleId.WEBHOOKS,
     ModuleId.AUTHENTICATION,
+    ModuleId.AUTHORIZATION,
 )
 
 # Modules that share the CRUD foundation (pagination helpers / conftest).
@@ -118,6 +127,7 @@ _FOUNDATION_MODULES: frozenset[str] = frozenset(
         ModuleId.CATEGORIES.value,
         ModuleId.FILES.value,
         ModuleId.AUTHENTICATION.value,
+        ModuleId.AUTHORIZATION.value,
     }
 )
 

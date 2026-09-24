@@ -20,6 +20,11 @@ class UserManager(BaseUserManager):
         user = self.model(email=normalized, canonical_email=canonicalize_email(normalized), **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
+{% if has_authorization %}
+        from django.contrib.auth.models import Group
+        member, _ = Group.objects.get_or_create(name="member")
+        user.groups.add(member)
+{% endif %}
         return user
 
     def create_superuser(self, email: str, password: str, **extra_fields):
@@ -35,7 +40,7 @@ class User(AbstractUser):
     email = models.EmailField(max_length=320)
     canonical_email = models.CharField(max_length=320, unique=True)
     display_name = models.CharField(max_length=120, blank=True)
-    is_verified = models.BooleanField(default=True)
+    is_verified = models.BooleanField(default={{ "False" if authentication_email_verification else "True" }})
     auth_version = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -48,6 +53,13 @@ class User(AbstractUser):
         self.email = self.email.strip()
         self.canonical_email = canonicalize_email(self.email)
         super().save(*args, **kwargs)
+
+{% if has_authorization %}
+    class Meta:
+        verbose_name = "user"
+        verbose_name_plural = "users"
+        permissions = [("manage_users", "Can manage user authorization assignments")]
+{% endif %}
 
 
 class AuthSession(models.Model):
@@ -67,3 +79,21 @@ class AuthSession(models.Model):
     @staticmethod
     def digest(raw: str) -> str:
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+{% if authentication_email_verification or authentication_password_reset %}
+class AuthActionToken(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="auth_action_tokens")
+    purpose = models.CharField(max_length=32)
+    token_digest = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "purpose", "consumed_at"], name="auth_action_active_idx")]
+
+    @staticmethod
+    def digest(raw: str) -> str:
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+{% endif %}

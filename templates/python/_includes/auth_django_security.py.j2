@@ -13,6 +13,9 @@ from rest_framework.authentication import BaseAuthentication, get_authorization_
 from rest_framework.exceptions import AuthenticationFailed
 
 from {{ auth_django_models_import }} import AuthSession, User
+{% if authentication_email_verification or authentication_password_reset %}
+from {{ auth_django_models_import }} import AuthActionToken
+{% endif %}
 
 JWT_ALGORITHM = "HS256"
 PASSWORD_MIN_LENGTH = 15
@@ -129,3 +132,67 @@ def revoke_all(user: User, *, increment_version: bool = True) -> None:
     if increment_version:
         User.objects.filter(pk=user.pk).update(auth_version=F("auth_version") + 1)
         user.refresh_from_db(fields=["auth_version"])
+
+{% if authentication_email_verification or authentication_password_reset %}
+VERIFY_EMAIL = "verify_email"
+RESET_PASSWORD = "reset_password"
+
+
+@transaction.atomic
+def issue_action_token(user: User, purpose: str, ttl_seconds: int) -> str:
+    if purpose not in {VERIFY_EMAIL, RESET_PASSWORD}:
+        raise ValueError("unsupported action-token purpose")
+    now = timezone.now()
+    AuthActionToken.objects.filter(user=user, purpose=purpose, consumed_at__isnull=True).update(consumed_at=now)
+    raw = secrets.token_urlsafe(32)
+    AuthActionToken.objects.create(
+        user=user,
+        purpose=purpose,
+        token_digest=AuthActionToken.digest(raw),
+        expires_at=now + timedelta(seconds=ttl_seconds),
+    )
+    return raw
+
+
+def _locked_action_token(raw: str, purpose: str) -> AuthActionToken:
+    try:
+        token = AuthActionToken.objects.select_for_update().select_related("user").get(
+            token_digest=AuthActionToken.digest(raw), purpose=purpose
+        )
+    except AuthActionToken.DoesNotExist as exc:
+        raise AuthFailure("invalid or expired action token") from exc
+    if token.consumed_at is not None or token.expires_at <= timezone.now():
+        raise AuthFailure("invalid or expired action token")
+    return token
+
+{% if authentication_email_verification %}
+@transaction.atomic
+def confirm_email_token(raw: str) -> User:
+    token = _locked_action_token(raw, VERIFY_EMAIL)
+    if not token.user.is_active:
+        raise AuthFailure("invalid or expired action token")
+    token.consumed_at = timezone.now()
+    token.save(update_fields=["consumed_at"])
+    token.user.is_verified = True
+    token.user.save(update_fields=["is_verified"])
+    return token.user
+{% endif %}
+
+{% if authentication_password_reset %}
+@transaction.atomic
+def reset_password_with_token(raw: str, new_password: str) -> None:
+    validate_password_policy(new_password)
+    token = _locked_action_token(raw, RESET_PASSWORD)
+    user = User.objects.select_for_update().get(pk=token.user_id)
+    if not user.is_active:
+        raise AuthFailure("invalid or expired action token")
+    now = timezone.now()
+    token.consumed_at = now
+    token.save(update_fields=["consumed_at"])
+    user.set_password(new_password)
+    user.auth_version += 1
+    user.save(update_fields=["password", "auth_version"])
+    AuthSession.objects.filter(user=user, revoked_at__isnull=True).update(revoked_at=now)
+    AuthActionToken.objects.filter(user=user, purpose=RESET_PASSWORD, consumed_at__isnull=True).update(consumed_at=now)
+{% endif %}
+{% endif %}

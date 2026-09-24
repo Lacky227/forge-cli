@@ -137,9 +137,11 @@ By default, Forge is **not**:
 - a generator of gigantic opaque applications users cannot understand
 - a single forced architecture for every project
 
-Stage 1 Authentication is intentionally narrower than a full identity platform:
-it provides owned email identities, password login, access JWTs, persistent
-refresh sessions, logout, and password change. Authorization/RBAC, ownership
-policies, email verification, and password recovery remain Stage 2 work.
+Forge 0.5 security includes owned email identities, password login, access
+JWTs, rotating persistent refresh sessions, optional verification/reset, and a
+reusable authorization boundary. Authorization supplies roles, permissions,
+policies, and explicit ownership checks without automatically changing existing
+resource APIs. Rate limiting, MFA, audit trails, and broader release hardening
+remain later work.
 
 Forge helps developers make and implement architectural choices—then gets out of the way.

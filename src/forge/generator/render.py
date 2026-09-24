@@ -33,6 +33,9 @@ _SQL_ONLY_FILES = frozenset(
 _SQL_ONLY_DIR_NAMES = frozenset({"persistence"})
 _MONGODB_FILES = frozenset({"mongodb.py.j2"})
 _REDIS_FILES = frozenset({"redis_client.py.j2"})
+_ACCOUNT_SECURITY_FILES = frozenset(
+    {"security_email.py.j2", "test_account_security.py.j2"}
+)
 
 
 def templates_root() -> Path:
@@ -161,6 +164,10 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
     if any(part in _SQL_ONLY_DIR_NAMES for part in parts) and not features.database:
         return False
     if name in _MONGODB_FILES and not features.mongodb:
+        return False
+    if name in _ACCOUNT_SECURITY_FILES and not (
+        features.email_verification or features.password_reset
+    ):
         return False
     return name not in _REDIS_FILES or features.redis_nosql
 

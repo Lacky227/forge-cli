@@ -22,6 +22,13 @@ AUTH_ACCESS_TOKEN_TTL_SECONDS = int(
 AUTH_REFRESH_TOKEN_TTL_DAYS = int(
     os.environ.get("AUTH_REFRESH_TOKEN_TTL_DAYS", "30")
 )
+AUTH_VERIFICATION_TOKEN_TTL_SECONDS = int(
+    os.environ.get("AUTH_VERIFICATION_TOKEN_TTL_SECONDS", "86400")
+)
+AUTH_RESET_TOKEN_TTL_SECONDS = int(
+    os.environ.get("AUTH_RESET_TOKEN_TTL_SECONDS", "1800")
+)
+AUTH_PUBLIC_BASE_URL = os.environ.get("AUTH_PUBLIC_BASE_URL", "http://localhost:3000")
 _AUTH_PLACEHOLDERS = {"", "changeme", "change-me", "dev-insecure-change-me"}
 if (
     os.environ.get("APP_ENV", "development").lower() == "production"

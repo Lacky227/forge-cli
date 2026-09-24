@@ -1,4 +1,7 @@
 from django.db import IntegrityError, transaction
+{% if authentication_email_verification or authentication_password_reset %}
+from django.conf import settings
+{% endif %}
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -10,6 +13,16 @@ from {{ auth_django_security_import }} import (
     AuthFailure, ForgeBearerAuthentication, create_session, issue_access_token,
     revoke_all, revoke_refresh, rotate_session, validate_password_policy,
 )
+{% if authentication_email_verification %}
+from {{ auth_django_security_import }} import VERIFY_EMAIL, confirm_email_token
+{% endif %}
+{% if authentication_password_reset %}
+from {{ auth_django_security_import }} import RESET_PASSWORD, reset_password_with_token
+{% endif %}
+{% if authentication_email_verification or authentication_password_reset %}
+from {{ auth_django_security_import }} import issue_action_token
+from {{ auth_django_delivery_import }} import {{ auth_delivery_symbol|default("deliver_security_email") }} as deliver_security_email
+{% endif %}
 
 
 class RegistrationSerializer(serializers.Serializer):
@@ -30,6 +43,19 @@ class RefreshSerializer(serializers.Serializer):
 class PasswordChangeSerializer(serializers.Serializer):
     current_password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
     new_password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
+
+{% if authentication_email_verification or authentication_password_reset %}
+class EmailActionSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=320)
+
+
+class ActionTokenSerializer(serializers.Serializer):
+    token = serializers.CharField(min_length=20, max_length=512, write_only=True)
+{% endif %}
+{% if authentication_password_reset %}
+class PasswordResetSerializer(ActionTokenSerializer):
+    new_password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
+{% endif %}
 
 
 def public_user(user):
@@ -59,6 +85,13 @@ class RegisterView(APIView):
             return Response({"detail": "identity already exists"}, status=409)
         except AuthFailure as exc:
             return Response({"detail": str(exc)}, status=400)
+{% if authentication_email_verification %}
+        raw = issue_action_token(user, VERIFY_EMAIL, settings.AUTH_VERIFICATION_TOKEN_TTL_SECONDS)
+        try:
+            deliver_security_email(user.email, VERIFY_EMAIL, raw)
+        except Exception:
+            return Response({"detail": "verification delivery unavailable; request a new message"}, status=503)
+{% endif %}
         return Response(public_user(user), status=201)
 
 
@@ -76,7 +109,7 @@ class LoginView(APIView):
         except User.DoesNotExist:
             User().set_password(data["password"])
             return Response({"detail": "invalid email or password"}, status=401)
-        if not user.check_password(data["password"]) or not user.is_active:
+        if not user.check_password(data["password"]) or not user.is_active{% if authentication_email_verification %} or not user.is_verified{% endif %}:
             return Response({"detail": "invalid email or password"}, status=401)
         user.last_login = timezone.now()
         user.save(update_fields=["last_login", "password"])
@@ -145,3 +178,67 @@ class PasswordChangeView(APIView):
             request.user.save(update_fields=["password"])
             revoke_all(request.user)
         return Response(status=204)
+
+{% if authentication_email_verification %}
+class EmailVerificationRequestView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = EmailActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = User.objects.filter(canonical_email=canonicalize_email(serializer.validated_data["email"]), is_active=True, is_verified=False).first()
+        if user is not None:
+            raw = issue_action_token(user, VERIFY_EMAIL, settings.AUTH_VERIFICATION_TOKEN_TTL_SECONDS)
+            try:
+                deliver_security_email(user.email, VERIFY_EMAIL, raw)
+            except Exception:
+                pass
+        return Response({"detail": "if the account is eligible, a message will be sent"}, status=202)
+
+
+class EmailVerificationConfirmView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ActionTokenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            confirm_email_token(serializer.validated_data["token"])
+        except AuthFailure:
+            return Response({"detail": "invalid or expired action token"}, status=400)
+        return Response(status=204)
+{% endif %}
+
+{% if authentication_password_reset %}
+class ForgotPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = EmailActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = User.objects.filter(canonical_email=canonicalize_email(serializer.validated_data["email"]), is_active=True).first()
+        if user is not None:
+            raw = issue_action_token(user, RESET_PASSWORD, settings.AUTH_RESET_TOKEN_TTL_SECONDS)
+            try:
+                deliver_security_email(user.email, RESET_PASSWORD, raw)
+            except Exception:
+                pass
+        return Response({"detail": "if the account is eligible, a message will be sent"}, status=202)
+
+
+class ResetPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reset_password_with_token(serializer.validated_data["token"], serializer.validated_data["new_password"])
+        except AuthFailure:
+            return Response({"detail": "invalid or expired action token"}, status=400)
+        return Response(status=204)
+{% endif %}

@@ -1,0 +1,100 @@
+"""Django-native Groups/Permissions services and DRF policy adapters."""
+
+from __future__ import annotations
+
+import re
+
+from django.contrib.auth.models import Group, Permission
+from rest_framework.permissions import BasePermission
+{% if authorization_policy_import is defined and authorization_policy_import %}
+from {{ authorization_policy_import }} import (
+    any_permission_allows,
+    owner_or_permission_allows,
+    permission_allows,
+)
+{% endif %}
+
+_PERMISSION_CODE = re.compile(r"^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$")
+_FORGE_PERMISSION_MAP = {"users:manage": "{{ auth_django_app_label }}.manage_users"}
+
+
+def django_permission_name(code: str) -> str:
+    normalized = code.strip().lower()
+    if not _PERMISSION_CODE.fullmatch(normalized):
+        raise ValueError("permission code must use <resource>:<action>")
+    mapped = _FORGE_PERMISSION_MAP.get(normalized)
+    if mapped is None:
+        raise ValueError("permission code has not been provisioned")
+    return mapped
+
+
+def assign_role(user, role_name: str) -> None:
+    user.groups.add(Group.objects.get(name=role_name))
+
+
+def remove_role(user, role_name: str) -> None:
+    group = Group.objects.filter(name=role_name).first()
+    if group is not None:
+        user.groups.remove(group)
+
+
+def grant_permission(role_name: str, code: str) -> None:
+    app_label, codename = django_permission_name(code).split(".", 1)
+    permission = Permission.objects.get(content_type__app_label=app_label, codename=codename)
+    Group.objects.get(name=role_name).permissions.add(permission)
+
+
+def revoke_permission(role_name: str, code: str) -> None:
+    app_label, codename = django_permission_name(code).split(".", 1)
+    permission = Permission.objects.filter(content_type__app_label=app_label, codename=codename).first()
+    if permission is not None:
+        Group.objects.get(name=role_name).permissions.remove(permission)
+
+
+def has_permission(user, code: str) -> bool:
+    for cache_name in ("_perm_cache", "_group_perm_cache", "_user_perm_cache"):
+        user.__dict__.pop(cache_name, None)
+{% if authorization_policy_import is defined and authorization_policy_import %}
+    return permission_allows(user, user.has_perm(django_permission_name(code)))
+{% else %}
+    return bool(user.is_active and user.has_perm(django_permission_name(code)))
+{% endif %}
+
+
+def effective_permissions(user) -> frozenset[str]:
+    return frozenset(code for code, name in _FORGE_PERMISSION_MAP.items() if user.has_perm(name))
+
+
+def owner_or_permission(user, owner_id, code: str) -> bool:
+    """Check one loaded object; list/query endpoints must also scope querysets."""
+{% if authorization_policy_import is defined and authorization_policy_import %}
+    return owner_or_permission_allows(user, owner_id, has_permission(user, code))
+{% else %}
+    return str(user.pk) == str(owner_id) or has_permission(user, code)
+{% endif %}
+
+
+class RequireVerified(BasePermission):
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and request.user.is_verified)
+
+
+def require_permission(code: str):
+    class PermissionPolicy(BasePermission):
+        def has_permission(self, request, view):
+            return bool(request.user and request.user.is_authenticated and has_permission(request.user, code))
+    return PermissionPolicy
+
+
+def require_any_permission(*codes: str):
+    class AnyPermissionPolicy(BasePermission):
+        def has_permission(self, request, view):
+{% if authorization_policy_import is defined and authorization_policy_import %}
+            if not request.user or not request.user.is_authenticated:
+                return False
+            grants = tuple(has_permission(request.user, code) for code in codes)
+            return any_permission_allows(request.user, grants)
+{% else %}
+            return bool(request.user and request.user.is_authenticated and any(has_permission(request.user, code) for code in codes))
+{% endif %}
+    return AnyPermissionPolicy

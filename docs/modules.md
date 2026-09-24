@@ -21,13 +21,15 @@ contributions.
 | Email | `email` | no | SMTP email service |
 | Webhooks | `webhooks` | no | Outgoing delivery via Background Jobs |
 | Authentication | `authentication` | yes | Email identity, JWT access, rotating refresh sessions |
+| Authorization | `authorization` | yes | Implies Authentication; RBAC, policies, ownership helpers |
 
 Modules are independently multi-selectable. Selecting **Webhooks** expands to
 include **Background Jobs** (and therefore Redis). When **both** Products and
 Categories are selected, Forge generates a many-to-one relationship.
 
-Authentication is the Stage 1 foundation for 0.5.0. Authorization, email
-verification, and password recovery are not part of Stage 1.
+Authorization implies Authentication. Enabling Authentication email
+verification or password reset implies Email; neither option implies Background
+Jobs or Redis.
 
 **Django Clean note:** Django Clean module packs wire presentation (DRF) and ORM
 models in `infrastructure.persistence`; they do **not** add full
@@ -43,6 +45,8 @@ files                   →    storage (local | s3)
 background-jobs         →    RQ + Redis
 webhooks                →    background-jobs → RQ + Redis
 email                   →    SMTP configuration
+authorization           →    authentication → SQL (+ Alembic outside Django)
+verification/reset      →    email; optional RQ delivery when jobs is selected
 ```
 
 Redis may already be selected as NoSQL persistence. Background Jobs **reuse**
@@ -61,6 +65,12 @@ modules:
   - background-jobs
   - email
   - webhooks
+  - authorization
+
+authentication:
+  registration: true
+  email_verification: true
+  password_reset: true
 
 storage:
   backend: s3          # local | s3 (required shape when files is selected)
@@ -95,7 +105,9 @@ modules. Follow-ups are adaptive:
 - **FastAPI / Flask** — if modules requiring SQL are selected, Forge asks for
   an SQL engine (it does **not** silently pick one)
 - **Authentication** — announces SQL, requires Alembic on FastAPI/Flask, and
-  asks whether public registration is enabled (recommended by default)
+  asks whether public registration is enabled and which optional email flows
+  are enabled
+- **Authorization** — announces implied Authentication; no IAM questionnaire
 
 ## Authentication
 
@@ -119,9 +131,37 @@ valid until its short expiry. Logout-all and password change increment
 
 Real generation creates `AUTH_JWT_SECRET` only in gitignored `.env`.
 `.env.example` leaves it blank, while plan and dry-run disclose no value.
-Production rejects missing or obvious placeholder secrets. Authentication does
-not imply Redis, SMTP, RQ, recovery, verification, or protection of existing
-module endpoints.
+Production rejects missing or obvious placeholder secrets. Authentication
+alone does not imply Redis, SMTP, RQ, recovery, verification, Authorization, or
+protection of existing module endpoints.
+
+### Account security flows
+
+Email verification (24-hour default) and password reset (30-minute default)
+share a 256-bit opaque action-token model. Only SHA-256 digests persist; tokens
+are purpose-bound, expiring, replacement-invalidated, transactionally consumed,
+and single-use. Verification rejects unverified login with the same generic
+credential response. Forgot-password and verification-request responses do not
+disclose account existence. Reset validates the Stage 1 password policy,
+increments `auth_version`, and revokes refresh sessions. Delivery uses the
+existing Email service directly, or its existing RQ worker when Background
+Jobs is selected. `AUTH_PUBLIC_BASE_URL` must be configured for delivered links.
+
+## Authorization
+
+FastAPI and Flask generate Role, Permission, UserRole, and RolePermission
+persistence plus explicit assignment/revocation services. Django maps the same
+semantics to native Groups and Permissions; Forge `admin` is a Group and does
+not imply `is_staff` or `is_superuser`. Baseline `member` and `admin` roles and
+the justified `users:manage` permission are provisioned idempotently, with new
+registrations receiving only `member`.
+
+Policies cover authenticated, verified, one permission, any permission, and
+owner-or-permission checks. Permission codes use `<resource>:<action>`.
+Ownership checks do not replace query scoping: list/detail queries must still
+be constrained to records the caller can access to prevent IDOR. Forge exposes
+no public role/permission administration API, and it does not silently protect
+existing Products, Categories, or Files endpoints.
 
 ## Files
 

@@ -1,0 +1,31 @@
+"""Framework-free authorization and ownership decisions."""
+
+from typing import Protocol
+
+
+class AuthorizationSubject(Protocol):
+    id: object
+    is_active: bool
+    is_verified: bool
+
+
+def permission_allows(
+    subject: AuthorizationSubject, granted: frozenset[str], code: str
+) -> bool:
+    return subject.is_active and code in granted
+
+
+def any_permission_allows(
+    subject: AuthorizationSubject,
+    granted: frozenset[str],
+    codes: tuple[str, ...],
+) -> bool:
+    return subject.is_active and any(code in granted for code in codes)
+
+
+def owner_or_permission_allows(
+    subject: AuthorizationSubject, owner_id: object, permission_granted: bool
+) -> bool:
+    return subject.is_active and (
+        str(subject.id) == str(owner_id) or permission_granted
+    )

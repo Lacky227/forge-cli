@@ -79,7 +79,10 @@ class GenerationFeatures:
     webhooks: bool = False
     rq: bool = False
     authentication: bool = False
+    authorization: bool = False
     registration: bool = False
+    email_verification: bool = False
+    password_reset: bool = False
 
     @property
     def ci(self) -> bool:
@@ -217,6 +220,14 @@ class GenerationPlan:
                             ("Refresh sessions", "opaque, persistent, rotating"),
                             ("Refresh lifetime", "30 days"),
                             ("Logout", "refresh-session revocation"),
+                            (
+                                "Email verification",
+                                "enabled" if features.email_verification else "disabled",
+                            ),
+                            (
+                                "Password reset",
+                                "enabled" if features.password_reset else "disabled",
+                            ),
                         ),
                     ),
                     PlanSummarySection(
@@ -225,9 +236,31 @@ class GenerationPlan:
                             ("Password hashing", "Argon2id"),
                             ("Transport", "Authorization Bearer"),
                             ("JWT secret", "generated locally / required in production"),
+                            *(
+                                (("Verification tokens", "opaque, single-use, 24 hours"),)
+                                if features.email_verification
+                                else ()
+                            ),
+                            *(
+                                (("Reset tokens", "opaque, single-use, 30 minutes"),)
+                                if features.password_reset
+                                else ()
+                            ),
                         ),
                     ),
                 ]
+            )
+
+        if features.authorization:
+            sections.append(
+                PlanSummarySection(
+                    "Authorization",
+                    (
+                        ("Model", "roles + permissions"),
+                        ("Policy helpers", "authenticated, verified, permission, any-permission"),
+                        ("Ownership helpers", "owner-or-permission + scoped-query guidance"),
+                    ),
+                )
             )
 
         if features.storage_backend:
@@ -258,8 +291,17 @@ class GenerationPlan:
             sections.append(PlanSummarySection("Background Jobs", tuple(job_rows)))
 
         if features.email:
+            delivery = (
+                "background worker"
+                if features.background_jobs
+                and (features.email_verification or features.password_reset)
+                else "direct SMTP"
+            )
             sections.append(
-                PlanSummarySection("Email", (("Transport", "SMTP"),))
+                PlanSummarySection(
+                    "Email",
+                    (("Transport", "SMTP"), ("Security email delivery", delivery)),
+                )
             )
 
         if features.webhooks:
@@ -451,7 +493,10 @@ class GenerationPlan:
             "has_webhooks": features.webhooks,
             "has_rq": features.rq,
             "has_authentication": features.authentication,
+            "has_authorization": features.authorization,
             "authentication_registration": features.registration,
+            "authentication_email_verification": features.email_verification,
+            "authentication_password_reset": features.password_reset,
             "has_worker": any(p.id == "worker" for p in self.processes),
             "is_simple": definition.architecture.value == "simple",
             "is_modular": definition.architecture.value == "modular-monolith",

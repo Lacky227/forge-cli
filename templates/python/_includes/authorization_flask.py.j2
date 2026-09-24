@@ -1,0 +1,49 @@
+"""Flask decorators for reusable authorization policies."""
+
+from __future__ import annotations
+
+from functools import wraps
+
+from flask import g, jsonify
+
+from {{ authorization_auth_import }} import require_authenticated
+from {{ authorization_service_import }} import has_any_permission, has_permission, owner_or_permission
+
+
+def require_verified(view):
+    @require_authenticated
+    @wraps(view)
+    def wrapped(db, *args, **kwargs):
+        if not g.current_user.is_verified:
+            return jsonify({"detail": "verified identity required"}), 403
+        return view(db, *args, **kwargs)
+    return wrapped
+
+
+def require_permission(code: str):
+    def decorator(view):
+        @require_authenticated
+        @wraps(view)
+        def wrapped(db, *args, **kwargs):
+            if not has_permission(db, g.current_user, code):
+                return jsonify({"detail": "permission denied"}), 403
+            return view(db, *args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def require_any_permission(*codes: str):
+    def decorator(view):
+        @require_authenticated
+        @wraps(view)
+        def wrapped(db, *args, **kwargs):
+            if not has_any_permission(db, g.current_user, tuple(codes)):
+                return jsonify({"detail": "permission denied"}), 403
+            return view(db, *args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def enforce_owner_or_permission(db, owner_id: str, code: str) -> None:
+    if not owner_or_permission(db, g.current_user, owner_id, code):
+        raise PermissionError("permission denied")

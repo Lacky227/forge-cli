@@ -204,6 +204,7 @@ def _resolve_features(
     has_webhooks = ModuleId.WEBHOOKS.value in expanded
     has_files = ModuleId.FILES.value in expanded
     has_authentication = ModuleId.AUTHENTICATION.value in expanded
+    has_authorization = ModuleId.AUTHORIZATION.value in expanded
     redis_nosql = nosql == "redis"
     needs_redis = redis_nosql or modules_require_redis(definition.modules)
 
@@ -223,6 +224,8 @@ def _resolve_features(
         has_email = contributions.has_email
         has_webhooks = contributions.has_webhooks
         has_files = contributions.has_files
+        has_authentication = contributions.has_authentication
+        has_authorization = contributions.has_authorization
 
     return GenerationFeatures(
         database=sql is not None,
@@ -248,8 +251,19 @@ def _resolve_features(
         webhooks=has_webhooks,
         rq=has_jobs,
         authentication=has_authentication,
+        authorization=has_authorization,
         registration=(
             definition.authentication_options.registration
+            if has_authentication
+            else False
+        ),
+        email_verification=(
+            definition.authentication_options.email_verification
+            if has_authentication
+            else False
+        ),
+        password_reset=(
+            definition.authentication_options.password_reset
             if has_authentication
             else False
         ),

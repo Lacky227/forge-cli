@@ -244,7 +244,8 @@ def _collect_storage_options(
 def _collect_authentication_options(
     modules: list[str],
 ) -> AuthenticationOptions | None:
-    if ModuleId.AUTHENTICATION.value not in modules:
+    expanded = expand_module_dependencies(tuple(modules))
+    if ModuleId.AUTHENTICATION.value not in expanded:
         return None
     registration = _select(
         "Registration",
@@ -253,7 +254,22 @@ def _collect_authentication_options(
             Choice(title="Disabled", value="disabled"),
         ],
     )
-    return AuthenticationOptions(registration=registration == "enabled")
+    email_features = _checkbox(
+        "Authentication email features (optional)",
+        [
+            Choice(title="Email verification", value="email-verification"),
+            Choice(title="Password reset", value="password-reset"),
+        ],
+    )
+    if email_features:
+        _console.print(
+            "[dim]Email:[/dim] included because account-security flows require delivery"
+        )
+    return AuthenticationOptions(
+        registration=registration == "enabled",
+        email_verification="email-verification" in email_features,
+        password_reset="password-reset" in email_features,
+    )
 
 
 def _announce_early_module_implications(modules: list[str]) -> None:
@@ -265,6 +281,8 @@ def _announce_early_module_implications(modules: list[str]) -> None:
         causes: list[str] = []
         if ModuleId.WEBHOOKS.value in modules:
             causes.append("Webhooks")
+        if ModuleId.AUTHORIZATION.value in modules:
+            causes.append("Authorization")
         note = f" [dim](required by {', '.join(causes)})[/dim]" if causes else ""
         _console.print(f"[dim]Implied modules:[/dim] {labels}{note}")
     if modules_require_redis(tuple(modules)):
@@ -273,7 +291,7 @@ def _announce_early_module_implications(modules: list[str]) -> None:
             "[dim](select as NoSQL to reuse, or Forge adds infrastructure Redis)"
             "[/dim]"
         )
-    if ModuleId.AUTHENTICATION.value in modules:
+    if ModuleId.AUTHENTICATION.value in expanded:
         _console.print(
             "[dim]Authentication:[/dim] requires SQL persistence"
         )

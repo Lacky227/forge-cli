@@ -1,0 +1,107 @@
+from __future__ import annotations
+{% set auth_test_fixture = auth_test_fixture|default("client") %}
+{% set auth_test_django = auth_test_django|default(false) %}
+import {{ auth_test_module }} as auth_module
+{% if auth_test_django %}
+import pytest
+
+pytestmark = pytest.mark.django_db
+{% endif %}
+
+EMAIL = "security@example.com"
+PASSWORD = "correct horse battery staple"
+NEW_PASSWORD = "new correct horse battery staple"
+
+
+def response_json(response):
+    value = response.json
+    return value() if callable(value) else value
+
+
+def post(client, path, *, json):
+{% if auth_test_django %}
+    return client.post(path, json, format="json")
+{% else %}
+    return client.post(path, json=json)
+{% endif %}
+
+
+def set_ttl(monkeypatch, name, value):
+{% if auth_test_django %}
+    monkeypatch.setattr(auth_module.settings, name, value)
+{% else %}
+    monkeypatch.setenv(name, str(value))
+{% endif %}
+
+
+{% if authentication_email_verification %}
+def test_verification_replacement_and_replay({{ auth_test_fixture }}, monkeypatch):
+    client = {{ auth_test_fixture }}
+    delivered = []
+    monkeypatch.setattr(auth_module, "deliver_security_email", lambda to, purpose, token: delivered.append((to, purpose, token)))
+    registered = post(client, "{{ auth_test_prefix }}/register{{ auth_test_slash }}", json={"email": EMAIL, "password": PASSWORD})
+    assert registered.status_code == 201
+    assert response_json(registered)["is_verified"] is False
+    assert post(client, "{{ auth_test_prefix }}/login{{ auth_test_slash }}", json={"email": EMAIL, "password": PASSWORD}).status_code == 401
+    first = delivered[-1][2]
+    unknown = post(client, "{{ auth_test_prefix }}/email-verification/request{{ auth_test_slash }}", json={"email": "unknown@example.com"})
+    requested = post(client, "{{ auth_test_prefix }}/email-verification/request{{ auth_test_slash }}", json={"email": EMAIL})
+    assert unknown.status_code == requested.status_code == 202
+    assert response_json(unknown) == response_json(requested)
+    second = delivered[-1][2]
+    assert first != second
+    assert post(client, "{{ auth_test_prefix }}/email-verification/confirm{{ auth_test_slash }}", json={"token": first}).status_code == 400
+    assert post(client, "{{ auth_test_prefix }}/email-verification/confirm{{ auth_test_slash }}", json={"token": second}).status_code == 204
+    assert post(client, "{{ auth_test_prefix }}/email-verification/confirm{{ auth_test_slash }}", json={"token": second}).status_code == 400
+
+
+def test_expired_verification_token_fails({{ auth_test_fixture }}, monkeypatch):
+    client = {{ auth_test_fixture }}
+    delivered = []
+    monkeypatch.setattr(auth_module, "deliver_security_email", lambda to, purpose, token: delivered.append((to, purpose, token)))
+    set_ttl(monkeypatch, "AUTH_VERIFICATION_TOKEN_TTL_SECONDS", 0)
+    post(client, "{{ auth_test_prefix }}/register{{ auth_test_slash }}", json={"email": EMAIL, "password": PASSWORD})
+    assert post(client, "{{ auth_test_prefix }}/email-verification/confirm{{ auth_test_slash }}", json={"token": delivered[-1][2]}).status_code == 400
+{% endif %}
+
+
+{% if authentication_password_reset %}
+def test_password_reset_is_enumeration_resistant_and_invalidates_sessions({{ auth_test_fixture }}, monkeypatch):
+    client = {{ auth_test_fixture }}
+    delivered = []
+    monkeypatch.setattr(auth_module, "deliver_security_email", lambda to, purpose, token: delivered.append((to, purpose, token)))
+    post(client, "{{ auth_test_prefix }}/register{{ auth_test_slash }}", json={"email": EMAIL, "password": PASSWORD})
+{% if authentication_email_verification %}
+    verify_token = delivered[-1][2]
+    post(client, "{{ auth_test_prefix }}/email-verification/confirm{{ auth_test_slash }}", json={"token": verify_token})
+{% endif %}
+    login = response_json(post(client, "{{ auth_test_prefix }}/login{{ auth_test_slash }}", json={"email": EMAIL, "password": PASSWORD}))
+    unknown = post(client, "{{ auth_test_prefix }}/password/forgot{{ auth_test_slash }}", json={"email": "unknown@example.com"})
+    first_known = post(client, "{{ auth_test_prefix }}/password/forgot{{ auth_test_slash }}", json={"email": EMAIL})
+    first_reset_token = delivered[-1][2]
+    known = post(client, "{{ auth_test_prefix }}/password/forgot{{ auth_test_slash }}", json={"email": EMAIL})
+    assert unknown.status_code == first_known.status_code == known.status_code == 202
+    assert response_json(unknown) == response_json(known)
+    reset_token = delivered[-1][2]
+    assert first_reset_token != reset_token
+    assert post(client, "{{ auth_test_prefix }}/password/reset{{ auth_test_slash }}", json={"token": first_reset_token, "new_password": NEW_PASSWORD}).status_code == 400
+    reset = post(client, "{{ auth_test_prefix }}/password/reset{{ auth_test_slash }}", json={"token": reset_token, "new_password": NEW_PASSWORD})
+    assert reset.status_code == 204
+    assert post(client, "{{ auth_test_prefix }}/password/reset{{ auth_test_slash }}", json={"token": reset_token, "new_password": NEW_PASSWORD}).status_code == 400
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+    assert client.get("{{ auth_test_prefix }}/me{{ auth_test_slash }}", headers=headers).status_code == 401
+    assert post(client, "{{ auth_test_prefix }}/refresh{{ auth_test_slash }}", json={"refresh_token": login["refresh_token"]}).status_code == 401
+    assert post(client, "{{ auth_test_prefix }}/login{{ auth_test_slash }}", json={"email": EMAIL, "password": PASSWORD}).status_code == 401
+    assert post(client, "{{ auth_test_prefix }}/login{{ auth_test_slash }}", json={"email": EMAIL, "password": NEW_PASSWORD}).status_code == 200
+
+
+def test_expired_password_reset_token_fails({{ auth_test_fixture }}, monkeypatch):
+    client = {{ auth_test_fixture }}
+    delivered = []
+    monkeypatch.setattr(auth_module, "deliver_security_email", lambda to, purpose, token: delivered.append((to, purpose, token)))
+    post(client, "{{ auth_test_prefix }}/register{{ auth_test_slash }}", json={"email": EMAIL, "password": PASSWORD})
+    set_ttl(monkeypatch, "AUTH_RESET_TOKEN_TTL_SECONDS", 0)
+    post(client, "{{ auth_test_prefix }}/password/forgot{{ auth_test_slash }}", json={"email": EMAIL})
+    reset_token = delivered[-1][2]
+    assert post(client, "{{ auth_test_prefix }}/password/reset{{ auth_test_slash }}", json={"token": reset_token, "new_password": NEW_PASSWORD}).status_code == 400
+{% endif %}

@@ -191,6 +191,7 @@ Presets do **not** store resolved facts (`migration_system`, `rest_framework`, i
 | ID | Stack |
 |----|--------|
 | `fastapi-auth` | FastAPI + Modular Monolith + Authentication + PostgreSQL + Alembic + Docker |
+| `django-auth` | Django + Modular Monolith + Authentication + Authorization + PostgreSQL + Docker |
 | `fastapi-postgres` | FastAPI + Modular Monolith + PostgreSQL + Alembic + Docker |
 | `fastapi-postgres-clean` | FastAPI + Clean Architecture + PostgreSQL + Alembic + Docker |
 | `fastapi-mongo` | FastAPI + Modular Monolith + MongoDB + Docker |
@@ -320,6 +321,30 @@ linting: true
 docker: true
 ```
 
+FastAPI with Authorization and both optional account-security flows:
+
+```yaml
+name: secure-api
+type: rest-api
+framework: fastapi
+architecture: clean
+modules:
+  - authorization # implies authentication
+authentication:
+  registration: true
+  email_verification: true # implies email
+  password_reset: true     # implies email
+persistence:
+  sql: postgresql
+migrations: true
+testing: true
+linting: true
+docker: true
+```
+
+Unknown Authentication fields are rejected. Background Jobs is still an
+independent module; when selected, security mail uses its existing RQ worker.
+
 FastAPI with SQL + Redis:
 
 ```yaml
@@ -375,8 +400,9 @@ docker: true
 
 - Framework options depend on language + project type (FastAPI, Django, Flask, …)
 - Architecture for REST API: Simple, Modular Monolith, Clean Architecture
-- **Project modules:** optional multi-select (Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication). See [modules.md](./modules.md)
-- **Authentication:** announces its SQL requirement, requires Alembic on FastAPI/Flask, then asks `Registration: Enabled (recommended) / Disabled`
+- **Project modules:** optional multi-select (Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication, Authorization). See [modules.md](./modules.md)
+- **Authentication:** announces its SQL requirement, requires Alembic on FastAPI/Flask, asks about registration, then offers optional Email verification and Password reset
+- **Authorization:** announces that Authentication is implied; account-security email flows announce that Email is implied
 - **FastAPI / Flask:** if modules requiring SQL are selected, ask for an SQL engine (no silent default); otherwise optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
 - **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three

@@ -29,7 +29,7 @@ with zipfile.ZipFile(wheel) as zf:
     names = zf.namelist()
     metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
 assert "Name: forge-scaffolder" in metadata, metadata
-assert "Version: 0.4.0" in metadata, metadata
+assert "Version: 0.5.0" in metadata, metadata
 assert (
     "License-Expression: GPL-3.0-only" in metadata
     or "License: GPL-3.0-only" in metadata
@@ -54,6 +54,14 @@ assert any(
 assert any(
     "/_includes/" in n and n.endswith("readme_macros.j2") for n in templates
 ), "missing README include macros"
+for module in ("authentication", "authorization"):
+    for framework in ("fastapi", "django", "flask"):
+        for architecture in ("simple", "modular-monolith", "clean"):
+            fragment = f"/modules/{module}/{framework}/{architecture}/"
+            assert any(fragment in n for n in templates), f"missing {fragment}"
+assert any(
+    n.endswith("auth_account_security_tests.py.j2") for n in templates
+), "missing account-security test templates"
 # Must not ship tests or local smoke trees inside the package
 assert not any(n.startswith("forge/tests/") for n in names)
 assert not any(".smoke" in n for n in names)
@@ -89,7 +97,7 @@ from pathlib import Path
 
 print(f"    forge package: {Path(forge.__file__).resolve()}")
 print(f"    forge version: {forge.__version__}")
-assert forge.__version__ == "0.4.0", forge.__version__
+assert forge.__version__ == "0.5.0", forge.__version__
 from importlib.metadata import metadata
 meta = metadata("forge-scaffolder")
 assert meta["Name"] == "forge-scaffolder"
@@ -104,7 +112,7 @@ assert "site-packages" in str(root) or "forge/templates" in str(root).replace("\
 PY
 
 echo "==> CLI smoke"
-forge --version | grep -F "forge 0.4.0"
+forge --version | grep -F "forge 0.5.0"
 forge --help >/dev/null
 forge new --help >/dev/null
 forge plan --preset fastapi-postgres >/dev/null

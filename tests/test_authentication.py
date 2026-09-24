@@ -69,7 +69,7 @@ def test_authentication_catalog_and_validation() -> None:
             modules=("authentication",),
         )
     with pytest.raises(ValidationError, match="Extra inputs"):
-        AuthenticationOptions.model_validate({"registration": True, "password_reset": True})
+        AuthenticationOptions.model_validate({"registration": True, "mfa": True})
 
 
 def test_yaml_default_and_disabled_registration() -> None:

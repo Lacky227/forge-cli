@@ -1,0 +1,3 @@
+{% set authorization_models_import = package_name ~ ".infrastructure.persistence.authentication" %}
+{% set authorization_policy_import = package_name ~ ".application.authorization" %}
+{% include "authorization_sqlalchemy.py.j2" %}

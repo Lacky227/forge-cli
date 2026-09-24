@@ -10,7 +10,7 @@ def register(api_client):
     return api_client.post("/api/auth/register/", {"email": EMAIL, "password": PASSWORD, "display_name": "Person"}, format="json")
 
 
-{% if authentication_registration %}
+{% if authentication_registration and not authentication_email_verification %}
 def test_auth_lifecycle_rotation_and_replay(api_client):
     created = register(api_client)
     assert created.status_code == 201
@@ -38,7 +38,7 @@ def test_password_change_invalidates_access(api_client):
     assert api_client.get("/api/auth/me/").status_code == 401
     api_client.credentials()
     assert api_client.post("/api/auth/login/", {"email": EMAIL, "password": NEW_PASSWORD}, format="json").status_code == 200
-{% else %}
+{% elif not authentication_registration %}
 def test_registration_is_not_exposed(api_client):
     assert register(api_client).status_code == 404
 {% endif %}

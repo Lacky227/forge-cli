@@ -58,12 +58,13 @@ class StorageOptions(BaseModel):
 
 
 class AuthenticationOptions(BaseModel):
-    """Stage 1 public authentication choices."""
+    """Public authentication and account-security choices."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     registration: bool = True
-
+    email_verification: bool = False
+    password_reset: bool = False
 
 
 class Capabilities(BaseModel):
@@ -324,7 +325,7 @@ class ProjectDefinition(BaseModel):
 
     @property
     def authentication_options(self) -> AuthenticationOptions:
-        """Resolved Stage 1 defaults when Authentication is selected."""
+        """Resolved authentication defaults when Authentication is selected."""
         return self.authentication or AuthenticationOptions()
 
     def to_display_dict(self) -> dict[str, Any]:

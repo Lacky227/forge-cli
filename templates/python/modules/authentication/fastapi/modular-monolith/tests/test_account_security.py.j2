@@ -1,0 +1,4 @@
+{% set auth_test_module = package_name ~ ".api.routes.auth" %}
+{% set auth_test_prefix = "/auth" %}
+{% set auth_test_slash = "" %}
+{% include "auth_account_security_tests.py.j2" %}

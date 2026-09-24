@@ -5,6 +5,12 @@ from {{ auth_django_views_import }} import (
 {% if authentication_registration %}
     RegisterView,
 {% endif %}
+{% if authentication_email_verification %}
+    EmailVerificationConfirmView, EmailVerificationRequestView,
+{% endif %}
+{% if authentication_password_reset %}
+    ForgotPasswordView, ResetPasswordView,
+{% endif %}
 )
 
 urlpatterns = [
@@ -17,4 +23,12 @@ urlpatterns = [
     path("auth/logout-all/", LogoutAllView.as_view(), name="auth-logout-all"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
     path("auth/password/change/", PasswordChangeView.as_view(), name="auth-password-change"),
+{% if authentication_email_verification %}
+    path("auth/email-verification/request/", EmailVerificationRequestView.as_view(), name="auth-email-verification-request"),
+    path("auth/email-verification/confirm/", EmailVerificationConfirmView.as_view(), name="auth-email-verification-confirm"),
+{% endif %}
+{% if authentication_password_reset %}
+    path("auth/password/forgot/", ForgotPasswordView.as_view(), name="auth-password-forgot"),
+    path("auth/password/reset/", ResetPasswordView.as_view(), name="auth-password-reset"),
+{% endif %}
 ]

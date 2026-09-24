@@ -1,0 +1,112 @@
+"""Permission-based authorization services; no public IAM HTTP API is exposed."""
+
+from __future__ import annotations
+
+import re
+
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from {{ authorization_models_import }} import Permission, Role, RolePermission, User, UserRole
+{% if authorization_policy_import is defined and authorization_policy_import %}
+from {{ authorization_policy_import }} import (
+    any_permission_allows,
+    owner_or_permission_allows,
+    permission_allows,
+)
+{% endif %}
+
+_PERMISSION_CODE = re.compile(r"^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$")
+
+
+class AuthorizationDenied(Exception):
+    pass
+
+
+def validate_permission_code(code: str) -> str:
+    normalized = code.strip().lower()
+    if not _PERMISSION_CODE.fullmatch(normalized):
+        raise ValueError("permission code must use <resource>:<action>")
+    return normalized
+
+
+def assign_role(db: Session, user: User, role_name: str) -> None:
+    role = db.scalar(select(Role).where(Role.name == role_name))
+    if role is None:
+        raise ValueError("unknown role")
+    if db.get(UserRole, {"user_id": user.id, "role_id": role.id}) is None:
+        db.add(UserRole(user_id=user.id, role_id=role.id))
+        db.commit()
+
+
+def remove_role(db: Session, user: User, role_name: str) -> None:
+    role = db.scalar(select(Role).where(Role.name == role_name))
+    if role is not None:
+        db.execute(delete(UserRole).where(UserRole.user_id == user.id, UserRole.role_id == role.id))
+        db.commit()
+
+
+def grant_permission(db: Session, role_name: str, code: str, description: str | None = None) -> None:
+    normalized = validate_permission_code(code)
+    role = db.scalar(select(Role).where(Role.name == role_name))
+    if role is None:
+        raise ValueError("unknown role")
+    permission = db.scalar(select(Permission).where(Permission.code == normalized))
+    if permission is None:
+        permission = Permission(code=normalized, description=description)
+        db.add(permission)
+        db.flush()
+    if db.get(RolePermission, {"role_id": role.id, "permission_id": permission.id}) is None:
+        db.add(RolePermission(role_id=role.id, permission_id=permission.id))
+        db.commit()
+
+
+def revoke_permission(db: Session, role_name: str, code: str) -> None:
+    role = db.scalar(select(Role).where(Role.name == role_name))
+    permission = db.scalar(select(Permission).where(Permission.code == validate_permission_code(code)))
+    if role is not None and permission is not None:
+        db.execute(delete(RolePermission).where(RolePermission.role_id == role.id, RolePermission.permission_id == permission.id))
+        db.commit()
+
+
+def effective_permissions(db: Session, user: User) -> frozenset[str]:
+    rows = db.scalars(
+        select(Permission.code)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .join(UserRole, UserRole.role_id == RolePermission.role_id)
+        .where(UserRole.user_id == user.id)
+    )
+    return frozenset(rows)
+
+
+def has_permission(db: Session, user: User, code: str) -> bool:
+{% if authorization_policy_import is defined and authorization_policy_import %}
+    return permission_allows(
+        user, effective_permissions(db, user), validate_permission_code(code)
+    )
+{% else %}
+    return bool(user.is_active and validate_permission_code(code) in effective_permissions(db, user))
+{% endif %}
+
+
+def has_any_permission(db: Session, user: User, codes: tuple[str, ...]) -> bool:
+{% if authorization_policy_import is defined and authorization_policy_import %}
+    normalized = tuple(validate_permission_code(code) for code in codes)
+    return any_permission_allows(user, effective_permissions(db, user), normalized)
+{% else %}
+    if not user.is_active:
+        return False
+    granted = effective_permissions(db, user)
+    return any(validate_permission_code(code) in granted for code in codes)
+{% endif %}
+
+
+def owner_or_permission(db: Session, user: User, owner_id: str, code: str) -> bool:
+    """Check one loaded object; list/query endpoints must also scope their query."""
+{% if authorization_policy_import is defined and authorization_policy_import %}
+    return owner_or_permission_allows(
+        user, owner_id, has_permission(db, user, code)
+    )
+{% else %}
+    return str(user.id) == str(owner_id) or has_permission(db, user, code)
+{% endif %}

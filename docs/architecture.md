@@ -194,8 +194,8 @@ presentation/     HTTP API (FastAPI / Flask / DRF)
 ### Authentication decisions
 
 Authentication follows the existing definition → resolution → contribution →
-template pipeline. `AuthenticationOptions` stores the Stage 1 registration
-choice; `ModuleContributions` owns routes, model discovery, dependencies,
+template pipeline. `AuthenticationOptions` stores registration plus optional
+email verification and password reset; `ModuleContributions` owns routes, model discovery, dependencies,
 environment metadata, and all nine template mounts. A reusable
 `GeneratedSecretSpec` on `GenerationPlan` declares sensitive outputs without
 sampling entropy during plan or dry-run.
@@ -205,6 +205,22 @@ Clean variants keep framework-free policy/ports in domain/application and
 concrete persistence/crypto in infrastructure. Django deliberately keeps its
 project-owned `AbstractUser`, native password API, authentication adapter, and
 refresh model in its infrastructure boundary rather than duplicating them.
+
+Authorization depends on Authentication. FastAPI/Flask use compact SQLAlchemy
+RBAC persistence behind service and policy helpers; Django adapts Forge policy
+semantics to native Group/Permission and DRF permission mechanisms. The policy
+boundary keeps resource modules independent of JWT and role-table details.
+Owner-or-permission handles a loaded object decision, while repositories and
+query handlers remain responsible for access-scoped queries that prevent IDOR.
+Clean projects keep framework-free authorization decisions and the security
+email delivery protocol in `application`; framework/SQL and Email/RQ adapters
+remain in `presentation` and `infrastructure`.
+
+Verification/reset dynamically imply the existing Email contribution. Token
+issuance and consumption stay in authentication security services; message
+construction/delivery is a narrow adapter. Selecting Background Jobs swaps
+delivery to the existing RQ queue and worker without introducing a second
+broker or mail stack.
 
 ## Package layout
 

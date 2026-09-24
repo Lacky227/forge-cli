@@ -94,6 +94,18 @@ PRESETS: tuple[Preset, ...] = (
         modules=("authentication",),
     ),
     Preset(
+        id="django-auth",
+        title="Django authentication and authorization API",
+        description=(
+            "Django REST Modular Monolith with Authentication, Authorization, "
+            "PostgreSQL, Docker, pytest, and Ruff."
+        ),
+        framework="django",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="postgresql",
+        modules=("authentication", "authorization"),
+    ),
+    Preset(
         id="fastapi-postgres",
         title="FastAPI + PostgreSQL",
         description=(

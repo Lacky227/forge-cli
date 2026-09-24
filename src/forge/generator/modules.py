@@ -120,7 +120,10 @@ class ModuleContributions:
     has_email: bool = False
     has_webhooks: bool = False
     has_authentication: bool = False
+    has_authorization: bool = False
     authentication_registration: bool = False
+    authentication_email_verification: bool = False
+    authentication_password_reset: bool = False
     products_link_categories: bool = False
     fastapi_routers: tuple[RouterContribution, ...] = ()
     flask_blueprints: tuple[BlueprintContribution, ...] = ()
@@ -150,6 +153,12 @@ def resolve_module_contributions(
 
     try:
         expanded = expand_module_dependencies(definition.modules)
+        auth_options = definition.authentication_options
+        if (
+            ModuleId.AUTHENTICATION.value in expanded
+            and (auth_options.email_verification or auth_options.password_reset)
+        ):
+            expanded = expand_module_dependencies((*expanded, ModuleId.EMAIL.value))
     except ValueError as exc:
         raise GenerationError(f"Cannot generate this project:\n\n{exc}") from exc
 
@@ -178,6 +187,7 @@ def resolve_module_contributions(
     has_email = ModuleId.EMAIL.value in expanded
     has_webhooks = ModuleId.WEBHOOKS.value in expanded
     has_authentication = ModuleId.AUTHENTICATION.value in expanded
+    has_authorization = ModuleId.AUTHORIZATION.value in expanded
     link = has_products and has_categories
     implied_set = set(implied)
 
@@ -230,6 +240,7 @@ def resolve_module_contributions(
             ModuleId.BACKGROUND_JOBS.value,
             ModuleId.EMAIL.value,
             ModuleId.WEBHOOKS.value,
+            ModuleId.AUTHORIZATION.value,
         }:
             _append_framework_contributions(
                 mid,
@@ -255,6 +266,17 @@ def resolve_module_contributions(
         endpoints = [
             item for item in endpoints if not item[1].rstrip("/").endswith("/register")
         ]
+    if has_authentication:
+        trailing_slash = framework == "django"
+        prefix = "/api/auth" if framework in {"django", "flask"} else "/auth"
+        if definition.authentication_options.email_verification:
+            endpoints.extend(
+                _email_verification_endpoints(prefix, trailing_slash=trailing_slash)
+            )
+        if definition.authentication_options.password_reset:
+            endpoints.extend(
+                _password_reset_endpoints(prefix, trailing_slash=trailing_slash)
+            )
 
     return ModuleContributions(
         modules=resolved,
@@ -267,8 +289,19 @@ def resolve_module_contributions(
         has_email=has_email,
         has_webhooks=has_webhooks,
         has_authentication=has_authentication,
+        has_authorization=has_authorization,
         authentication_registration=(
             definition.authentication_options.registration if has_authentication else False
+        ),
+        authentication_email_verification=(
+            definition.authentication_options.email_verification
+            if has_authentication
+            else False
+        ),
+        authentication_password_reset=(
+            definition.authentication_options.password_reset
+            if has_authentication
+            else False
         ),
         products_link_categories=link,
         fastapi_routers=tuple(fastapi_routers),
@@ -385,6 +418,31 @@ def _append_module_dependencies(
                 ("AUTH_REFRESH_TOKEN_TTL_DAYS", "30", "Absolute refresh-family lifetime in days"),
             ]
         )
+        auth = definition.authentication_options
+        if auth.email_verification or auth.password_reset:
+            env_vars.append(
+                (
+                    "AUTH_PUBLIC_BASE_URL",
+                    "http://localhost:3000",
+                    "Public frontend URL used in account-security email links",
+                )
+            )
+        if auth.email_verification:
+            env_vars.append(
+                (
+                    "AUTH_VERIFICATION_TOKEN_TTL_SECONDS",
+                    "86400",
+                    "Email-verification token lifetime in seconds",
+                )
+            )
+        if auth.password_reset:
+            env_vars.append(
+                (
+                    "AUTH_RESET_TOKEN_TTL_SECONDS",
+                    "1800",
+                    "Password-reset token lifetime in seconds",
+                )
+            )
 
     if ModuleId.EMAIL.value in expanded:
         env_vars.extend(
@@ -480,6 +538,7 @@ def _singular(module_id: str) -> str:
         "email": "email",
         "webhooks": "webhook",
         "authentication": "authentication",
+        "authorization": "authorization",
     }
     return mapping.get(module_id, module_id.rstrip("s"))
 
@@ -493,6 +552,10 @@ def _fastapi_contributions(
     model_imports: list[ModelImportContribution],
     endpoints: list[tuple[str, str, str]],
 ) -> None:
+    if module_id == ModuleId.AUTHORIZATION.value:
+        # Authorization models share the Authentication model module, which is
+        # already imported for ORM metadata registration.
+        return
     if module_id not in _HTTP_API_MODULES:
         # Jobs / email / webhooks contribute services + tests via mounts only.
         return
@@ -579,6 +642,10 @@ def _flask_contributions(
     model_imports: list[ModelImportContribution],
     endpoints: list[tuple[str, str, str]],
 ) -> None:
+    if module_id == ModuleId.AUTHORIZATION.value:
+        # Authorization models share the Authentication model module, which is
+        # already imported for ORM metadata registration.
+        return
     if module_id not in _HTTP_API_MODULES:
         return
 
@@ -651,6 +718,11 @@ def _django_contributions(
     if module_id == ModuleId.BACKGROUND_JOBS.value:
         # RQ helpers and run_worker live on the primary Django app
         # (core / apps.core / infrastructure.persistence) — no extra app package.
+        return
+
+    if module_id == ModuleId.AUTHORIZATION.value:
+        # Django authorization reuses native Group/Permission persistence and
+        # contributes policy/services through its template mount only.
         return
 
     if module_id not in _HTTP_API_MODULES:
@@ -755,6 +827,26 @@ def _authentication_endpoints(
     return rows
 
 
+def _email_verification_endpoints(
+    prefix: str, *, trailing_slash: bool
+) -> list[tuple[str, str, str]]:
+    slash = "/" if trailing_slash else ""
+    return [
+        ("POST", f"{prefix}/email-verification/request{slash}", "Request email verification"),
+        ("POST", f"{prefix}/email-verification/confirm{slash}", "Confirm email verification"),
+    ]
+
+
+def _password_reset_endpoints(
+    prefix: str, *, trailing_slash: bool
+) -> list[tuple[str, str, str]]:
+    slash = "/" if trailing_slash else ""
+    return [
+        ("POST", f"{prefix}/password/forgot{slash}", "Request password reset"),
+        ("POST", f"{prefix}/password/reset{slash}", "Reset password"),
+    ]
+
+
 def _crud_endpoints(
     prefix: str,
     label: str,
@@ -792,7 +884,10 @@ def contribution_jinja_dict(contributions: ModuleContributions) -> dict[str, obj
         "has_email": contributions.has_email,
         "has_webhooks": contributions.has_webhooks,
         "has_authentication": contributions.has_authentication,
+        "has_authorization": contributions.has_authorization,
         "authentication_registration": contributions.authentication_registration,
+        "authentication_email_verification": contributions.authentication_email_verification,
+        "authentication_password_reset": contributions.authentication_password_reset,
         "products_link_categories": contributions.products_link_categories,
         "fastapi_routers": [
             {

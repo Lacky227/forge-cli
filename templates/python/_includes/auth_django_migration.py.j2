@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                 ("email", models.EmailField(max_length=320)),
                 ("canonical_email", models.CharField(max_length=320, unique=True)),
                 ("display_name", models.CharField(blank=True, max_length=120)),
-                ("is_verified", models.BooleanField(default=True)),
+                ("is_verified", models.BooleanField(default={{ "False" if authentication_email_verification else "True" }})),
                 ("auth_version", models.PositiveIntegerField(default=1)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
                 ("groups", models.ManyToManyField(blank=True, help_text="The groups this user belongs to. A user will get all permissions granted to each of their groups.", related_name="user_set", related_query_name="user", to="auth.group", verbose_name="groups")),
                 ("user_permissions", models.ManyToManyField(blank=True, help_text="Specific permissions for this user.", related_name="user_set", related_query_name="user", to="auth.permission", verbose_name="user permissions")),
             ],
-            options={"verbose_name": "user", "verbose_name_plural": "users"},
+            options={"verbose_name": "user", "verbose_name_plural": "users"{% if has_authorization %}, "permissions": [("manage_users", "Can manage user authorization assignments")]{% endif %}},
             managers=[("objects", {{ auth_django_manager_import }}.UserManager())],
         ),
         migrations.CreateModel(
@@ -54,4 +54,19 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.AddIndex(model_name="authsession", index=models.Index(fields=["family_id", "revoked_at"], name="auth_family_active_idx")),
+{% if authentication_email_verification or authentication_password_reset %}
+        migrations.CreateModel(
+            name="AuthActionToken",
+            fields=[
+                ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ("purpose", models.CharField(max_length=32)),
+                ("token_digest", models.CharField(max_length=64, unique=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("expires_at", models.DateTimeField()),
+                ("consumed_at", models.DateTimeField(blank=True, null=True)),
+                ("user", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="auth_action_tokens", to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.AddIndex(model_name="authactiontoken", index=models.Index(fields=["user", "purpose", "consumed_at"], name="auth_action_active_idx")),
+{% endif %}
     ]

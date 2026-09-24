@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+from sqlalchemy import select
+
+from {{ authorization_auth_import }} import session_scope
+from {{ authorization_models_import }} import User
+from {{ authorization_service_import }} import (
+    assign_role, effective_permissions, grant_permission, has_any_permission,
+    has_permission, owner_or_permission, remove_role, revoke_permission,
+)
+
+
+def test_role_permission_and_ownership_services(client):
+    client.post("/api/auth/register", json={"email": "member@example.com", "password": "correct horse battery staple"})
+    with session_scope() as db:
+        user = db.scalar(select(User).where(User.canonical_email == "member@example.com"))
+        assert user is not None
+        assert effective_permissions(db, user) == frozenset()
+        grant_permission(db, "member", "documents:read")
+        assert has_permission(db, user, "documents:read")
+        assert has_any_permission(db, user, ("documents:write", "documents:read"))
+        assert owner_or_permission(db, user, user.id, "documents:write")
+        assert not owner_or_permission(db, user, "someone-else", "documents:write")
+        assert owner_or_permission(db, user, "someone-else", "documents:read")
+        remove_role(db, user, "member")
+        assert not has_permission(db, user, "documents:read")
+        assign_role(db, user, "admin")
+        assert has_permission(db, user, "users:manage")
+        revoke_permission(db, "admin", "users:manage")
+        assert not has_permission(db, user, "users:manage")
+        user.is_active = False
+        assert not has_any_permission(db, user, ("documents:read", "users:manage"))

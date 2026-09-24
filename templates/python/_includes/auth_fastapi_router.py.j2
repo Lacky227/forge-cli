@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+{% if authentication_email_verification or authentication_password_reset %}
+import os
+{% endif %}
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Response, status
@@ -15,6 +18,16 @@ from {{ auth_service_import }} import (
     create_session, issue_access_token, register_user, resolve_user,
     revoke_all, revoke_refresh, rotate_session,
 )
+{% if authentication_email_verification %}
+from {{ auth_service_import }} import VERIFY_EMAIL, confirm_email_token
+{% endif %}
+{% if authentication_password_reset %}
+from {{ auth_service_import }} import RESET_PASSWORD, reset_password_with_token
+{% endif %}
+{% if authentication_email_verification or authentication_password_reset %}
+from {{ auth_service_import }} import issue_action_token
+from {{ auth_delivery_import }} import {{ auth_delivery_symbol|default("deliver_security_email") }} as deliver_security_email
+{% endif %}
 
 router = APIRouter()
 bearer = HTTPBearer(auto_error=False)
@@ -38,6 +51,19 @@ class RefreshInput(BaseModel):
 class PasswordChangeInput(BaseModel):
     current_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=1, max_length=128)
+
+{% if authentication_email_verification or authentication_password_reset %}
+class EmailActionInput(BaseModel):
+    email: EmailStr
+
+
+class ActionTokenInput(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+{% endif %}
+{% if authentication_password_reset %}
+class PasswordResetInput(ActionTokenInput):
+    new_password: str = Field(min_length=1, max_length=128)
+{% endif %}
 
 
 def public_user(user: User) -> dict[str, object]:
@@ -65,7 +91,15 @@ def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None,
 @router.post("/register", status_code=201)
 def register(payload: RegistrationInput, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
     try:
-        return public_user(register_user(db, str(payload.email), payload.password, payload.display_name))
+        user = register_user(db, str(payload.email), payload.password, payload.display_name)
+{% if authentication_email_verification %}
+        raw = issue_action_token(db, user, VERIFY_EMAIL, int(os.environ.get("AUTH_VERIFICATION_TOKEN_TTL_SECONDS", "86400")))
+        try:
+            deliver_security_email(user.email, VERIFY_EMAIL, raw)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="verification delivery unavailable; request a new message") from exc
+{% endif %}
+        return public_user(user)
     except DuplicateIdentity as exc:
         raise HTTPException(status_code=409, detail="identity already exists") from exc
     except AuthFailure as exc:
@@ -115,3 +149,47 @@ def password_change(payload: PasswordChangeInput, user: Annotated[User, Depends(
     except AuthFailure as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Response(status_code=204)
+
+{% if authentication_email_verification %}
+@router.post("/email-verification/request", status_code=202)
+def request_email_verification(payload: EmailActionInput, db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
+    user = db.query(User).filter(User.canonical_email == str(payload.email).strip().casefold()).first()
+    if user is not None and user.is_active and not user.is_verified:
+        raw = issue_action_token(db, user, VERIFY_EMAIL, int(os.environ.get("AUTH_VERIFICATION_TOKEN_TTL_SECONDS", "86400")))
+        try:
+            deliver_security_email(user.email, VERIFY_EMAIL, raw)
+        except Exception:
+            pass
+    return {"detail": "if the account is eligible, a message will be sent"}
+
+
+@router.post("/email-verification/confirm", status_code=204)
+def confirm_email_verification(payload: ActionTokenInput, db: Annotated[Session, Depends(get_db)]) -> Response:
+    try:
+        confirm_email_token(db, payload.token)
+    except AuthFailure as exc:
+        raise HTTPException(status_code=400, detail="invalid or expired action token") from exc
+    return Response(status_code=204)
+{% endif %}
+
+{% if authentication_password_reset %}
+@router.post("/password/forgot", status_code=202)
+def forgot_password(payload: EmailActionInput, db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
+    user = db.query(User).filter(User.canonical_email == str(payload.email).strip().casefold()).first()
+    if user is not None and user.is_active:
+        raw = issue_action_token(db, user, RESET_PASSWORD, int(os.environ.get("AUTH_RESET_TOKEN_TTL_SECONDS", "1800")))
+        try:
+            deliver_security_email(user.email, RESET_PASSWORD, raw)
+        except Exception:
+            pass
+    return {"detail": "if the account is eligible, a message will be sent"}
+
+
+@router.post("/password/reset", status_code=204)
+def reset_password(payload: PasswordResetInput, db: Annotated[Session, Depends(get_db)]) -> Response:
+    try:
+        reset_password_with_token(db, payload.token, payload.new_password)
+    except AuthFailure as exc:
+        raise HTTPException(status_code=400, detail="invalid or expired action token") from exc
+    return Response(status_code=204)
+{% endif %}

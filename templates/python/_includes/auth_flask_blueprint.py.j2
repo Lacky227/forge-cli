@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+{% if authentication_email_verification or authentication_password_reset %}
+import os
+{% endif %}
 from contextlib import contextmanager
 from functools import wraps
 
@@ -12,6 +15,17 @@ from {{ auth_service_import }} import (
     create_session, issue_access_token, register_user, resolve_user,
     revoke_all, revoke_refresh, rotate_session,
 )
+{% if authentication_email_verification %}
+from {{ auth_service_import }} import VERIFY_EMAIL, confirm_email_token
+{% endif %}
+{% if authentication_password_reset %}
+from {{ auth_service_import }} import RESET_PASSWORD, reset_password_with_token
+{% endif %}
+{% if authentication_email_verification or authentication_password_reset %}
+from {{ auth_models_import }} import User
+from {{ auth_service_import }} import issue_action_token
+from {{ auth_delivery_import }} import {{ auth_delivery_symbol|default("deliver_security_email") }} as deliver_security_email
+{% endif %}
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -34,6 +48,19 @@ class RefreshInput(BaseModel):
 class PasswordChangeInput(BaseModel):
     current_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=1, max_length=128)
+
+{% if authentication_email_verification or authentication_password_reset %}
+class EmailActionInput(BaseModel):
+    email: EmailStr
+
+
+class ActionTokenInput(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+{% endif %}
+{% if authentication_password_reset %}
+class PasswordResetInput(ActionTokenInput):
+    new_password: str = Field(min_length=1, max_length=128)
+{% endif %}
 
 
 @contextmanager
@@ -85,7 +112,15 @@ def register():
         return jsonify({"detail": "invalid registration data"}), 400
     try:
         with session_scope() as db:
-            return jsonify(public_user(register_user(db, str(data.email), data.password, data.display_name))), 201
+            user = register_user(db, str(data.email), data.password, data.display_name)
+{% if authentication_email_verification %}
+            raw = issue_action_token(db, user, VERIFY_EMAIL, int(os.environ.get("AUTH_VERIFICATION_TOKEN_TTL_SECONDS", "86400")))
+            try:
+                deliver_security_email(user.email, VERIFY_EMAIL, raw)
+            except Exception:
+                return jsonify({"detail": "verification delivery unavailable; request a new message"}), 503
+{% endif %}
+            return jsonify(public_user(user)), 201
     except DuplicateIdentity:
         return jsonify({"detail": "identity already exists"}), 409
     except AuthFailure as exc:
@@ -153,3 +188,62 @@ def password_change(db):
     except AuthFailure as exc:
         return jsonify({"detail": str(exc)}), 400
     return "", 204
+
+{% if authentication_email_verification %}
+@bp.post("/email-verification/request")
+def request_email_verification():
+    data = payload(EmailActionInput)
+    if data is None:
+        return jsonify({"detail": "if the account is eligible, a message will be sent"}), 202
+    with session_scope() as db:
+        user = db.query(User).filter(User.canonical_email == str(data.email).strip().casefold()).first()
+        if user is not None and user.is_active and not user.is_verified:
+            raw = issue_action_token(db, user, VERIFY_EMAIL, int(os.environ.get("AUTH_VERIFICATION_TOKEN_TTL_SECONDS", "86400")))
+            try:
+                deliver_security_email(user.email, VERIFY_EMAIL, raw)
+            except Exception:
+                pass
+    return jsonify({"detail": "if the account is eligible, a message will be sent"}), 202
+
+
+@bp.post("/email-verification/confirm")
+def confirm_email_verification():
+    data = payload(ActionTokenInput)
+    if data is None:
+        return jsonify({"detail": "invalid or expired action token"}), 400
+    try:
+        with session_scope() as db:
+            confirm_email_token(db, data.token)
+    except AuthFailure:
+        return jsonify({"detail": "invalid or expired action token"}), 400
+    return "", 204
+{% endif %}
+
+{% if authentication_password_reset %}
+@bp.post("/password/forgot")
+def forgot_password():
+    data = payload(EmailActionInput)
+    if data is not None:
+        with session_scope() as db:
+            user = db.query(User).filter(User.canonical_email == str(data.email).strip().casefold()).first()
+            if user is not None and user.is_active:
+                raw = issue_action_token(db, user, RESET_PASSWORD, int(os.environ.get("AUTH_RESET_TOKEN_TTL_SECONDS", "1800")))
+                try:
+                    deliver_security_email(user.email, RESET_PASSWORD, raw)
+                except Exception:
+                    pass
+    return jsonify({"detail": "if the account is eligible, a message will be sent"}), 202
+
+
+@bp.post("/password/reset")
+def reset_password():
+    data = payload(PasswordResetInput)
+    if data is None:
+        return jsonify({"detail": "invalid or expired action token"}), 400
+    try:
+        with session_scope() as db:
+            reset_password_with_token(db, data.token, data.new_password)
+    except AuthFailure:
+        return jsonify({"detail": "invalid or expired action token"}), 400
+    return "", 204
+{% endif %}

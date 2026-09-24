@@ -1,0 +1,6 @@
+{% set auth_test_module = "presentation.api.auth_views" %}
+{% set auth_test_prefix = "/api/auth" %}
+{% set auth_test_slash = "/" %}
+{% set auth_test_fixture = "api_client" %}
+{% set auth_test_django = true %}
+{% include "auth_account_security_tests.py.j2" %}

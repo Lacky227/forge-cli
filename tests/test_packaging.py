@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -19,8 +20,9 @@ from forge.generator.render import templates_root
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DIST_NAME = "forge-scaffolder"
-DIST_VERSION = "0.4.0"
+DIST_VERSION = "0.5.0"
 WHEEL_GLOB = "forge_scaffolder-*.whl"
+SDIST_GLOB = "forge_scaffolder-*.tar.gz"
 
 
 def test_templates_root_resolves_python_tree() -> None:
@@ -54,6 +56,8 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     )
     wheels = list(dist.glob(WHEEL_GLOB))
     assert len(wheels) == 1, wheels
+    sdists = list(dist.glob(SDIST_GLOB))
+    assert len(sdists) == 1, sdists
     with zipfile.ZipFile(wheels[0]) as zf:
         names = zf.namelist()
         metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
@@ -97,6 +101,18 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
                 f"/modules/authentication/{framework}/{architecture}/" in n
                 for n in auth_templates
             ), f"missing {framework}/{architecture} authentication templates"
+    authorization_templates = [
+        n for n in templates if "/modules/authorization/" in n
+    ]
+    assert authorization_templates, "missing authorization module templates"
+    for framework in ("fastapi", "django", "flask"):
+        for architecture in ("simple", "modular-monolith", "clean"):
+            assert any(
+                f"/modules/authorization/{framework}/{architecture}/" in n
+                for n in authorization_templates
+            ), f"missing {framework}/{architecture} authorization templates"
+    assert any(n.endswith("auth_account_security_tests.py.j2") for n in templates)
+    assert any(n.endswith("auth_security_email.py.j2") for n in templates)
     assert any(
         "/modules/_foundation/" in n for n in templates
     ), "missing module foundation templates"
@@ -112,6 +128,16 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     assert not any(n.startswith("tests/") for n in names)
     assert not any(".cursor" in n for n in names)
     assert not any(".smoke" in n for n in names)
+    with tarfile.open(sdists[0], "r:gz") as archive:
+        sdist_names = archive.getnames()
+    assert any(
+        "/templates/python/modules/authorization/" in name
+        for name in sdist_names
+    ), "sdist is missing authorization templates"
+    assert any(
+        name.endswith("auth_account_security_tests.py.j2")
+        for name in sdist_names
+    ), "sdist is missing account-security templates"
 
 
 @pytest.mark.packaging
@@ -263,6 +289,78 @@ def test_clean_wheel_install_generates_outside_repo(tmp_path: Path) -> None:
     assert secret not in auth_generate.stdout
     assert secret not in auth_plan.stdout
     assert secret not in auth_dry.stdout
+
+    stage2_cases = {
+        "wheel-authz": """
+modules:
+  - authorization
+authentication:
+  registration: true
+""",
+        "wheel-recovery": """
+modules:
+  - authentication
+authentication:
+  email_verification: true
+  password_reset: true
+""",
+        "wheel-security-dense": """
+modules:
+  - authorization
+authentication:
+  email_verification: true
+  password_reset: true
+""",
+    }
+    for project_name, security_yaml in stage2_cases.items():
+        stage2_config = gen_dir / f"{project_name}.yaml"
+        stage2_config.write_text(
+            f"""
+name: {project_name}
+type: rest-api
+framework: fastapi
+architecture: simple
+{security_yaml}
+persistence:
+  sql: sqlite
+migrations: true
+testing: true
+linting: true
+""",
+            encoding="utf-8",
+        )
+        stage2_plan = subprocess.check_output(
+            [str(forge_bin), "plan", "--config", str(stage2_config)],
+            cwd=gen_dir,
+            env=env,
+            text=True,
+        )
+        assert "Authentication" in stage2_plan
+        if project_name != "wheel-recovery":
+            assert "Authorization" in stage2_plan
+        stage2_dry = subprocess.check_output(
+            [str(forge_bin), "new", "--config", str(stage2_config), "--dry-run"],
+            cwd=gen_dir,
+            env=env,
+            text=True,
+        )
+        assert "Dry run" in stage2_dry
+        assert not (gen_dir / project_name).exists()
+        subprocess.run(
+            [str(forge_bin), "new", "--config", str(stage2_config)],
+            cwd=gen_dir,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        generated = gen_dir / project_name
+        package = generated / "src" / project_name.replace("-", "_")
+        if project_name != "wheel-recovery":
+            assert (package / "authorization.py").is_file()
+        if project_name != "wheel-authz":
+            assert (package / "security_email.py").is_file()
+            assert (generated / "tests" / "test_account_security.py").is_file()
 
     # Generate with CI from the installed wheel (packaged ``_shared`` template).
     config = gen_dir / "with-ci.yaml"
