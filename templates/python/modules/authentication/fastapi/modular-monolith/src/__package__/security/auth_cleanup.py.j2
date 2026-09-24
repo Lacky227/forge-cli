@@ -1,0 +1,3 @@
+{% set auth_database_import = package_name ~ ".core.database" %}
+{% set auth_models_import = package_name ~ ".models.authentication" %}
+{% include "auth_cleanup_sqlalchemy.py.j2" %}

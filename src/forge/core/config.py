@@ -19,7 +19,12 @@ from pydantic import (
     model_validator,
 )
 
-from forge.core.definition import Capabilities, ProjectDefinition, StorageOptions
+from forge.core.definition import (
+    AuthenticationOptions,
+    Capabilities,
+    ProjectDefinition,
+    StorageOptions,
+)
 from forge.core.modules import normalize_modules
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
@@ -93,6 +98,7 @@ class ForgeConfig(BaseModel):
     modules: list[str] = Field(default_factory=list)
     # Files storage options (only valid with the files module).
     storage: StorageOptions | None = None
+    authentication: AuthenticationOptions | None = None
 
     @field_validator("framework")
     @classmethod
@@ -263,6 +269,7 @@ class ForgeConfig(BaseModel):
                 ),
                 modules=tuple(self.modules),
                 storage=self.storage,
+                authentication=self.authentication,
             )
         except ValidationError as exc:
             raise ConfigError(_format_pydantic_error(exc)) from exc
@@ -316,7 +323,6 @@ def _format_pydantic_error(exc: ValidationError) -> str:
         loc = ".".join(str(x) for x in err.get("loc", ()) if x != "body")
         msg = err.get("msg", "invalid value")
         # Pydantic prefixes some messages with "Value error, "
-        if msg.startswith("Value error, "):
-            msg = msg[len("Value error, ") :]
+        msg = msg.removeprefix("Value error, ")
         lines.append(f"  {loc}: {msg}" if loc else f"  {msg}")
     return "\n".join(lines)

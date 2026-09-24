@@ -1,0 +1,41 @@
+"""FastAPI dependency adapters for reusable authorization policies."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from {{ authorization_auth_import }} import get_current_user
+from {{ authorization_database_import }} import get_db
+from {{ authorization_models_import }} import User
+from {{ authorization_service_import }} import has_any_permission, has_permission, owner_or_permission
+
+
+def require_verified(user: Annotated[User, Depends(get_current_user)]) -> User:
+    if not user.is_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="verified identity required")
+    return user
+
+
+def require_permission(code: str) -> Callable[..., User]:
+    def policy(user: Annotated[User, Depends(get_current_user)], db: Annotated[Session, Depends(get_db)]) -> User:
+        if not has_permission(db, user, code):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="permission denied")
+        return user
+    return policy
+
+
+def require_any_permission(*codes: str) -> Callable[..., User]:
+    def policy(user: Annotated[User, Depends(get_current_user)], db: Annotated[Session, Depends(get_db)]) -> User:
+        if not has_any_permission(db, user, tuple(codes)):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="permission denied")
+        return user
+    return policy
+
+
+def enforce_owner_or_permission(db: Session, user: User, owner_id: str, code: str) -> None:
+    if not owner_or_permission(db, user, owner_id, code):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="permission denied")

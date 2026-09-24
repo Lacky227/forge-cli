@@ -1,0 +1,4 @@
+{% set authorization_auth_import = package_name ~ ".api.routes.auth" %}
+{% set authorization_models_import = package_name ~ ".models.authentication" %}
+{% set authorization_service_import = package_name ~ ".security.authorization_service" %}
+{% include "authorization_flask_tests.py.j2" %}

@@ -25,6 +25,15 @@ class EnvVarSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class GeneratedSecretSpec:
+    """A sensitive value created only during real project generation."""
+
+    environment_variable: str
+    entropy_bytes: int = 32
+    target_file: str = ".env"
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessSpec:
     """One runtime process the generated project is expected to run."""
 
@@ -69,6 +78,11 @@ class GenerationFeatures:
     email: bool = False
     webhooks: bool = False
     rq: bool = False
+    authentication: bool = False
+    authorization: bool = False
+    registration: bool = False
+    email_verification: bool = False
+    password_reset: bool = False
 
     @property
     def ci(self) -> bool:
@@ -121,6 +135,7 @@ class GenerationPlan:
     framework_label: str
     # Canonical env vars for the selected stack (plan, .env.example, README).
     environment_variables: tuple[EnvVarSpec, ...] = ()
+    generated_secrets: tuple[GeneratedSecretSpec, ...] = ()
     # Compose dependency service names when Docker is enabled (not the app).
     docker_services: tuple[str, ...] = ()
     # Runtime processes (API always; worker when background jobs).
@@ -139,6 +154,10 @@ class GenerationPlan:
     def emits_env_example(self) -> bool:
         """Emit ``.env.example`` only when there are concrete variables."""
         return bool(self.environment_variables)
+
+    @property
+    def emits_local_env(self) -> bool:
+        return bool(self.generated_secrets)
 
     @property
     def worker_command(self) -> str | None:
@@ -186,6 +205,74 @@ class GenerationPlan:
                     )
                 )
 
+        if features.authentication:
+            sections.extend(
+                [
+                    PlanSummarySection(
+                        "Identity",
+                        (("Identifier", "email"), ("User ID", "UUID"), ("Persistence", "SQL")),
+                    ),
+                    PlanSummarySection(
+                        "Authentication",
+                        (
+                            ("Registration", "enabled" if features.registration else "disabled"),
+                            ("Access tokens", "JWT, 15 minutes"),
+                            ("Refresh sessions", "opaque, persistent, rotating"),
+                            ("Refresh lifetime", "30 days"),
+                            ("Logout", "refresh-session revocation"),
+                            (
+                                "Email verification",
+                                "enabled" if features.email_verification else "disabled",
+                            ),
+                            (
+                                "Password reset",
+                                "enabled" if features.password_reset else "disabled",
+                            ),
+                        ),
+                    ),
+                    PlanSummarySection(
+                        "Security",
+                        (
+                            ("Password hashing", "Argon2id"),
+                            ("Transport", "Authorization Bearer"),
+                            ("JWT secret", "generated locally / required in production"),
+                            (
+                                "Abuse protection",
+                                "process-local throttling (not cluster-wide)",
+                            ),
+                            ("Trusted hosts", "configurable allow-list"),
+                            ("CORS", "restricted / configurable origins"),
+                            (
+                                "Cleanup",
+                                "maintenance command for expired auth state",
+                            ),
+                            *(
+                                (("Verification tokens", "opaque, single-use, 24 hours"),)
+                                if features.email_verification
+                                else ()
+                            ),
+                            *(
+                                (("Reset tokens", "opaque, single-use, 30 minutes"),)
+                                if features.password_reset
+                                else ()
+                            ),
+                        ),
+                    ),
+                ]
+            )
+
+        if features.authorization:
+            sections.append(
+                PlanSummarySection(
+                    "Authorization",
+                    (
+                        ("Model", "roles + permissions"),
+                        ("Policy helpers", "authenticated, verified, permission, any-permission"),
+                        ("Ownership helpers", "owner-or-permission + scoped-query guidance"),
+                    ),
+                )
+            )
+
         if features.storage_backend:
             storage_rows: list[tuple[str, str]] = [
                 (
@@ -214,8 +301,17 @@ class GenerationPlan:
             sections.append(PlanSummarySection("Background Jobs", tuple(job_rows)))
 
         if features.email:
+            delivery = (
+                "background worker"
+                if features.background_jobs
+                and (features.email_verification or features.password_reset)
+                else "direct SMTP"
+            )
             sections.append(
-                PlanSummarySection("Email", (("Transport", "SMTP"),))
+                PlanSummarySection(
+                    "Email",
+                    (("Transport", "SMTP"), ("Security email delivery", delivery)),
+                )
             )
 
         if features.webhooks:
@@ -406,6 +502,11 @@ class GenerationPlan:
             "has_email": features.email,
             "has_webhooks": features.webhooks,
             "has_rq": features.rq,
+            "has_authentication": features.authentication,
+            "has_authorization": features.authorization,
+            "authentication_registration": features.registration,
+            "authentication_email_verification": features.email_verification,
+            "authentication_password_reset": features.password_reset,
             "has_worker": any(p.id == "worker" for p in self.processes),
             "is_simple": definition.architecture.value == "simple",
             "is_modular": definition.architecture.value == "modular-monolith",
@@ -431,6 +532,7 @@ class GenerationPlan:
                 for spec in self.environment_variables
             ],
             "emits_env_example": self.emits_env_example,
+            "emits_local_env": self.emits_local_env,
             "docker_services": self.docker_services,
             "processes": [
                 {"id": p.id, "label": p.label, "command": p.command}

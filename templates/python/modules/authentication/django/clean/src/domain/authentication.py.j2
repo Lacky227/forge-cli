@@ -1,0 +1,8 @@
+"""Framework-free Stage 1 identity policy."""
+
+PASSWORD_MIN_LENGTH = 15
+PASSWORD_MAX_CHARS = 128
+
+
+def canonicalize_email(email: str) -> str:
+    return email.strip().casefold()

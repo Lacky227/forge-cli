@@ -36,7 +36,7 @@ uv run forge new --config forge.yaml
 uv run pytest
 ```
 
-Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`, `tests/test_dry_run.py`, `tests/test_modules.py`, `tests/test_modules_stage2.py`.
+Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`, `tests/test_dry_run.py`, `tests/test_modules.py`, `tests/test_modules_stage2.py`, `tests/test_authentication.py`, `tests/test_security_stage2.py`, `tests/test_security_stage3.py`.
 See [cli.md](./cli.md) for the full command surface, presets, and destination/exit behavior.
 Module catalog and composition: [modules.md](./modules.md).
 
@@ -77,13 +77,13 @@ Canonical repository: [https://github.com/Lacky227/forge-cli](https://github.com
 
 ### Versioning
 
-Current version: **`0.4.0`** — public development release; PyPI distribution **`forge-scaffolder`**.
+Current version: **`0.5.0`** — public development version; PyPI distribution **`forge-scaffolder`**.
 
 | Version | Meaning |
 |---------|---------|
 | `0.x` | Public development releases |
 | `0.1.x` | Backwards-compatible fixes and small improvements |
-| `0.2.0` / `0.3.0` / `0.4.0` | Meaningful new capabilities or intentional public-interface changes |
+| `0.2.0` through `0.5.0` | Meaningful new capabilities or intentional public-interface changes |
 | `1.0.0` | Stable public CLI / domain contract |
 
 Record user-facing changes in [CHANGELOG.md](../CHANGELOG.md). Do not introduce automated semantic-release tooling for routine work.
@@ -103,6 +103,13 @@ forge.core → (no UI; may load YAML config → ProjectDefinition)
 3. Templates under `templates/<language>/<framework>/<architecture>/`
 4. Adaptive CLI prompts (only user-selectable questions; leave implications to the resolver)
 5. Tests + generated-project smoke validation
+
+Security changes additionally require the nine-family SQLite executable matrix
+in [generation.md](./generation.md), Django
+`makemigrations --check --dry-run`, and wheel-content checks for every
+Authentication and Authorization template family (including Stage 3 hardening
+includes and cleanup commands). FastAPI TestClient may need to run outside a
+restricted worker-thread sandbox.
 
 Do not add a plugin manager for the next framework.
 

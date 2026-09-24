@@ -1,0 +1,253 @@
+from django.db import IntegrityError, transaction
+{% if authentication_email_verification or authentication_password_reset %}
+from django.conf import settings
+{% endif %}
+from django.utils import timezone
+from rest_framework import serializers
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from {{ auth_django_models_import }} import User, canonicalize_email
+from {{ auth_django_security_import }} import (
+    AuthFailure, ForgeBearerAuthentication, create_session, issue_access_token,
+    revoke_all, revoke_refresh, rotate_session, validate_password_policy,
+)
+from {{ auth_django_throttles_import }} import (
+    CredentialRateThrottle, RecoveryRateThrottle, RefreshRateThrottle,
+    RegistrationRateThrottle,
+)
+{% if authentication_email_verification %}
+from {{ auth_django_security_import }} import VERIFY_EMAIL, confirm_email_token
+{% endif %}
+{% if authentication_password_reset %}
+from {{ auth_django_security_import }} import RESET_PASSWORD, reset_password_with_token
+{% endif %}
+{% if authentication_email_verification or authentication_password_reset %}
+from {{ auth_django_security_import }} import issue_action_token
+from {{ auth_django_delivery_import }} import {{ auth_delivery_symbol|default("deliver_security_email") }} as deliver_security_email
+{% endif %}
+
+
+class RegistrationSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=320)
+    password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
+    display_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
+
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=320)
+    password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
+
+
+class RefreshSerializer(serializers.Serializer):
+    refresh_token = serializers.CharField(min_length=20, max_length=512, write_only=True)
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
+    new_password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
+
+{% if authentication_email_verification or authentication_password_reset %}
+class EmailActionSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=320)
+
+
+class ActionTokenSerializer(serializers.Serializer):
+    token = serializers.CharField(min_length=20, max_length=512, write_only=True)
+{% endif %}
+{% if authentication_password_reset %}
+class PasswordResetSerializer(ActionTokenSerializer):
+    new_password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
+{% endif %}
+
+
+def public_user(user):
+    return {"id": str(user.pk), "email": user.email, "display_name": user.display_name, "is_active": user.is_active, "is_verified": user.is_verified, "created_at": user.created_at}
+
+
+def token_response(user, raw, auth_session):
+    response = Response({"access_token": issue_access_token(user, auth_session.pk), "refresh_token": raw, "token_type": "bearer", "expires_in": 900})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+{% if authentication_registration %}
+class RegisterView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [RegistrationRateThrottle]
+
+    def post(self, request):
+        serializer = RegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            validate_password_policy(data["password"])
+            with transaction.atomic():
+                user = User.objects.create_user(email=data["email"], password=data["password"], display_name=data.get("display_name", ""))
+        except IntegrityError:
+            return Response({"detail": "identity already exists"}, status=409)
+        except AuthFailure as exc:
+            return Response({"detail": str(exc)}, status=400)
+{% if authentication_email_verification %}
+        raw = issue_action_token(user, VERIFY_EMAIL, settings.AUTH_VERIFICATION_TOKEN_TTL_SECONDS)
+        try:
+            deliver_security_email(user.email, VERIFY_EMAIL, raw)
+        except Exception:
+            return Response({"detail": "verification delivery unavailable; request a new message"}, status=503)
+{% endif %}
+        return Response(public_user(user), status=201)
+
+
+{% endif %}
+class LoginView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [CredentialRateThrottle]
+
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            user = User.objects.get(canonical_email=canonicalize_email(data["email"]))
+        except User.DoesNotExist:
+            User().set_password(data["password"])
+            return Response({"detail": "invalid email or password"}, status=401)
+        if not user.check_password(data["password"]) or not user.is_active{% if authentication_email_verification %} or not user.is_verified{% endif %}:
+            return Response({"detail": "invalid email or password"}, status=401)
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login", "password"])
+        raw, auth_session = create_session(user)
+        return token_response(user, raw, auth_session)
+
+
+class RefreshView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [RefreshRateThrottle]
+
+    def post(self, request):
+        serializer = RefreshSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            user, raw, auth_session = rotate_session(serializer.validated_data["refresh_token"])
+            return token_response(user, raw, auth_session)
+        except AuthFailure as exc:
+            return Response({"detail": str(exc)}, status=401)
+
+
+class LogoutView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RefreshSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        revoke_refresh(serializer.validated_data["refresh_token"])
+        return Response(status=204)
+
+
+class MeView(APIView):
+    authentication_classes = [ForgeBearerAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(public_user(request.user))
+
+
+class LogoutAllView(APIView):
+    authentication_classes = [ForgeBearerAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        revoke_all(request.user)
+        return Response(status=204)
+
+
+class PasswordChangeView(APIView):
+    authentication_classes = [ForgeBearerAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = PasswordChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if not request.user.check_password(data["current_password"]):
+            return Response({"detail": "current password is incorrect"}, status=400)
+        try:
+            validate_password_policy(data["new_password"])
+        except AuthFailure as exc:
+            return Response({"detail": str(exc)}, status=400)
+        with transaction.atomic():
+            request.user.set_password(data["new_password"])
+            request.user.save(update_fields=["password"])
+            revoke_all(request.user)
+        return Response(status=204)
+
+{% if authentication_email_verification %}
+class EmailVerificationRequestView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [RecoveryRateThrottle]
+
+    def post(self, request):
+        serializer = EmailActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = User.objects.filter(canonical_email=canonicalize_email(serializer.validated_data["email"]), is_active=True, is_verified=False).first()
+        if user is not None:
+            raw = issue_action_token(user, VERIFY_EMAIL, settings.AUTH_VERIFICATION_TOKEN_TTL_SECONDS)
+            try:
+                deliver_security_email(user.email, VERIFY_EMAIL, raw)
+            except Exception:
+                pass
+        return Response({"detail": "if the account is eligible, a message will be sent"}, status=202)
+
+
+class EmailVerificationConfirmView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ActionTokenSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            confirm_email_token(serializer.validated_data["token"])
+        except AuthFailure:
+            return Response({"detail": "invalid or expired action token"}, status=400)
+        return Response(status=204)
+{% endif %}
+
+{% if authentication_password_reset %}
+class ForgotPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [RecoveryRateThrottle]
+
+    def post(self, request):
+        serializer = EmailActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = User.objects.filter(canonical_email=canonicalize_email(serializer.validated_data["email"]), is_active=True).first()
+        if user is not None:
+            raw = issue_action_token(user, RESET_PASSWORD, settings.AUTH_RESET_TOKEN_TTL_SECONDS)
+            try:
+                deliver_security_email(user.email, RESET_PASSWORD, raw)
+            except Exception:
+                pass
+        return Response({"detail": "if the account is eligible, a message will be sent"}, status=202)
+
+
+class ResetPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reset_password_with_token(serializer.validated_data["token"], serializer.validated_data["new_password"])
+        except AuthFailure:
+            return Response({"detail": "invalid or expired action token"}, status=400)
+        return Response(status=204)
+{% endif %}

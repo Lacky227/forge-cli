@@ -1,0 +1,3 @@
+from {{ package_name }}.core.database import Base
+{% set auth_model_base = "Base" %}
+{% include "auth_sqlalchemy_models.py.j2" %}

@@ -1,0 +1,73 @@
+"""Account-security email delivery through Forge's Email capability."""
+
+from __future__ import annotations
+
+import os
+from urllib.parse import urlencode
+
+{% if auth_email_port_import is defined and auth_email_port_import %}
+from {{ auth_email_port_import }} import SecurityEmailDelivery
+{% endif %}
+from {{ auth_email_service_import }} import EmailService
+{% if has_background_jobs %}
+from rq import Retry
+from {{ auth_jobs_import }} import get_queue
+{% endif %}
+
+
+def _message(purpose: str, token: str) -> tuple[str, str]:
+    base = os.environ.get("AUTH_PUBLIC_BASE_URL", "").rstrip("/")
+    if not base:
+        raise RuntimeError(
+            "AUTH_PUBLIC_BASE_URL is required for account-security email"
+        )
+    if purpose == "verify_email":
+        subject = "Verify your email"
+        path = "/verify-email"
+    elif purpose == "reset_password":
+        subject = "Reset your password"
+        path = "/reset-password"
+    else:
+        raise ValueError("unsupported security email purpose")
+    link = f"{base}{path}?{urlencode({'token': token})}"
+    body = (
+        f"Use this single-use link to continue:\n\n{link}\n\n"
+        "If you did not request this, ignore this message."
+    )
+    return subject, body
+
+
+def send_security_email_now(to: str, purpose: str, token: str) -> None:
+    subject, body = _message(purpose, token)
+    EmailService().send(to, subject, body)
+
+
+def deliver_security_email(to: str, purpose: str, token: str) -> None:
+{% if has_background_jobs %}
+    # Raw tokens necessarily appear in Redis job args until the worker runs.
+    # Only digests are stored in SQL; do not log job kwargs or describe the token.
+    get_queue().enqueue(
+        send_security_email_now,
+        to,
+        purpose,
+        token,
+        retry=Retry(max=3, interval=[30, 120, 300]),
+        result_ttl=0,
+        failure_ttl=0,
+        description=f"security-email:{purpose}",
+    )
+{% else %}
+    send_security_email_now(to, purpose, token)
+{% endif %}
+{% if auth_email_port_import is defined and auth_email_port_import %}
+
+
+class EmailSecurityDelivery:
+    """Infrastructure implementation of the application delivery port."""
+
+    def __call__(self, to: str, purpose: str, token: str) -> None:
+        deliver_security_email(to, purpose, token)
+
+
+security_email_delivery: SecurityEmailDelivery = EmailSecurityDelivery()
+{% endif %}

@@ -67,7 +67,7 @@ def next_steps_for(plan: GenerationPlan, *, destination_name: str) -> list[str]:
         "uv sync",
     ]
     features = plan.features
-    if plan.emits_env_example:
+    if plan.emits_env_example and not plan.emits_local_env:
         steps.append("cp .env.example .env")
     if features.docker and plan.docker_services:
         steps.append(

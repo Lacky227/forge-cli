@@ -25,6 +25,7 @@ from forge.generator.errors import GenerationError
 from forge.generator.modules import resolve_module_contributions
 from forge.generator.plan import (
     EnvVarSpec,
+    GeneratedSecretSpec,
     GenerationFeatures,
     GenerationPlan,
     ProcessSpec,
@@ -76,6 +77,11 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
         redis_url=redis_url,
     )
     docker_services = _docker_services(features)
+    generated_secrets = (
+        (GeneratedSecretSpec("AUTH_JWT_SECRET", entropy_bytes=32),)
+        if features.authentication
+        else ()
+    )
     health_path = _health_path(definition)
 
     return GenerationPlan(
@@ -101,6 +107,7 @@ def resolve_plan(definition: ProjectDefinition) -> GenerationPlan:
             definition.framework, definition.framework
         ),
         environment_variables=environment_variables,
+        generated_secrets=generated_secrets,
         docker_services=docker_services,
         processes=processes,
         health_path=health_path,
@@ -196,6 +203,8 @@ def _resolve_features(
     has_email = ModuleId.EMAIL.value in expanded
     has_webhooks = ModuleId.WEBHOOKS.value in expanded
     has_files = ModuleId.FILES.value in expanded
+    has_authentication = ModuleId.AUTHENTICATION.value in expanded
+    has_authorization = ModuleId.AUTHORIZATION.value in expanded
     redis_nosql = nosql == "redis"
     needs_redis = redis_nosql or modules_require_redis(definition.modules)
 
@@ -215,6 +224,8 @@ def _resolve_features(
         has_email = contributions.has_email
         has_webhooks = contributions.has_webhooks
         has_files = contributions.has_files
+        has_authentication = contributions.has_authentication
+        has_authorization = contributions.has_authorization
 
     return GenerationFeatures(
         database=sql is not None,
@@ -239,6 +250,23 @@ def _resolve_features(
         email=has_email,
         webhooks=has_webhooks,
         rq=has_jobs,
+        authentication=has_authentication,
+        authorization=has_authorization,
+        registration=(
+            definition.authentication_options.registration
+            if has_authentication
+            else False
+        ),
+        email_verification=(
+            definition.authentication_options.email_verification
+            if has_authentication
+            else False
+        ),
+        password_reset=(
+            definition.authentication_options.password_reset
+            if has_authentication
+            else False
+        ),
     )
 
 

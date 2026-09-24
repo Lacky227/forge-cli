@@ -13,7 +13,7 @@ with deliberate architecture, persistence, tooling, and infrastructure choices.
 [![License](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/Lacky227/forge-cli)
 
-**Current release:** [0.4.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.4.0) · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
+**Current development version:** 0.5.0 · PyPI: [`forge-scaffolder`](https://pypi.org/project/forge-scaffolder/) · CLI: `forge`
 
 </div>
 
@@ -48,7 +48,7 @@ uvx --from forge-scaffolder forge new my-api
 
 Starting a backend project means deciding framework, project structure, persistence, migrations, Docker, testing, and linting — often from scratch, every time.
 
-Forge turns those explicit decisions into a coherent, runnable project. It resolves implications (ORM, clients, dependencies, commands) and generates a codebase you can install, run, and keep developing by hand. Optional **project modules** (Products, Categories, Files, Background Jobs, Email, Webhooks) add real capabilities — see [`docs/modules.md`](docs/modules.md).
+Forge turns those explicit decisions into a coherent, runnable project. It resolves implications (ORM, clients, dependencies, commands) and generates a codebase you can install, run, and keep developing by hand. Optional **project modules** (Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication, Authorization) add real capabilities — see [`docs/modules.md`](docs/modules.md).
 
 It is a **scaffolder**, not a runtime dependency of the projects it creates.
 
@@ -169,6 +169,8 @@ Optional multi-select modules add real application capabilities:
 | Background Jobs | RQ + Redis |
 | Email | SMTP |
 | Webhooks | Background Jobs → RQ + Redis (outgoing delivery only) |
+| Authentication | SQL; Alembic on FastAPI/Flask |
+| Authorization | Authentication + SQL; reusable RBAC and policies |
 
 When Products and Categories are both selected, products may reference a category.
 Collection CRUD endpoints include pagination, filtering, and allow-listed sorting.
@@ -228,6 +230,8 @@ Presets are named compositions of valid Forge choices — not separate generator
 
 | Preset | Stack |
 |--------|--------|
+| `fastapi-auth` | FastAPI · Modular Monolith · Authentication · PostgreSQL · Alembic · Docker |
+| `django-auth` | Django · Modular Monolith · Authentication + Authorization · PostgreSQL · Docker |
 | `fastapi-postgres` | FastAPI · Modular Monolith · PostgreSQL · Alembic · Docker |
 | `fastapi-postgres-clean` | FastAPI · Clean Architecture · PostgreSQL · Alembic · Docker |
 | `fastapi-mongo` | FastAPI · Modular Monolith · MongoDB · Docker |
@@ -293,6 +297,13 @@ modules:
   - background-jobs
   - email
   - webhooks
+  - authentication
+  - authorization
+
+authentication:
+  registration: true
+  email_verification: true
+  password_reset: true
 
 storage:
   backend: s3
@@ -308,7 +319,13 @@ docker: true
 forge new --config forge.yaml
 ```
 
-Omit `modules` (or use `modules: []`) for a scaffold-only project. `storage` is only valid when Files is selected. Legacy `database: postgresql` remains supported as an SQL-only shorthand; prefer `persistence` for new configs.
+Omit `modules` (or use `modules: []`) for a scaffold-only project. `storage` is
+only valid when Files is selected; `authentication` options are valid whenever
+Authentication is selected or implied. Authorization implies Authentication.
+Verification/reset imply Email, but Background Jobs and Redis remain optional.
+Authentication requires SQL and, on FastAPI/Flask, Alembic. Legacy
+`database: postgresql` remains supported as an SQL-only shorthand; prefer
+`persistence` for new configs.
 
 `--preset` and `--config` cannot be combined.
 
@@ -339,7 +356,7 @@ Omit `modules` (or use `modules: []`) for a scaffold-only project. `storage` is 
 
 ## Project status
 
-**Current release: [0.4.0](https://github.com/Lacky227/forge-cli/releases/tag/v0.4.0)** — public development / alpha.
+**Current development version: 0.5.0** — public development / alpha.
 
 Current limitations:
 
@@ -348,7 +365,15 @@ Current limitations:
 - Redis integration is a client wiring — not cache/session/queue abstractions
 - MongoDB uses PyMongo directly — no ODM layer
 - At most one SQL database and one NoSQL database per project
-- Users / Auth modules are not in 0.4 (reserved for a later release)
+- MFA, passkeys/OAuth, audit platforms, cookie sessions, and automatic
+  Products/Categories/Files protection remain future work
+- Access JWTs remain valid until their short expiry after logout
+- Authentication rate limits are process-local (no Redis for throttling; not
+  cluster-wide); multi-instance deployments should also throttle at the gateway
+- Ownership helpers do not replace query scoping (IDOR remains a caller concern)
+- HSTS is opt-in (`AUTH_ENABLE_HSTS`) under production HTTPS assumptions
+- When Background Jobs delivers security email, RQ may temporarily hold raw
+  recovery tokens in job arguments (SQL stores digests only)
 - Webhooks are outgoing-only; Background Jobs use RQ only; Files storage is local or S3-compatible
 
 ---

@@ -1,0 +1,42 @@
+"""Django DRF throttle classes wrapping the process-local auth limiter."""
+
+from __future__ import annotations
+
+from rest_framework.throttling import BaseThrottle
+
+from {{ auth_rate_limit_import }} import check_rate_limit
+
+
+class _CategoryThrottle(BaseThrottle):
+    category = "credential"
+
+    def __init__(self) -> None:
+        self._retry_after = 1
+
+    def allow_request(self, request, view) -> bool:
+        # Prefer REMOTE_ADDR; do not trust spoofable X-Forwarded-For by default.
+        client_ip = request.META.get("REMOTE_ADDR") or "unknown"
+        decision = check_rate_limit(self.category, client_ip)
+        if decision.allowed:
+            return True
+        self._retry_after = decision.retry_after
+        return False
+
+    def wait(self) -> float:
+        return float(self._retry_after)
+
+
+class CredentialRateThrottle(_CategoryThrottle):
+    category = "credential"
+
+
+class RegistrationRateThrottle(_CategoryThrottle):
+    category = "registration"
+
+
+class RefreshRateThrottle(_CategoryThrottle):
+    category = "refresh"
+
+
+class RecoveryRateThrottle(_CategoryThrottle):
+    category = "recovery"

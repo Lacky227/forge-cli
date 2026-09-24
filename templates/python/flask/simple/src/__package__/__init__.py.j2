@@ -35,5 +35,10 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
 
     app.register_blueprint({{ b.module_id }}_bp)
 {% endfor %}
+{% if has_authentication %}
+    from {{ package_name }}.auth_hardening import install_security
+
+    install_security(app)
+{% endif %}
 
     return app

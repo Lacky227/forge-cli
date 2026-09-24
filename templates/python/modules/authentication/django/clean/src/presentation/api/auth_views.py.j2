@@ -1,0 +1,6 @@
+{% set auth_django_models_import = "infrastructure.persistence.authentication" %}
+{% set auth_django_security_import = "infrastructure.auth_security" %}
+{% set auth_django_delivery_import = "infrastructure.security_email" %}
+{% set auth_delivery_symbol = "security_email_delivery" %}
+{% set auth_django_throttles_import = "presentation.api.auth_throttles" %}
+{% include "auth_django_views.py.j2" %}

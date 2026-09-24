@@ -1,0 +1,17 @@
+"""Ports isolating authentication application policy from adapters."""
+
+from typing import Protocol
+
+
+class PasswordHasher(Protocol):
+    def hash(self, password: str) -> str: ...
+    def verify(self, password: str, encoded: str) -> bool: ...
+
+
+class AccessTokenCodec(Protocol):
+    def encode(self, claims: dict[str, object]) -> str: ...
+    def decode(self, token: str) -> dict[str, object]: ...
+
+
+class SecurityEmailDelivery(Protocol):
+    def __call__(self, to: str, purpose: str, token: str) -> None: ...

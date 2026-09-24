@@ -45,7 +45,7 @@ Forge generates a **project**, not a pile of empty folders. Depending on selecti
 - dependency manifests
 - environment configuration samples
 - database / ORM / migration setup when selected
-- optional **project modules** (Products, Categories, Files, Background Jobs, Email, Webhooks) when selected — see [modules.md](./modules.md)
+- optional **project modules** (Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication, Authorization) when selected — see [modules.md](./modules.md)
 - Docker support when selected
 - development tooling (e.g. tests, linters) when selected
 - short project documentation useful for continuing development (stack, setup, env, run, health, tooling, Docker/CI when selected)
@@ -87,8 +87,7 @@ The first product version targets **Python** project generation.
 - SQL databases: PostgreSQL, SQLite
 - NoSQL / infrastructure clients: MongoDB, Redis
 - ORMs: SQLAlchemy, Django ORM (SQL only)
-- Project modules: Products, Categories, Files, Background Jobs, Email, Webhooks (see [modules.md](./modules.md))
-- JWT authentication
+- Project modules: Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication, Authorization (see [modules.md](./modules.md))
 - Docker
 - pytest, Ruff
 - Optional CI (`github-actions`) — generates `.github/workflows/ci.yml` when selected with pytest and/or Ruff
@@ -124,6 +123,18 @@ The interactive flow is adaptive. Irrelevant questions must not appear. See [cli
 ### Explicit choices, owned code
 
 Forge surfaces decisions; it does not hide architecture behind opacity. Users should be able to read and continue the generated project without reverse-engineering a black box.
+
+## Security scope (0.5)
+
+Forge 0.5 generates owned email identities, password login, access JWTs,
+rotating persistent refresh sessions, optional verification/reset, a reusable
+authorization boundary, and Stage 3 hardening (process-local abuse throttling,
+trusted hosts, restricted CORS, security headers, auth-state cleanup).
+Authorization supplies roles, permissions, policies, and explicit ownership
+checks without automatically changing existing resource APIs.
+
+Deferred (not part of 0.5): MFA, passkeys/OAuth, audit platforms, cookie
+sessions, and automatic protection of Products/Categories/Files.
 
 ## Non-goals
 

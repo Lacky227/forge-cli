@@ -121,11 +121,15 @@ Error: destination already exists and is not empty: /path/to/my-api
 ```text
 Error: unknown preset 'fastapi-prod'.
 Available presets:
+  fastapi-auth
+  django-auth
   fastapi-postgres
   fastapi-postgres-clean
-  fastapi-mongo
   flask-postgres
   django-postgres
+  fastapi-mongo
+  fastapi-catalog
+  fastapi-files
 ```
 
 ```text
@@ -190,6 +194,8 @@ Presets do **not** store resolved facts (`migration_system`, `rest_framework`, i
 
 | ID | Stack |
 |----|--------|
+| `fastapi-auth` | FastAPI + Modular Monolith + Authentication + PostgreSQL + Alembic + Docker |
+| `django-auth` | Django + Modular Monolith + Authentication + Authorization + PostgreSQL + Docker |
 | `fastapi-postgres` | FastAPI + Modular Monolith + PostgreSQL + Alembic + Docker |
 | `fastapi-postgres-clean` | FastAPI + Clean Architecture + PostgreSQL + Alembic + Docker |
 | `fastapi-mongo` | FastAPI + Modular Monolith + MongoDB + Docker |
@@ -250,8 +256,9 @@ forge new --config forge.yaml          # uses name from YAML
 | `type` | yes | e.g. `rest-api` |
 | `framework` | yes | e.g. `fastapi`, `django`, `flask` |
 | `architecture` | yes | `simple`, `modular-monolith`, `clean` |
-| `modules` | no | list of module ids (`products`, `categories`, `files`, `background-jobs`, `email`, `webhooks`); omit or `[]` for none — see [modules.md](./modules.md) |
+| `modules` | no | list of module ids (`products`, `categories`, `files`, `background-jobs`, `email`, `webhooks`, `authentication`, `authorization`); omit or `[]` for none — see [modules.md](./modules.md) |
 | `storage` | no | `{ backend: local\|s3, minio?: bool }` when `files` is selected |
+| `authentication` | no | `{ registration?, email_verification?, password_reset? }` when Authentication is selected or implied; orphan blocks without the module are rejected |
 | `persistence` | no | mapping with optional `sql` / `nosql` keys (see below) |
 | `database` | no | **legacy SQL shorthand** — engine `postgresql` / `sqlite`, or `false`/`null` for none |
 | `orm` | no | optional explicit override; usually omit |
@@ -319,6 +326,30 @@ linting: true
 docker: true
 ```
 
+FastAPI with Authorization and both optional account-security flows:
+
+```yaml
+name: secure-api
+type: rest-api
+framework: fastapi
+architecture: clean
+modules:
+  - authorization # implies authentication
+authentication:
+  registration: true
+  email_verification: true # implies email
+  password_reset: true     # implies email
+persistence:
+  sql: postgresql
+migrations: true
+testing: true
+linting: true
+docker: true
+```
+
+Unknown Authentication fields are rejected. Background Jobs is still an
+independent module; when selected, security mail uses its existing RQ worker.
+
 FastAPI with SQL + Redis:
 
 ```yaml
@@ -374,7 +405,9 @@ docker: true
 
 - Framework options depend on language + project type (FastAPI, Django, Flask, …)
 - Architecture for REST API: Simple, Modular Monolith, Clean Architecture
-- **Project modules:** optional multi-select (Products, Categories, Files, Background Jobs, Email, Webhooks). See [modules.md](./modules.md)
+- **Project modules:** optional multi-select (Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication, Authorization). See [modules.md](./modules.md)
+- **Authentication:** announces its SQL requirement, requires Alembic on FastAPI/Flask, asks about registration, then offers optional Email verification and Password reset. Rate limits, trusted hosts, CORS, HSTS, and cleanup use secure defaults / env vars — **no additional wizard questions**
+- **Authorization:** announces that Authentication is implied; account-security email flows announce that Email is implied
 - **FastAPI / Flask:** if modules requiring SQL are selected, ask for an SQL engine (no silent default); otherwise optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
 - **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three

@@ -1,0 +1,4 @@
+{% set auth_email_service_import = package_name ~ ".infrastructure.email" %}
+{% set auth_jobs_import = package_name ~ ".infrastructure.jobs.queue" %}
+{% set auth_email_port_import = package_name ~ ".application.auth_ports" %}
+{% include "auth_security_email.py.j2" %}

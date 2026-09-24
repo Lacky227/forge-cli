@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+from {{ authorization_models_import }} import User
+from {{ authorization_service_import }} import (
+    assign_role, effective_permissions, grant_permission, has_permission,
+    owner_or_permission, remove_role, revoke_permission,
+)
+
+
+def test_native_roles_permissions_and_ownership(db):
+    user = User.objects.create_user(email="member@example.com", password="correct horse battery staple")
+    assert effective_permissions(user) == frozenset()
+    assign_role(user, "admin")
+    assert has_permission(user, "users:manage")
+    assert owner_or_permission(user, user.pk, "users:manage")
+    assert owner_or_permission(user, "someone-else", "users:manage")
+    revoke_permission("admin", "users:manage")
+    user = User.objects.get(pk=user.pk)
+    assert not has_permission(user, "users:manage")
+    grant_permission("admin", "users:manage")
+    remove_role(user, "admin")
+    assert not has_permission(user, "users:manage")
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    assert not has_permission(user, "users:manage")

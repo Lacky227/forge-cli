@@ -6,6 +6,9 @@ from fastapi import FastAPI
 
 from {{ package_name }}.api.routes import api_router
 from {{ package_name }}.core.config import settings
+{% if has_authentication %}
+from {{ package_name }}.security.hardening import install_security
+{% endif %}
 
 {% if is_mongodb or is_redis_nosql %}
 
@@ -35,5 +38,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 {% else %}
 app = FastAPI(title=settings.app_name)
+{% endif %}
+{% if has_authentication %}
+install_security(app)
 {% endif %}
 app.include_router(api_router)

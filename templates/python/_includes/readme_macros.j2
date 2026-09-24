@@ -113,6 +113,42 @@ POSTs JSON to `WEBHOOK_URL` with timeout/`WEBHOOK_MAX_RETRIES`. No public
 SSRF proxy endpoint.
 {% endif %}
 
+{% if has_authentication %}
+### Authentication
+
+Email identity with Argon2id passwords, short-lived JWT access tokens
+(`Authorization: Bearer`), and rotating opaque refresh sessions. Set a strong
+`AUTH_JWT_SECRET` before production (`APP_ENV=production` rejects placeholders).
+
+Configure `{% if framework == "django" %}`DJANGO_ALLOWED_HOSTS` (or `TRUSTED_HOSTS`){% else %}`TRUSTED_HOSTS`{% endif %}`
+for real hostnames, and set `CORS_ALLOWED_ORIGINS` to the exact frontend
+origin(s) that should call the API (empty = no browser CORS). Process-local
+rate limits protect login/register/refresh/recovery; multi-instance
+deployments should also throttle at the gateway. Logout revokes refresh
+families — issued access tokens remain valid until their short TTL.
+
+{% if framework == "django" %}
+Run `uv run python manage.py cleanup_auth_state` on a schedule to remove
+expired action tokens and refresh sessions past family expiry.
+{% else %}
+Run `uv run python -m {{ package_name }}{% if architecture == "modular-monolith" %}.security{% elif architecture == "clean" %}.infrastructure{% endif %}.auth_cleanup` on a schedule to remove expired action tokens and refresh sessions past family expiry.
+{% endif %}
+{% if authentication_email_verification or authentication_password_reset %}
+
+Configure SMTP and `AUTH_PUBLIC_BASE_URL` for verification/reset links. When
+Background Jobs is selected, raw tokens appear in Redis job args until the
+worker runs (`result_ttl`/`failure_ttl` are zero; only digests are stored in SQL).
+{% endif %}
+{% endif %}
+{% if has_authorization %}
+### Authorization
+
+Roles and permission helpers (`authenticated`, `verified`, permission checks,
+owner-or-permission) are available for new endpoints. Existing Products,
+Categories, and Files routes are not automatically protected — apply policies
+explicitly and keep list queries scoped to prevent IDOR.
+{% endif %}
+
 {% if has_products or has_categories or has_files %}
 List and detail endpoints use page-number pagination where the framework supports it (page size 20).
 {% endif %}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,9 @@ _SQL_ONLY_FILES = frozenset(
 _SQL_ONLY_DIR_NAMES = frozenset({"persistence"})
 _MONGODB_FILES = frozenset({"mongodb.py.j2"})
 _REDIS_FILES = frozenset({"redis_client.py.j2"})
+_ACCOUNT_SECURITY_FILES = frozenset(
+    {"security_email.py.j2", "test_account_security.py.j2"}
+)
 
 
 def templates_root() -> Path:
@@ -151,6 +155,8 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
         return False
     if name == ".env.example.j2" and not plan.emits_env_example:
         return False
+    if name == ".env.j2" and not plan.emits_local_env:
+        return False
     if name in _SQL_ONLY_FILES and not features.database:
         return False
     if "models" in parts and name != "models.py.j2" and not features.database:
@@ -159,9 +165,11 @@ def should_emit(relative: Path, plan: GenerationPlan) -> bool:
         return False
     if name in _MONGODB_FILES and not features.mongodb:
         return False
-    if name in _REDIS_FILES and not features.redis_nosql:
+    if name in _ACCOUNT_SECURITY_FILES and not (
+        features.email_verification or features.password_reset
+    ):
         return False
-    return True
+    return name not in _REDIS_FILES or features.redis_nosql
 
 
 def output_relative_path(relative: Path, plan: GenerationPlan) -> Path:
@@ -297,6 +305,10 @@ def render_tree(
         jobs_by_root[root].append(job)
 
     written: list[Path] = []
+    generated_secret_values = {
+        spec.environment_variable: secrets.token_urlsafe(spec.entropy_bytes)
+        for spec in plan.generated_secrets
+    }
     for root in roots_in_order:
         jobs = jobs_by_root.get(root, [])
         if not jobs:
@@ -308,6 +320,7 @@ def render_tree(
                 destination,
                 plan,
                 extra_dirs=include_roots,
+                generated_secret_values=generated_secret_values,
             )
         )
 
@@ -341,11 +354,13 @@ def _render_planned_outputs(
     plan: GenerationPlan,
     *,
     extra_dirs: list[Path] | None = None,
+    generated_secret_values: dict[str, str] | None = None,
 ) -> list[Path]:
     """Render planned outputs from one template root into ``destination``."""
     env = create_env(template_dir, extra_dirs=extra_dirs)
     written: list[Path] = []
     jinja_ctx = plan.as_jinja_dict()
+    jinja_ctx["generated_secret_values"] = generated_secret_values or {}
 
     for job in jobs:
         target = destination / job.relative_path

@@ -1,0 +1,278 @@
+"""Security hardening regression tests for Authentication."""
+
+from __future__ import annotations
+
+{% set auth_test_fixture = auth_test_fixture|default("client") %}
+{% set auth_test_django = auth_test_django|default(false) %}
+{% set auth_test_prefix = auth_test_prefix|default("/auth") %}
+{% set auth_test_slash = auth_test_slash|default("") %}
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+{% if auth_test_django %}
+import {{ auth_rate_limit_module }} as rate_limit_module
+from {{ auth_django_models_import }} import (
+{% if authentication_email_verification or authentication_password_reset %}
+    AuthActionToken,
+{% endif %}
+    AuthSession,
+    User,
+)
+from {{ auth_django_cleanup_import }} import (
+    cleanup_auth_state,
+)
+from {{ auth_sensitive_logging_module }} import redact_value
+
+pytestmark = pytest.mark.django_db
+{% else %}
+import {{ auth_cleanup_module }} as cleanup_module
+import {{ auth_rate_limit_module }} as rate_limit_module
+{% if authentication_email_verification or authentication_password_reset %}
+from {{ auth_models_import }} import AuthActionToken, AuthSession, User
+{% else %}
+from {{ auth_models_import }} import AuthSession, User
+{% endif %}
+from {{ auth_sensitive_logging_module }} import redact_value
+from {{ auth_service_import }} import validate_runtime_secret
+{% if auth_cleanup_flask | default(false) %}
+from {{ auth_database_import }} import get_session
+{% else %}
+from {{ auth_database_import }} import SessionLocal, engine
+{% endif %}
+{% endif %}
+
+EMAIL = "harden@example.com"
+PASSWORD = "correct horse battery staple"
+
+
+def response_json(response):
+{% if auth_test_django %}
+    return response.data
+{% else %}
+    value = response.json
+    return value() if callable(value) else value
+{% endif %}
+
+
+def header(response, name: str) -> str:
+    items = {str(k).lower(): str(v) for k, v in response.headers.items()}
+    return items.get(name.lower(), "")
+
+
+def post(client, path, *, json=None):
+{% if auth_test_django %}
+    return client.post(path, json or {}, format="json")
+{% else %}
+    return client.post(path, json=json or {})
+{% endif %}
+
+
+def get(client, path, *, headers=None):
+{% if auth_test_django %}
+    return client.get(path)
+{% else %}
+    return client.get(path, headers=headers or {})
+{% endif %}
+
+
+def test_login_rate_limit_returns_429_with_retry_after({{ auth_test_fixture }}, monkeypatch):
+    client = {{ auth_test_fixture }}
+    limiter = rate_limit_module.limiter
+    limiter.reset()
+    clock = {"now": 1000.0}
+    limiter.set_clock(lambda: clock["now"])
+    monkeypatch.setenv("AUTH_RATE_LIMIT_CREDENTIAL", "3")
+    monkeypatch.setenv("AUTH_RATE_LIMIT_CREDENTIAL_WINDOW", "60")
+    responses = [
+        post(
+            client,
+            "{{ auth_test_prefix }}/login{{ auth_test_slash }}",
+            json={"email": EMAIL, "password": "wrong-password-value"},
+        )
+        for _ in range(4)
+    ]
+    assert responses[-1].status_code == 429
+    assert int(header(responses[-1], "Retry-After") or "0") >= 1
+    limiter.reset()
+
+
+def test_security_headers_and_token_no_store({{ auth_test_fixture }}):
+    client = {{ auth_test_fixture }}
+{% if authentication_registration and not authentication_email_verification %}
+    post(
+        client,
+        "{{ auth_test_prefix }}/register{{ auth_test_slash }}",
+        json={"email": EMAIL, "password": PASSWORD},
+    )
+    login = post(
+        client,
+        "{{ auth_test_prefix }}/login{{ auth_test_slash }}",
+        json={"email": EMAIL, "password": PASSWORD},
+    )
+    assert login.status_code == 200
+    assert header(login, "Cache-Control").lower() == "no-store"
+{% endif %}
+    health = get(client, "{{ auth_test_health|default('/health') }}{{ auth_test_slash if auth_test_django else '' }}")
+    assert header(health, "X-Content-Type-Options") == "nosniff"
+    assert header(health, "Referrer-Policy") == "no-referrer"
+    assert header(health, "X-Frame-Options").upper() == "DENY"
+
+
+def test_cors_not_wildcard_by_default({{ auth_test_fixture }}):
+    client = {{ auth_test_fixture }}
+    response = get(
+        client,
+        "{{ auth_test_health|default('/health') }}{{ auth_test_slash if auth_test_django else '' }}",
+        headers={"Origin": "https://evil.example"},
+    )
+    assert header(response, "Access-Control-Allow-Origin") == ""
+
+
+def test_cleanup_removes_expired_preserves_in_family_sessions({{ auth_test_fixture }}):
+{% if auth_test_django %}
+    user = User.objects.create_user(email=EMAIL, password=PASSWORD)
+    now = datetime.now(UTC)
+    expired = AuthSession.objects.create(
+        user=user,
+        family_id="11111111-1111-1111-1111-111111111111",
+        token_digest="a" * 64,
+        expires_at=now - timedelta(days=1),
+    )
+    active = AuthSession.objects.create(
+        user=user,
+        family_id="22222222-2222-2222-2222-222222222222",
+        token_digest="b" * 64,
+        expires_at=now + timedelta(days=10),
+    )
+    replaced = AuthSession.objects.create(
+        user=user,
+        family_id="22222222-2222-2222-2222-222222222222",
+        token_digest="c" * 64,
+        expires_at=now + timedelta(days=10),
+        revoked_at=now,
+    )
+{% if authentication_email_verification or authentication_password_reset %}
+    AuthActionToken.objects.create(
+        user=user,
+        purpose="verify_email",
+        token_digest="d" * 64,
+        expires_at=now - timedelta(hours=1),
+    )
+    live_token = AuthActionToken.objects.create(
+        user=user,
+        purpose="verify_email",
+        token_digest="e" * 64,
+        expires_at=now + timedelta(hours=1),
+    )
+{% endif %}
+    result = cleanup_auth_state(now=now)
+    assert result["sessions"] >= 1
+    assert not AuthSession.objects.filter(pk=expired.pk).exists()
+    assert AuthSession.objects.filter(pk=active.pk).exists()
+    assert AuthSession.objects.filter(pk=replaced.pk).exists()
+{% if authentication_email_verification or authentication_password_reset %}
+    assert result["action_tokens"] >= 1
+    assert AuthActionToken.objects.filter(pk=live_token.pk).exists()
+{% endif %}
+{% else %}
+{% if auth_cleanup_flask | default(false) %}
+    generator = get_session()
+    db = next(generator)
+    bind = db.get_bind()
+{% else %}
+    bind = engine
+    db = SessionLocal()
+{% endif %}
+    User.__table__.metadata.create_all(bind=bind)
+    try:
+        user = User(
+            email=EMAIL,
+            canonical_email=EMAIL.casefold(),
+            password_hash="x",
+            is_active=True,
+            is_verified=True,
+        )
+        db.add(user)
+        db.flush()
+        now = datetime.now(UTC)
+        expired = AuthSession(
+            user_id=user.id,
+            family_id="11111111-1111-1111-1111-111111111111",
+            token_digest="a" * 64,
+            expires_at=now - timedelta(days=1),
+        )
+        active = AuthSession(
+            user_id=user.id,
+            family_id="22222222-2222-2222-2222-222222222222",
+            token_digest="b" * 64,
+            expires_at=now + timedelta(days=10),
+        )
+        replaced = AuthSession(
+            user_id=user.id,
+            family_id="22222222-2222-2222-2222-222222222222",
+            token_digest="c" * 64,
+            expires_at=now + timedelta(days=10),
+            revoked_at=now,
+        )
+        db.add_all([expired, active, replaced])
+{% if authentication_email_verification or authentication_password_reset %}
+        dead = AuthActionToken(
+            user_id=user.id,
+            purpose="verify_email",
+            token_digest="d" * 64,
+            expires_at=now - timedelta(hours=1),
+        )
+        live = AuthActionToken(
+            user_id=user.id,
+            purpose="verify_email",
+            token_digest="e" * 64,
+            expires_at=now + timedelta(hours=1),
+        )
+        db.add_all([dead, live])
+{% endif %}
+        db.commit()
+        expired_id, active_id, replaced_id = expired.id, active.id, replaced.id
+{% if authentication_email_verification or authentication_password_reset %}
+        live_id = live.id
+{% endif %}
+        result = cleanup_module.cleanup_auth_state(db, now=now)
+        db.expire_all()
+        assert result["sessions"] >= 1
+        assert db.get(AuthSession, expired_id) is None
+        assert db.get(AuthSession, active_id) is not None
+        assert db.get(AuthSession, replaced_id) is not None
+{% if authentication_email_verification or authentication_password_reset %}
+        assert result["action_tokens"] >= 1
+        assert db.get(AuthActionToken, live_id) is not None
+{% endif %}
+    finally:
+{% if auth_cleanup_flask | default(false) %}
+        generator.close()
+{% else %}
+        db.close()
+{% endif %}
+{% endif %}
+
+
+def test_sensitive_logging_redacts_secrets():
+    payload = redact_value(
+        {
+            "password": "secret-value",
+            "authorization": "Bearer abc.def.ghi",
+            "nested": {"refresh_token": "opaque-token", "ok": "fine"},
+        }
+    )
+    assert payload["password"] == "[REDACTED]"
+    assert payload["authorization"] == "[REDACTED]"
+    assert payload["nested"]["refresh_token"] == "[REDACTED]"
+    assert payload["nested"]["ok"] == "fine"
+
+
+{% if not auth_test_django %}
+def test_production_placeholder_secret_rejected(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "changeme")
+    with pytest.raises(RuntimeError, match="AUTH_JWT_SECRET"):
+        validate_runtime_secret()
+{% endif %}

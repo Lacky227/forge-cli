@@ -1,0 +1,13 @@
+{% set auth_test_module = package_name ~ ".presentation.auth" %}
+{% set auth_rate_limit_module = package_name ~ ".infrastructure.rate_limit" %}
+{% set auth_cleanup_module = package_name ~ ".infrastructure.auth_cleanup" %}
+{% set auth_hardening_module = package_name ~ ".infrastructure.hardening" %}
+{% set auth_sensitive_logging_module = package_name ~ ".infrastructure.sensitive_logging" %}
+{% set auth_service_import = package_name ~ ".infrastructure.auth_security" %}
+{% set auth_models_import = package_name ~ ".infrastructure.persistence.authentication" %}
+{% set auth_database_import = package_name ~ ".infrastructure.database" %}
+{% set auth_test_prefix = "/api/auth" %}
+{% set auth_test_slash = "" %}
+{% set auth_test_health = "/health" %}
+{% set auth_cleanup_flask = true %}
+{% include "auth_security_hardening_tests.py.j2" %}

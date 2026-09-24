@@ -1,0 +1,29 @@
+from django.apps import AppConfig
+
+
+class IdentityConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "identity"
+{% if has_authorization %}
+
+    def ready(self):
+        from django.db.models.signals import post_migrate
+        post_migrate.connect(seed_baseline_authorization, sender=self, dispatch_uid="forge.identity.rbac")
+
+
+def seed_baseline_authorization(**_kwargs):
+    from django.contrib.auth.models import Group, Permission
+    from django.contrib.contenttypes.models import ContentType
+    from identity.models import User
+
+    member, _ = Group.objects.get_or_create(name="member")
+    admin, _ = Group.objects.get_or_create(name="admin")
+    content_type = ContentType.objects.get_for_model(User)
+    permission, _ = Permission.objects.get_or_create(
+        content_type=content_type,
+        codename="manage_users",
+        defaults={"name": "Can manage user authorization assignments"},
+    )
+    admin.permissions.add(permission)
+    _ = member
+{% endif %}

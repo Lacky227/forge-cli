@@ -37,6 +37,20 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+{% if has_authentication %}
+
+[tool.ruff.lint.per-file-ignores]
+"**/*auth*.py" = ["E501", "I001", "UP017"]
+"**/rate_limit.py" = ["E501", "I001", "UP017"]
+"**/hardening.py" = ["E501", "I001", "UP017"]
+"**/sensitive_logging.py" = ["E501", "I001", "UP017"]
+"**/main.py" = ["I001"]
+"migrations/versions/0001_authentication.py" = ["E501", "I001"]
+"tests/test_authentication.py" = ["E501", "I001"]
+"tests/test_account_security.py" = ["E501", "I001"]
+"tests/test_security_hardening.py" = ["E501", "I001"]
+"tests/conftest.py" = ["E501", "I001"]
+{% endif %}
 {% endif %}
 
 {% if migrations %}

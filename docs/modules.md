@@ -20,13 +20,16 @@ contributions.
 | Background Jobs | `background-jobs` | no | RQ workers (implies Redis) |
 | Email | `email` | no | SMTP email service |
 | Webhooks | `webhooks` | no | Outgoing delivery via Background Jobs |
+| Authentication | `authentication` | yes | Email identity, JWT access, rotating refresh sessions |
+| Authorization | `authorization` | yes | Implies Authentication; RBAC, policies, ownership helpers |
 
 Modules are independently multi-selectable. Selecting **Webhooks** expands to
 include **Background Jobs** (and therefore Redis). When **both** Products and
 Categories are selected, Forge generates a many-to-one relationship.
 
-Authentication, users, and security modules are reserved for a later release
-(not part of 0.4).
+Authorization implies Authentication. Enabling Authentication email
+verification or password reset implies Email; neither option implies Background
+Jobs or Redis.
 
 **Django Clean note:** Django Clean module packs wire presentation (DRF) and ORM
 models in `infrastructure.persistence`; they do **not** add full
@@ -42,6 +45,8 @@ files                   →    storage (local | s3)
 background-jobs         →    RQ + Redis
 webhooks                →    background-jobs → RQ + Redis
 email                   →    SMTP configuration
+authorization           →    authentication → SQL (+ Alembic outside Django)
+verification/reset      →    email; optional RQ delivery when jobs is selected
 ```
 
 Redis may already be selected as NoSQL persistence. Background Jobs **reuse**
@@ -60,6 +65,12 @@ modules:
   - background-jobs
   - email
   - webhooks
+  - authorization
+
+authentication:
+  registration: true
+  email_verification: true
+  password_reset: true
 
 storage:
   backend: s3          # local | s3 (required shape when files is selected)
@@ -93,6 +104,100 @@ modules. Follow-ups are adaptive:
 - **Django** — SQL remains required as before
 - **FastAPI / Flask** — if modules requiring SQL are selected, Forge asks for
   an SQL engine (it does **not** silently pick one)
+- **Authentication** — announces SQL, requires Alembic on FastAPI/Flask, and
+  asks whether public registration is enabled and which optional email flows
+  are enabled
+- **Authorization** — announces implied Authentication; no IAM questionnaire
+
+## Authentication
+
+Authentication is one user-facing module. Identity, password credentials,
+access tokens, refresh sessions, and baseline security are internal parts of
+that module—not additional checkboxes.
+
+Generated endpoints cover registration (when enabled), login, refresh, logout,
+logout-all, current user, and password change. Email lookup trims surrounding
+whitespace and case-folds without provider-specific rewriting. Passwords use
+Argon2id with a 15-character minimum, a 128-character/1024-byte maximum, and no
+composition or periodic-expiry rules.
+
+Access tokens are HS256 JWTs with a 15-minute lifetime and strict algorithm,
+issuer, audience, purpose, and required-claim checks. Opaque refresh tokens use
+256 bits of randomness, are stored only as SHA-256 digests, rotate
+transactionally, retain a 30-day absolute family expiry, and revoke the family
+on replay. Logout revokes the refresh family; an issued access token can remain
+valid until its short expiry. Logout-all and password change increment
+`auth_version`, invalidating older access tokens during identity resolution.
+
+Real generation creates `AUTH_JWT_SECRET` only in gitignored `.env`.
+`.env.example` leaves it blank, while plan and dry-run disclose no value.
+Production rejects missing or obvious placeholder secrets. Authentication
+alone does not imply Redis, SMTP, RQ, recovery, verification, Authorization, or
+protection of existing module endpoints.
+
+### Hardening (Stage 3)
+
+When Authentication is selected, Forge also generates:
+
+- **Process-local rate limiting** on register/login/refresh and recovery
+  *request* endpoints (`email-verification/request`, `password/forgot`)
+  (credential / registration / refresh / recovery buckets, keyed by
+  `category + client IP`, never by email alone). Confirm/reset endpoints rely
+  on opaque high-entropy tokens rather than the recovery request bucket.
+  Returns HTTP 429 with `Retry-After`. Limits are env-configurable with secure
+  defaults; there is **no Redis dependency** and no cluster-wide shared counter
+  — multi-instance deployments must throttle at the gateway as well.
+- **Trusted hosts** — FastAPI/Flask `TRUSTED_HOSTS` (default localhost loopback
+  + `testserver`); Django prefers `DJANGO_ALLOWED_HOSTS` and accepts
+  `TRUSTED_HOSTS` as an alias. Production (`APP_ENV=production`) rejects empty
+  or `*` host lists; Django also rejects `DEBUG=true` with Authentication.
+- **CORS** — `CORS_ALLOWED_ORIGINS` (default empty = no cross-origin
+  allowance). Never pairs `*` with credentials; Bearer tokens use
+  `allow_credentials=False`.
+- **Security headers** — `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`. HSTS only when
+  `APP_ENV=production` **and** `AUTH_ENABLE_HSTS=true` (opt-in; never for
+  localhost by default).
+- **Auth-route body limits** (~16 KiB Content-Length) on FastAPI/Flask without
+  affecting Files uploads. Broader body limits remain a reverse-proxy concern.
+- **Cleanup maintenance** — FastAPI/Flask
+  `python -m <package>[.security|.infrastructure].auth_cleanup`; Django
+  `manage.py cleanup_auth_state`. Removes expired action tokens and refresh
+  sessions past family `expires_at` while retaining in-family replaced sessions
+  needed for replay detection. Scheduling is the deployment's responsibility.
+- **Sensitive logging helpers** — redaction utilities for passwords, tokens,
+  Authorization headers, and secrets. RQ security-email jobs use
+  `result_ttl=0` / `failure_ttl=0` and a token-free description; raw tokens
+  still appear in Redis job args until the worker runs (only digests are in
+  SQL).
+
+### Account security flows
+
+Email verification (24-hour default) and password reset (30-minute default)
+share a 256-bit opaque action-token model. Only SHA-256 digests persist; tokens
+are purpose-bound, expiring, replacement-invalidated, transactionally consumed,
+and single-use. Verification rejects unverified login with the same generic
+credential response. Forgot-password and verification-request responses do not
+disclose account existence. Reset validates the Stage 1 password policy,
+increments `auth_version`, and revokes refresh sessions. Delivery uses the
+existing Email service directly, or its existing RQ worker when Background
+Jobs is selected. `AUTH_PUBLIC_BASE_URL` must be configured for delivered links.
+
+## Authorization
+
+FastAPI and Flask generate Role, Permission, UserRole, and RolePermission
+persistence plus explicit assignment/revocation services. Django maps the same
+semantics to native Groups and Permissions; Forge `admin` is a Group and does
+not imply `is_staff` or `is_superuser`. Baseline `member` and `admin` roles and
+the justified `users:manage` permission are provisioned idempotently, with new
+registrations receiving only `member`.
+
+Policies cover authenticated, verified, one permission, any permission, and
+owner-or-permission checks. Permission codes use `<resource>:<action>`.
+Ownership checks do not replace query scoping: list/detail queries must still
+be constrained to records the caller can access to prevent IDOR. Forge exposes
+no public role/permission administration API, and it does not silently protect
+existing Products, Categories, or Files endpoints.
 
 ## Files
 
@@ -191,7 +296,10 @@ re-derive the infrastructure graph.
 
 Selected modules appear under **Modules** (implied ones marked). Additional
 sections when applicable: Storage, Background Jobs, Email, Webhooks,
-Processes, Infrastructure (Redis when implied), Docker services.
+Identity/Authentication/Security/Authorization, Processes, Infrastructure
+(Redis when implied), Docker services. Security hardening facts (process-local
+throttling, trusted hosts, CORS, cleanup) appear under **Security** when
+Authentication is selected.
 
 ## Testing
 

@@ -27,9 +27,15 @@ Python **REST API** only. CLI / Worker project types are catalogued but not gene
 ### Project modules
 
 Optional selectable modules (`products`, `categories`, `files`, `background-jobs`,
-`email`, `webhooks`) add architecture-native capabilities. See [modules.md](./modules.md)
-for the catalog, storage options, Redis/RQ implications, and composition model.
-Representative cases are included in `SUPPORTED_GENERATION_CASES`.
+`email`, `webhooks`, `authentication`, `authorization`) add architecture-native
+capabilities. See [modules.md](./modules.md) for the catalog, storage options,
+Redis/RQ implications, Authentication/Authorization contracts, and composition
+model.
+
+Representative Products/Files/Jobs cases are included in
+`SUPPORTED_GENERATION_CASES`. Authentication and Authorization are covered by
+dedicated security tests and the Stage 3 nine-family executable matrix (not by
+the published compatibility-case list alone).
 
 ### Persistence
 
@@ -173,6 +179,7 @@ Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are
 - `health_path` — liveness route (FastAPI `/health` for all architectures; Flask `/api/health`; Django `/api/health/`)
 - `emits_env_example` — true when `environment_variables` is non-empty (Docker alone does not emit an empty `.env.example`)
 - `ci_provider` — when `github-actions`, generation emits `.github/workflows/ci.yml` from `templates/python/_shared/` (Python **3.12**, `uv sync`, then selected Ruff/pytest; no DB service containers)
+- `generated_secrets` — sensitive values materialized only during real rendering; Authentication contributes `AUTH_JWT_SECRET`
 
 Post-generation **next steps** (CLI summary and dry-run informational commands) follow the local-dev path: start dependency containers with `docker compose up -d <docker_services>` when that list is non-empty, then migrate/run on the host. Bare `docker compose up -d` is never emitted. Full-stack `docker compose up --build` is documented in the generated README Docker section (and is the only Compose command when Docker is selected without persistence).
 
@@ -187,6 +194,30 @@ Generated projects expose a **liveness** health endpoint only (`{"status":"ok"}`
 **Django:** `uv sync` → `python manage.py check` → `migrate` → `pytest` → `ruff` (Compose config when Docker selected).
 
 Live PostgreSQL containers are optional and environment-dependent.
+
+Authentication adds structural generation across all nine families, SQLite
+migration and lifecycle execution for representative FastAPI/Flask/Django
+Simple/Modular/Clean projects, PostgreSQL/Compose structure checks, pairwise
+existing-module composition, and installed-wheel generation. Real generation
+writes a random `AUTH_JWT_SECRET` only to gitignored `.env`; `.env.example` is
+blank for that value, and plan/dry-run never create or display it.
+
+Authorization and account-security flows use the same nine-family quality bar.
+Generated FastAPI/Flask migrations add RBAC and shared action-token tables;
+Django uses native Groups/Permissions and adds only the action-token model.
+Executable coverage includes role/permission mutation and policies,
+verification/reset lifecycle and invalidation, direct Email delivery, optional
+RQ delivery, and idempotent baseline provisioning. PostgreSQL/Docker validation
+checks DB/API wiring and confirms Redis/worker appear only when Background Jobs
+is selected. Dry-run lists every policy, delivery, migration, and generated test
+artifact without sampling tokens, secrets, sending mail, or creating a target.
+
+Stage 3 hardening (process-local throttling, trusted hosts, CORS, security
+headers, auth cleanup, sensitive-log helpers) is emitted whenever Authentication
+is selected. Plan output surfaces hardening facts under **Security**; env
+metadata includes host/CORS/HSTS/rate-limit knobs without new wizard questions.
+Generated projects document reverse-proxy responsibility for cluster-wide abuse
+protection and request-body limits beyond auth-route Content-Length checks.
 
 ## Forge tests vs generated tests
 

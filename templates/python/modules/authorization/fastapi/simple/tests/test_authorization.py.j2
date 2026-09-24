@@ -1,0 +1,5 @@
+{% set authorization_app_import = package_name ~ ".main" %}
+{% set authorization_database_import = package_name ~ ".database" %}
+{% set authorization_models_import = package_name ~ ".auth_models" %}
+{% set authorization_service_import = package_name ~ ".authorization_service" %}
+{% include "authorization_fastapi_tests.py.j2" %}

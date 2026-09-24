@@ -1,0 +1,86 @@
+"""ASGI HTTP hardening helpers for Authentication-enabled FastAPI apps."""
+
+from __future__ import annotations
+
+import os
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import PlainTextResponse
+
+# testserver is included so FastAPI TestClient works under local defaults.
+_DEFAULT_TRUSTED = "localhost,127.0.0.1,[::1],testserver"
+_AUTH_BODY_LIMIT = 16 * 1024
+
+
+def _csv_env(name: str, default: str = "") -> list[str]:
+    raw = os.environ.get(name, default)
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def trusted_hosts() -> list[str]:
+    hosts = _csv_env("TRUSTED_HOSTS", _DEFAULT_TRUSTED)
+    app_env = os.environ.get("APP_ENV", "development").lower()
+    if app_env == "production" and (not hosts or hosts == ["*"]):
+        raise RuntimeError(
+            "TRUSTED_HOSTS must be an explicit non-wildcard list in production"
+        )
+    return hosts
+
+
+def cors_origins() -> list[str]:
+    return _csv_env("CORS_ALLOWED_ORIGINS", "")
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        if (
+            os.environ.get("APP_ENV", "development").lower() == "production"
+            and os.environ.get("AUTH_ENABLE_HSTS", "false").lower()
+            in {"1", "true", "yes"}
+        ):
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
+
+
+class AuthBodyLimitMiddleware(BaseHTTPMiddleware):
+    """Reject oversized Content-Length on /auth routes only (not file uploads)."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if "/auth" in path:
+            raw = request.headers.get("content-length")
+            if raw is not None:
+                try:
+                    length = int(raw)
+                except ValueError:
+                    length = -1
+                if length > _AUTH_BODY_LIMIT:
+                    return PlainTextResponse("Request body too large", status_code=413)
+        return await call_next(request)
+
+
+def install_security(app: FastAPI) -> None:
+    """Mount trusted-host, optional CORS, security headers, and auth body limits."""
+    hosts = trusted_hosts()
+    # TrustedHostMiddleware rejects Host mismatches; www_redirect stays off.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts, www_redirect=False)
+    origins = cors_origins()
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "Accept"],
+        )
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(AuthBodyLimitMiddleware)

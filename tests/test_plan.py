@@ -104,7 +104,6 @@ docker: false
     assert "from-config" in output
     assert "Flask" in output
     assert "SQLite" in output
-    assert "from-config" not in before or True
     assert not (tmp_path / "from-config").exists()
     assert {p.name for p in tmp_path.iterdir()} == before
 

@@ -1,0 +1,45 @@
+"""Redact authentication secrets before they reach logs."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+_SENSITIVE_KEYS = frozenset(
+    {
+        "password",
+        "current_password",
+        "new_password",
+        "refresh_token",
+        "access_token",
+        "token",
+        "authorization",
+        "auth_jwt_secret",
+        "smtp_password",
+        "secret",
+    }
+)
+_BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9\-._~+/]+=*")
+_JWT_RE = re.compile(r"\beyJ[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\b")
+
+
+def redact_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[Any, Any] = {}
+        for key, item in value.items():
+            if str(key).lower() in _SENSITIVE_KEYS:
+                redacted[key] = "[REDACTED]"
+            else:
+                redacted[key] = redact_value(item)
+        return redacted
+    if isinstance(value, (list, tuple)):
+        return type(value)(redact_value(item) for item in value)
+    if isinstance(value, str):
+        text = _BEARER_RE.sub("Bearer [REDACTED]", value)
+        return _JWT_RE.sub("[REDACTED_JWT]", text)
+    return value
+
+
+def safe_log_extra(**kwargs: Any) -> dict[str, Any]:
+    """Return kwargs safe to pass to logging ``extra``."""
+    return redact_value(kwargs)

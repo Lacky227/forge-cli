@@ -73,13 +73,19 @@ jobs:
               names = zf.namelist()
               metadata = zf.read(next(n for n in names if n.endswith(".dist-info/METADATA"))).decode()
           assert "Name: forge-scaffolder" in metadata
-          assert "Version: 0.4.0" in metadata
+          assert "Version: 0.5.0" in metadata
           templates = [n for n in names if n.startswith("forge/templates/python/")]
           assert templates, "missing forge/templates/python in wheel"
           for framework in ("fastapi", "django", "flask"):
               assert any(f"/{framework}/" in n for n in templates), framework
+          for module in ("authentication", "authorization"):
+              for framework in ("fastapi", "django", "flask"):
+                  for architecture in ("simple", "modular-monolith", "clean"):
+                      fragment = f"/modules/{module}/{framework}/{architecture}/"
+                      assert any(fragment in n for n in templates), fragment
           assert any(n.endswith("mongodb.py.j2") for n in templates)
           assert any(n.endswith("redis_client.py.j2") for n in templates)
+          assert any(n.endswith("auth_rate_limit.py.j2") for n in templates)
           assert any(
               "/_shared/" in n and n.endswith("ci.yml.j2") for n in templates
           ), "missing shared GitHub Actions CI template"

@@ -1,0 +1,34 @@
+from django.urls import path
+
+from {{ auth_django_views_import }} import (
+    LoginView, LogoutAllView, LogoutView, MeView, PasswordChangeView, RefreshView,
+{% if authentication_registration %}
+    RegisterView,
+{% endif %}
+{% if authentication_email_verification %}
+    EmailVerificationConfirmView, EmailVerificationRequestView,
+{% endif %}
+{% if authentication_password_reset %}
+    ForgotPasswordView, ResetPasswordView,
+{% endif %}
+)
+
+urlpatterns = [
+{% if authentication_registration %}
+    path("auth/register/", RegisterView.as_view(), name="auth-register"),
+{% endif %}
+    path("auth/login/", LoginView.as_view(), name="auth-login"),
+    path("auth/refresh/", RefreshView.as_view(), name="auth-refresh"),
+    path("auth/logout/", LogoutView.as_view(), name="auth-logout"),
+    path("auth/logout-all/", LogoutAllView.as_view(), name="auth-logout-all"),
+    path("auth/me/", MeView.as_view(), name="auth-me"),
+    path("auth/password/change/", PasswordChangeView.as_view(), name="auth-password-change"),
+{% if authentication_email_verification %}
+    path("auth/email-verification/request/", EmailVerificationRequestView.as_view(), name="auth-email-verification-request"),
+    path("auth/email-verification/confirm/", EmailVerificationConfirmView.as_view(), name="auth-email-verification-confirm"),
+{% endif %}
+{% if authentication_password_reset %}
+    path("auth/password/forgot/", ForgotPasswordView.as_view(), name="auth-password-forgot"),
+    path("auth/password/reset/", ResetPasswordView.as_view(), name="auth-password-reset"),
+{% endif %}
+]

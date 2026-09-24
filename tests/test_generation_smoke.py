@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 
 from forge.core.compatibility import GenerationCase, executable_smoke_cases
+from forge.core.definition import AuthenticationOptions, Capabilities, ProjectDefinition
+from forge.core.types import ArchitectureStyle, Language, ProjectType
 from forge.generator import generate_project
 
 
@@ -88,3 +90,54 @@ def test_executable_generation_smoke(case: GenerationCase, tmp_path: Path) -> No
         _run(["uv", "run", "pytest"], cwd=root)
     if plan.features.linting:
         _run(["uv", "run", "ruff", "check", "."], cwd=root)
+
+
+@pytest.mark.generation_smoke
+@pytest.mark.parametrize("framework", ["fastapi", "flask", "django"])
+@pytest.mark.parametrize("architecture", tuple(ArchitectureStyle))
+def test_stage3_security_matrix(
+    framework: str,
+    architecture: ArchitectureStyle,
+    tmp_path: Path,
+) -> None:
+    """Execute every Stage 3 family with hardening + dense/recovery mix."""
+    dense = architecture != ArchitectureStyle.MODULAR_MONOLITH
+    project = ProjectDefinition(
+        name=f"stage3-{framework}-{architecture.value}",
+        language=Language.PYTHON,
+        project_type=ProjectType.REST_API,
+        framework=framework,
+        architecture=architecture,
+        capabilities=Capabilities(
+            sql_database="sqlite",
+            migrations=framework != "django",
+            testing=True,
+            linting=True,
+        ),
+        modules=(("authorization",) if dense else ("authentication",)),
+        authentication=AuthenticationOptions(
+            email_verification=True,
+            password_reset=True,
+        ),
+    )
+    root = generate_project(project, base_dir=tmp_path).destination
+    _run(["uv", "sync"], cwd=root)
+    if framework == "django":
+        _run(["uv", "run", "python", "manage.py", "check"], cwd=root)
+        _run(["uv", "run", "python", "manage.py", "migrate", "--noinput"], cwd=root)
+        _run(
+            [
+                "uv",
+                "run",
+                "python",
+                "manage.py",
+                "makemigrations",
+                "--check",
+                "--dry-run",
+            ],
+            cwd=root,
+        )
+    else:
+        _run(["uv", "run", "alembic", "upgrade", "head"], cwd=root)
+    _run(["uv", "run", "pytest", "-q"], cwd=root)
+    _run(["uv", "run", "ruff", "check", "."], cwd=root)

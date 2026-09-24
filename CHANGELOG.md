@@ -7,6 +7,54 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-24
+
+Authentication, authorization, account-security flows, and baseline hardening
+for generated Python REST API projects across all nine framework/architecture
+families.
+
+### Added
+
+- `authentication` module: email/UUID identity, Argon2id credentials, strict
+  access JWTs, rotating opaque SQL refresh sessions with replay-family
+  revocation, registration, login, refresh, logout, logout-all, `/me`, and
+  password change
+- `authorization` module: reusable authenticated, verified, permission,
+  any-permission, and owner-or-permission policies; SQLAlchemy RBAC roles /
+  permissions / assignments with deterministic `member` and `admin`
+  provisioning; Django-native Group/Permission adapters
+- Optional email verification and password reset via digest-only, expiring,
+  single-use opaque action tokens and the existing Email capability
+- Optional RQ delivery for account-security email when Background Jobs is
+  independently selected
+- Stage 3 hardening with Authentication: process-local sliding-window rate
+  limits (429 + `Retry-After`), trusted hosts, restricted CORS, baseline
+  security headers (opt-in HSTS in production), auth-route body limits,
+  sensitive-log redaction, production host/DEBUG/secret checks, and
+  idempotent auth-state cleanup commands
+- Presets `fastapi-auth` and `django-auth`; Authentication-aware interactive,
+  YAML, plan, and dry-run flows
+- Generic generated-secret plans; `AUTH_JWT_SECRET` is created only in
+  gitignored local `.env` and remains blank in `.env.example`
+
+### Compatibility
+
+- Authentication and Authorization require SQL; FastAPI and Flask also require
+  Alembic. Authorization implies Authentication. Verification/reset imply
+  Email, but not Background Jobs or Redis. Authentication alone does not imply
+  Redis, SMTP, or RQ.
+- Access JWTs remain valid until their short expiry after logout; logout-all
+  and password change invalidate older access tokens via `auth_version`.
+- Rate limits are process-local only (no Redis for auth throttling); gateway
+  throttling remains a deployment concern for multi-instance setups. RQ
+  security-email jobs may carry raw tokens in Redis args until the worker
+  runs (SQL stores digests only).
+- Ownership helpers do not replace query scoping (IDOR remains a caller
+  concern). Existing Products, Categories, and Files routes are not
+  automatically protected.
+- Existing configurations without security modules and Stage 1
+  Authentication-only configurations retain their prior behavior.
+
 ## [0.4.0] - 2026-09-24
 
 Selectable project modules with real generated capabilities: catalog CRUD, files/storage, background jobs, email, and outgoing webhooks.

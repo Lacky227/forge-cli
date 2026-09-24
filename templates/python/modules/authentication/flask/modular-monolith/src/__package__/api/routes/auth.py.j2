@@ -1,0 +1,6 @@
+{% set auth_database_import = package_name ~ ".core.database" %}
+{% set auth_models_import = package_name ~ ".models.authentication" %}
+{% set auth_service_import = package_name ~ ".security.auth" %}
+{% set auth_delivery_import = package_name ~ ".services.security_email" %}
+{% set auth_rate_limit_import = package_name ~ ".security.rate_limit" %}
+{% include "auth_flask_blueprint.py.j2" %}
