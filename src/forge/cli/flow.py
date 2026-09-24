@@ -14,7 +14,12 @@ from questionary import Choice, Style
 from rich.console import Console
 
 from forge.core import catalog
-from forge.core.definition import Capabilities, ProjectDefinition, StorageOptions
+from forge.core.definition import (
+    AuthenticationOptions,
+    Capabilities,
+    ProjectDefinition,
+    StorageOptions,
+)
 from forge.core.modules import (
     MODULE_ORDER,
     MODULE_SPECS,
@@ -170,6 +175,7 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
         modules=modules,
     )
     storage = _collect_storage_options(modules, docker=capabilities.docker)
+    authentication = _collect_authentication_options(modules)
     _announce_redis_resolution(modules, capabilities)
     return ProjectDefinition(
         name=name,
@@ -180,6 +186,7 @@ def run_new_flow(name: str | None = None) -> ProjectDefinition:
         capabilities=capabilities,
         modules=tuple(modules),
         storage=storage,
+        authentication=authentication,
     )
 
 
@@ -234,6 +241,21 @@ def _collect_storage_options(
     return StorageOptions(backend=backend, minio=minio)
 
 
+def _collect_authentication_options(
+    modules: list[str],
+) -> AuthenticationOptions | None:
+    if ModuleId.AUTHENTICATION.value not in modules:
+        return None
+    registration = _select(
+        "Registration",
+        [
+            Choice(title="Enabled (recommended)", value="enabled"),
+            Choice(title="Disabled", value="disabled"),
+        ],
+    )
+    return AuthenticationOptions(registration=registration == "enabled")
+
+
 def _announce_early_module_implications(modules: list[str]) -> None:
     """Surface dependency implications before capability questions."""
     expanded = expand_module_dependencies(tuple(modules))
@@ -250,6 +272,10 @@ def _announce_early_module_implications(modules: list[str]) -> None:
             "[dim]Redis:[/dim] required for Background Jobs / RQ "
             "[dim](select as NoSQL to reuse, or Forge adds infrastructure Redis)"
             "[/dim]"
+        )
+    if ModuleId.AUTHENTICATION.value in modules:
+        _console.print(
+            "[dim]Authentication:[/dim] requires SQL persistence"
         )
 
 
@@ -324,9 +350,13 @@ def _collect_capabilities(
                     f"{catalog.FRAMEWORK_LABELS.get(framework, framework)})"
                     f"[/dim]"
                 )
-            migrations = _confirm(
-                "Include Alembic migrations?", default=True
-            )
+            if ModuleId.AUTHENTICATION.value in selected_modules:
+                migrations = True
+                _console.print("[dim]Migrations:[/dim] Alembic (required by Authentication)")
+            else:
+                migrations = _confirm(
+                    "Include Alembic migrations?", default=True
+                )
             if catalog.supports_nosql(framework) and _confirm(
                 "Also add a NoSQL database?", default=False
             ):

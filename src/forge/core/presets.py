@@ -81,6 +81,19 @@ class Preset:
 # Small curated set — meaningful compositions, not single-choice aliases.
 PRESETS: tuple[Preset, ...] = (
     Preset(
+        id="fastapi-auth",
+        title="FastAPI authentication API",
+        description=(
+            "FastAPI Modular Monolith with Authentication, PostgreSQL, "
+            "Alembic, Docker, pytest, and Ruff."
+        ),
+        framework="fastapi",
+        architecture=ArchitectureStyle.MODULAR_MONOLITH,
+        sql_database="postgresql",
+        migrations=True,
+        modules=("authentication",),
+    ),
+    Preset(
         id="fastapi-postgres",
         title="FastAPI + PostgreSQL",
         description=(

@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from functools import wraps
+
+from flask import Blueprint, g, jsonify, request
+from pydantic import BaseModel, EmailStr, Field, ValidationError
+
+from {{ auth_database_import }} import get_session
+from {{ auth_service_import }} import (
+    AuthFailure, DuplicateIdentity, authenticate_user, change_password,
+    create_session, issue_access_token, register_user, resolve_user,
+    revoke_all, revoke_refresh, rotate_session,
+)
+
+bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+class RegistrationInput(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, max_length=120)
+
+
+class LoginInput(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+
+class RefreshInput(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=512)
+
+
+class PasswordChangeInput(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=1, max_length=128)
+
+
+@contextmanager
+def session_scope():
+    generator = get_session()
+    db = next(generator)
+    try:
+        yield db
+    finally:
+        generator.close()
+
+
+def payload(schema):
+    try:
+        return schema.model_validate(request.get_json(silent=True) or {})
+    except ValidationError:
+        return None
+
+
+def public_user(user):
+    return {"id": str(user.id), "email": user.email, "display_name": user.display_name, "is_active": user.is_active, "is_verified": user.is_verified, "created_at": user.created_at.isoformat()}
+
+
+def tokens(user, raw, session):
+    response = jsonify({"access_token": issue_access_token(user, session.id), "refresh_token": raw, "token_type": "bearer", "expires_in": 900})
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def require_authenticated(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        value = request.headers.get("Authorization", "")
+        if not value.startswith("Bearer "):
+            return jsonify({"detail": "authentication required"}), 401, {"WWW-Authenticate": "Bearer"}
+        try:
+            with session_scope() as db:
+                g.current_user = resolve_user(db, value[7:])
+                return view(db, *args, **kwargs)
+        except AuthFailure as exc:
+            return jsonify({"detail": str(exc)}), 401, {"WWW-Authenticate": "Bearer"}
+    return wrapped
+
+{% if authentication_registration %}
+@bp.post("/register")
+def register():
+    data = payload(RegistrationInput)
+    if data is None:
+        return jsonify({"detail": "invalid registration data"}), 400
+    try:
+        with session_scope() as db:
+            return jsonify(public_user(register_user(db, str(data.email), data.password, data.display_name))), 201
+    except DuplicateIdentity:
+        return jsonify({"detail": "identity already exists"}), 409
+    except AuthFailure as exc:
+        return jsonify({"detail": str(exc)}), 400
+
+{% endif %}
+@bp.post("/login")
+def login():
+    data = payload(LoginInput)
+    if data is None:
+        return jsonify({"detail": "invalid email or password"}), 401
+    try:
+        with session_scope() as db:
+            user = authenticate_user(db, str(data.email), data.password)
+            raw, auth_session = create_session(db, user)
+            return tokens(user, raw, auth_session)
+    except AuthFailure:
+        return jsonify({"detail": "invalid email or password"}), 401
+
+
+@bp.post("/refresh")
+def refresh():
+    data = payload(RefreshInput)
+    if data is None:
+        return jsonify({"detail": "invalid refresh token"}), 401
+    try:
+        with session_scope() as db:
+            user, raw, auth_session = rotate_session(db, data.refresh_token)
+            return tokens(user, raw, auth_session)
+    except AuthFailure as exc:
+        return jsonify({"detail": str(exc)}), 401
+
+
+@bp.post("/logout")
+def logout():
+    data = payload(RefreshInput)
+    if data is None:
+        return jsonify({"detail": "invalid refresh token"}), 400
+    with session_scope() as db:
+        revoke_refresh(db, data.refresh_token)
+    return "", 204
+
+
+@bp.get("/me")
+@require_authenticated
+def me(db):
+    return jsonify(public_user(g.current_user))
+
+
+@bp.post("/logout-all")
+@require_authenticated
+def logout_all(db):
+    revoke_all(db, g.current_user)
+    return "", 204
+
+
+@bp.post("/password/change")
+@require_authenticated
+def password_change(db):
+    data = payload(PasswordChangeInput)
+    if data is None:
+        return jsonify({"detail": "invalid password data"}), 400
+    try:
+        change_password(db, g.current_user, data.current_password, data.new_password)
+    except AuthFailure as exc:
+        return jsonify({"detail": str(exc)}), 400
+    return "", 204

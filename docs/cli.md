@@ -190,6 +190,7 @@ Presets do **not** store resolved facts (`migration_system`, `rest_framework`, i
 
 | ID | Stack |
 |----|--------|
+| `fastapi-auth` | FastAPI + Modular Monolith + Authentication + PostgreSQL + Alembic + Docker |
 | `fastapi-postgres` | FastAPI + Modular Monolith + PostgreSQL + Alembic + Docker |
 | `fastapi-postgres-clean` | FastAPI + Clean Architecture + PostgreSQL + Alembic + Docker |
 | `fastapi-mongo` | FastAPI + Modular Monolith + MongoDB + Docker |
@@ -374,7 +375,8 @@ docker: true
 
 - Framework options depend on language + project type (FastAPI, Django, Flask, …)
 - Architecture for REST API: Simple, Modular Monolith, Clean Architecture
-- **Project modules:** optional multi-select (Products, Categories, Files, Background Jobs, Email, Webhooks). See [modules.md](./modules.md)
+- **Project modules:** optional multi-select (Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication). See [modules.md](./modules.md)
+- **Authentication:** announces its SQL requirement, requires Alembic on FastAPI/Flask, then asks `Registration: Enabled (recommended) / Disabled`
 - **FastAPI / Flask:** if modules requiring SQL are selected, ask for an SQL engine (no silent default); otherwise optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
 - **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)
 - Docker / pytest / Ruff are explicit confirms for all three

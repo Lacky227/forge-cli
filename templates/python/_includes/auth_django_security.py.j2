@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+import secrets
+import uuid
+from datetime import timedelta
+
+import jwt
+from django.conf import settings
+from django.db import transaction
+from django.db.models import F
+from django.utils import timezone
+from rest_framework.authentication import BaseAuthentication, get_authorization_header
+from rest_framework.exceptions import AuthenticationFailed
+
+from {{ auth_django_models_import }} import AuthSession, User
+
+JWT_ALGORITHM = "HS256"
+PASSWORD_MIN_LENGTH = 15
+PASSWORD_MAX_CHARS = 128
+PASSWORD_MAX_BYTES = 1024
+
+
+class AuthFailure(Exception):
+    pass
+
+
+def validate_password_policy(password: str) -> None:
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise AuthFailure(f"password must be at least {PASSWORD_MIN_LENGTH} characters")
+    if len(password) > PASSWORD_MAX_CHARS or len(password.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        raise AuthFailure("password is too long")
+
+
+def issue_access_token(user: User, session_id: uuid.UUID) -> str:
+    if not settings.AUTH_JWT_SECRET:
+        raise RuntimeError("AUTH_JWT_SECRET is required")
+    now = timezone.now()
+    return jwt.encode(
+        {"iss": settings.AUTH_ISSUER, "aud": settings.AUTH_AUDIENCE, "sub": str(user.pk), "sid": str(session_id), "ver": user.auth_version, "jti": str(uuid.uuid4()), "iat": now, "nbf": now, "exp": now + timedelta(seconds=settings.AUTH_ACCESS_TOKEN_TTL_SECONDS), "typ": "access"},
+        settings.AUTH_JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def decode_access_token(token: str) -> dict[str, object]:
+    try:
+        claims = jwt.decode(token, settings.AUTH_JWT_SECRET, algorithms=[JWT_ALGORITHM], audience=settings.AUTH_AUDIENCE, issuer=settings.AUTH_ISSUER, options={"require": ["iss", "aud", "sub", "sid", "ver", "jti", "iat", "nbf", "exp", "typ"]})
+    except jwt.PyJWTError as exc:
+        raise AuthFailure("invalid authentication credentials") from exc
+    if claims.get("typ") != "access":
+        raise AuthFailure("invalid authentication credentials")
+    return claims
+
+
+def resolve_user(token: str) -> User:
+    claims = decode_access_token(token)
+    try:
+        user = User.objects.get(pk=claims["sub"])
+    except (User.DoesNotExist, ValueError, TypeError) as exc:
+        raise AuthFailure("invalid authentication credentials") from exc
+    if not user.is_active or user.auth_version != claims.get("ver"):
+        raise AuthFailure("invalid authentication credentials")
+    return user
+
+
+class ForgeBearerAuthentication(BaseAuthentication):
+    keyword = b"bearer"
+
+    def authenticate(self, request):
+        parts = get_authorization_header(request).split()
+        if not parts:
+            return None
+        if len(parts) != 2 or parts[0].lower() != self.keyword:
+            raise AuthenticationFailed("invalid Authorization header")
+        try:
+            user = resolve_user(parts[1].decode("ascii"))
+        except (UnicodeDecodeError, AuthFailure) as exc:
+            raise AuthenticationFailed("invalid authentication credentials") from exc
+        return user, None
+
+    def authenticate_header(self, request):
+        return "Bearer"
+
+
+def create_session(user: User) -> tuple[str, AuthSession]:
+    raw = secrets.token_urlsafe(32)
+    session = AuthSession.objects.create(user=user, family_id=uuid.uuid4(), token_digest=AuthSession.digest(raw), expires_at=timezone.now() + timedelta(days=settings.AUTH_REFRESH_TOKEN_TTL_DAYS))
+    return raw, session
+
+
+def rotate_session(raw: str) -> tuple[User, str, AuthSession]:
+    now = timezone.now()
+    replay = False
+    result = None
+    with transaction.atomic():
+        try:
+            old = AuthSession.objects.select_for_update().select_related("user").get(token_digest=AuthSession.digest(raw))
+        except AuthSession.DoesNotExist as exc:
+            raise AuthFailure("invalid refresh token") from exc
+        if old.replaced_by_id is not None:
+            AuthSession.objects.filter(family_id=old.family_id, revoked_at__isnull=True).update(revoked_at=now)
+            replay = True
+        elif old.revoked_at is not None or old.expires_at <= now or not old.user.is_active:
+            raise AuthFailure("invalid refresh token")
+        else:
+            new_raw = secrets.token_urlsafe(32)
+            replacement = AuthSession.objects.create(user=old.user, family_id=old.family_id, token_digest=AuthSession.digest(new_raw), expires_at=old.expires_at)
+            old.last_used_at = now
+            old.revoked_at = now
+            old.replaced_by = replacement
+            old.save(update_fields=["last_used_at", "revoked_at", "replaced_by"])
+            result = (old.user, new_raw, replacement)
+    if replay:
+        raise AuthFailure("refresh token replay detected")
+    assert result is not None
+    return result
+
+
+@transaction.atomic
+def revoke_refresh(raw: str) -> None:
+    session = AuthSession.objects.select_for_update().filter(token_digest=AuthSession.digest(raw)).first()
+    if session:
+        AuthSession.objects.filter(family_id=session.family_id, revoked_at__isnull=True).update(revoked_at=timezone.now())
+
+
+@transaction.atomic
+def revoke_all(user: User, *, increment_version: bool = True) -> None:
+    AuthSession.objects.filter(user=user, revoked_at__isnull=True).update(revoked_at=timezone.now())
+    if increment_version:
+        User.objects.filter(pk=user.pk).update(auth_version=F("auth_version") + 1)
+        user.refresh_from_db(fields=["auth_version"])

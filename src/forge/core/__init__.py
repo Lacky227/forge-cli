@@ -7,7 +7,7 @@ from forge.core.compatibility import (
     supported_generation_cases,
 )
 from forge.core.config import ConfigError, definition_from_config, load_forge_config
-from forge.core.definition import Capabilities, ProjectDefinition
+from forge.core.definition import AuthenticationOptions, Capabilities, ProjectDefinition
 from forge.core.modules import (
     MODULE_LABELS,
     MODULE_ORDER,
@@ -28,21 +28,22 @@ from forge.core.presets import (
 from forge.core.types import ArchitectureStyle, Language, ProjectType
 
 __all__ = [
+    "MODULE_LABELS",
+    "MODULE_ORDER",
+    "PRESETS",
+    "SUPPORTED_GENERATION_CASES",
     "ArchitectureStyle",
+    "AuthenticationOptions",
     "Capabilities",
     "ConfigError",
     "GenerationCase",
     "Language",
-    "MODULE_LABELS",
-    "MODULE_ORDER",
     "ModuleId",
-    "StorageBackend",
-    "PRESETS",
     "Preset",
     "PresetError",
     "ProjectDefinition",
     "ProjectType",
-    "SUPPORTED_GENERATION_CASES",
+    "StorageBackend",
     "definition_from_config",
     "definition_from_preset",
     "executable_smoke_cases",

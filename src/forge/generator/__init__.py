@@ -13,6 +13,7 @@ from forge.generator.engine import (
 from forge.generator.errors import GenerationError
 from forge.generator.plan import (
     EnvVarSpec,
+    GeneratedSecretSpec,
     GenerationFeatures,
     GenerationPlan,
     PlanSummarySection,
@@ -22,6 +23,7 @@ from forge.generator.resolve import resolve_plan
 
 __all__ = [
     "EnvVarSpec",
+    "GeneratedSecretSpec",
     "GenerationError",
     "GenerationFeatures",
     "GenerationPlan",

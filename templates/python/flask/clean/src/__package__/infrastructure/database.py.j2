@@ -33,3 +33,6 @@ def create_session() -> Generator[Session, None, None]:
     finally:
         g.db_session.close()
         g.pop("db_session", None)
+
+
+get_session = create_session

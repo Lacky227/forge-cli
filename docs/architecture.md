@@ -191,6 +191,21 @@ presentation/     HTTP API (FastAPI / Flask / DRF)
 - **Modular Monolith** — `api/`, `core/`, and layered packages when SQL is selected
 - **Clean** — same Clean layering as FastAPI, with Flask presentation
 
+### Authentication decisions
+
+Authentication follows the existing definition → resolution → contribution →
+template pipeline. `AuthenticationOptions` stores the Stage 1 registration
+choice; `ModuleContributions` owns routes, model discovery, dependencies,
+environment metadata, and all nine template mounts. A reusable
+`GeneratedSecretSpec` on `GenerationPlan` declares sensitive outputs without
+sampling entropy during plan or dry-run.
+
+FastAPI and Flask use SQLAlchemy, pwdlib Argon2id, PyJWT, and Alembic. Their
+Clean variants keep framework-free policy/ports in domain/application and
+concrete persistence/crypto in infrastructure. Django deliberately keeps its
+project-owned `AbstractUser`, native password API, authentication adapter, and
+refresh model in its infrastructure boundary rather than duplicating them.
+
 ## Package layout
 
 ```text

@@ -173,6 +173,7 @@ Minimum lower bounds; lists come from the resolver into `pyproject.toml` and are
 - `health_path` — liveness route (FastAPI `/health` for all architectures; Flask `/api/health`; Django `/api/health/`)
 - `emits_env_example` — true when `environment_variables` is non-empty (Docker alone does not emit an empty `.env.example`)
 - `ci_provider` — when `github-actions`, generation emits `.github/workflows/ci.yml` from `templates/python/_shared/` (Python **3.12**, `uv sync`, then selected Ruff/pytest; no DB service containers)
+- `generated_secrets` — sensitive values materialized only during real rendering; Authentication contributes `AUTH_JWT_SECRET`
 
 Post-generation **next steps** (CLI summary and dry-run informational commands) follow the local-dev path: start dependency containers with `docker compose up -d <docker_services>` when that list is non-empty, then migrate/run on the host. Bare `docker compose up -d` is never emitted. Full-stack `docker compose up --build` is documented in the generated README Docker section (and is the only Compose command when Docker is selected without persistence).
 
@@ -187,6 +188,13 @@ Generated projects expose a **liveness** health endpoint only (`{"status":"ok"}`
 **Django:** `uv sync` → `python manage.py check` → `migrate` → `pytest` → `ruff` (Compose config when Docker selected).
 
 Live PostgreSQL containers are optional and environment-dependent.
+
+Authentication adds structural generation across all nine families, SQLite
+migration and lifecycle execution for representative FastAPI/Flask/Django
+Simple/Modular/Clean projects, PostgreSQL/Compose structure checks, pairwise
+existing-module composition, and installed-wheel generation. Real generation
+writes a random `AUTH_JWT_SECRET` only to gitignored `.env`; `.env.example` is
+blank for that value, and plan/dry-run never create or display it.
 
 ## Forge tests vs generated tests
 

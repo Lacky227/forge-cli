@@ -1,0 +1,4 @@
+{% set auth_database_import = package_name ~ ".core.database" %}
+{% set auth_models_import = package_name ~ ".models.authentication" %}
+{% set auth_service_import = package_name ~ ".security.auth" %}
+{% include "auth_fastapi_router.py.j2" %}

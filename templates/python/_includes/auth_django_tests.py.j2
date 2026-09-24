@@ -1,0 +1,44 @@
+import pytest
+
+pytestmark = pytest.mark.django_db
+EMAIL = "person@example.com"
+PASSWORD = "correct horse battery staple"
+NEW_PASSWORD = "new correct horse battery staple"
+
+
+def register(api_client):
+    return api_client.post("/api/auth/register/", {"email": EMAIL, "password": PASSWORD, "display_name": "Person"}, format="json")
+
+
+{% if authentication_registration %}
+def test_auth_lifecycle_rotation_and_replay(api_client):
+    created = register(api_client)
+    assert created.status_code == 201
+    assert "password" not in created.data
+    assert register(api_client).status_code == 409
+    assert api_client.post("/api/auth/login/", {"email": EMAIL, "password": "bad password value"}, format="json").status_code == 401
+    login = api_client.post("/api/auth/login/", {"email": EMAIL.upper(), "password": PASSWORD}, format="json")
+    assert login.status_code == 200
+    assert login["Cache-Control"] == "no-store"
+    first = login.data
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {first['access_token']}")
+    assert api_client.get("/api/auth/me/").data["email"] == EMAIL
+    api_client.credentials()
+    rotated = api_client.post("/api/auth/refresh/", {"refresh_token": first["refresh_token"]}, format="json")
+    assert rotated.status_code == 200
+    assert api_client.post("/api/auth/refresh/", {"refresh_token": first["refresh_token"]}, format="json").status_code == 401
+    assert api_client.post("/api/auth/refresh/", {"refresh_token": rotated.data["refresh_token"]}, format="json").status_code == 401
+
+
+def test_password_change_invalidates_access(api_client):
+    register(api_client)
+    tokens = api_client.post("/api/auth/login/", {"email": EMAIL, "password": PASSWORD}, format="json").data
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access_token']}")
+    assert api_client.post("/api/auth/password/change/", {"current_password": PASSWORD, "new_password": NEW_PASSWORD}, format="json").status_code == 204
+    assert api_client.get("/api/auth/me/").status_code == 401
+    api_client.credentials()
+    assert api_client.post("/api/auth/login/", {"email": EMAIL, "password": NEW_PASSWORD}, format="json").status_code == 200
+{% else %}
+def test_registration_is_not_exposed(api_client):
+    assert register(api_client).status_code == 404
+{% endif %}

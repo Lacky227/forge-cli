@@ -29,6 +29,7 @@ _HTTP_API_MODULES: frozenset[str] = frozenset(
         ModuleId.PRODUCTS.value,
         ModuleId.CATEGORIES.value,
         ModuleId.FILES.value,
+        ModuleId.AUTHENTICATION.value,
     }
 )
 
@@ -38,6 +39,7 @@ _MODEL_MODULES: frozenset[str] = frozenset(
         ModuleId.PRODUCTS.value,
         ModuleId.CATEGORIES.value,
         ModuleId.FILES.value,
+        ModuleId.AUTHENTICATION.value,
     }
 )
 
@@ -117,6 +119,8 @@ class ModuleContributions:
     has_background_jobs: bool = False
     has_email: bool = False
     has_webhooks: bool = False
+    has_authentication: bool = False
+    authentication_registration: bool = False
     products_link_categories: bool = False
     fastapi_routers: tuple[RouterContribution, ...] = ()
     flask_blueprints: tuple[BlueprintContribution, ...] = ()
@@ -173,6 +177,7 @@ def resolve_module_contributions(
     has_jobs = ModuleId.BACKGROUND_JOBS.value in expanded
     has_email = ModuleId.EMAIL.value in expanded
     has_webhooks = ModuleId.WEBHOOKS.value in expanded
+    has_authentication = ModuleId.AUTHENTICATION.value in expanded
     link = has_products and has_categories
     implied_set = set(implied)
 
@@ -246,6 +251,10 @@ def resolve_module_contributions(
         env_vars=env_vars,
         package_name=package_name,
     )
+    if has_authentication and not definition.authentication_options.registration:
+        endpoints = [
+            item for item in endpoints if not item[1].rstrip("/").endswith("/register")
+        ]
 
     return ModuleContributions(
         modules=resolved,
@@ -257,6 +266,10 @@ def resolve_module_contributions(
         has_background_jobs=has_jobs,
         has_email=has_email,
         has_webhooks=has_webhooks,
+        has_authentication=has_authentication,
+        authentication_registration=(
+            definition.authentication_options.registration if has_authentication else False
+        ),
         products_link_categories=link,
         fastapi_routers=tuple(fastapi_routers),
         flask_blueprints=tuple(flask_blueprints),
@@ -356,6 +369,23 @@ def _append_module_dependencies(
         runtime_deps.append("rq>=2.0")
         # redis package is added by resolve_plan when Redis is required
 
+    if ModuleId.AUTHENTICATION.value in expanded:
+        runtime_deps.append("PyJWT>=2.10")
+        if definition.framework in {"fastapi", "flask"}:
+            runtime_deps.extend(["pwdlib[argon2]>=0.3", "email-validator>=2.2"])
+        else:
+            runtime_deps.append("argon2-cffi>=23.1")
+        env_vars.extend(
+            [
+                ("APP_ENV", "development", "Runtime environment (production enables secret checks)"),
+                ("AUTH_JWT_SECRET", "", "JWT signing secret (generated locally; required in production)"),
+                ("AUTH_ISSUER", package_name, "Expected JWT issuer"),
+                ("AUTH_AUDIENCE", f"{package_name}-api", "Expected JWT audience"),
+                ("AUTH_ACCESS_TOKEN_TTL_SECONDS", "900", "Access-token lifetime in seconds"),
+                ("AUTH_REFRESH_TOKEN_TTL_DAYS", "30", "Absolute refresh-family lifetime in days"),
+            ]
+        )
+
     if ModuleId.EMAIL.value in expanded:
         env_vars.extend(
             [
@@ -449,6 +479,7 @@ def _singular(module_id: str) -> str:
         "background-jobs": "jobs",
         "email": "email",
         "webhooks": "webhook",
+        "authentication": "authentication",
     }
     return mapping.get(module_id, module_id.rstrip("s"))
 
@@ -469,6 +500,29 @@ def _fastapi_contributions(
     prefix = f"/{module_id}"
     tag = MODULE_LABELS.get(module_id, module_id.capitalize())
     singular = _singular(module_id)
+
+    if module_id == ModuleId.AUTHENTICATION.value:
+        prefix = "/auth"
+        if architecture is ArchitectureStyle.SIMPLE:
+            import_module = f"{package_name}.auth"
+            model_module = f"{package_name}.auth_models"
+            symbol = "User"
+        elif architecture is ArchitectureStyle.MODULAR_MONOLITH:
+            import_module = f"{package_name}.api.routes.auth"
+            model_module = f"{package_name}.models.authentication"
+            symbol = "User"
+        else:
+            import_module = f"{package_name}.presentation.auth"
+            model_module = f"{package_name}.infrastructure.persistence.authentication"
+            symbol = "UserModel"
+        routers.append(
+            RouterContribution(module_id=module_id, import_module=import_module, router_attr="router", prefix=prefix, tags=(tag,))
+        )
+        model_imports.append(
+            ModelImportContribution(module_id=module_id, import_module=model_module, symbol=symbol)
+        )
+        endpoints.extend(_authentication_endpoints(prefix, registration=True, trailing_slash=False))
+        return
 
     if architecture is ArchitectureStyle.SIMPLE:
         import_module = f"{package_name}.{module_id.replace('-', '_')}"
@@ -530,6 +584,23 @@ def _flask_contributions(
 
     singular = _singular(module_id)
     py_id = module_id.replace("-", "_")
+    if module_id == ModuleId.AUTHENTICATION.value:
+        if architecture is ArchitectureStyle.SIMPLE:
+            import_module = f"{package_name}.auth"
+            model_module = f"{package_name}.auth_models"
+            symbol = "User"
+        elif architecture is ArchitectureStyle.MODULAR_MONOLITH:
+            import_module = f"{package_name}.api.routes.auth"
+            model_module = f"{package_name}.models.authentication"
+            symbol = "User"
+        else:
+            import_module = f"{package_name}.presentation.auth"
+            model_module = f"{package_name}.infrastructure.persistence.authentication"
+            symbol = "UserModel"
+        blueprints.append(BlueprintContribution(module_id=module_id, import_module=import_module, blueprint_attr="bp", name="auth"))
+        model_imports.append(ModelImportContribution(module_id=module_id, import_module=model_module, symbol=symbol))
+        endpoints.extend(_authentication_endpoints("/api/auth", registration=True, trailing_slash=False))
+        return
     if architecture is ArchitectureStyle.SIMPLE:
         import_module = f"{package_name}.{py_id}"
         model_module = f"{package_name}.{py_id}_models"
@@ -589,6 +660,24 @@ def _django_contributions(
     py_id = module_id.replace("-", "_")
     url_prefix = f"{py_id}/"
 
+    if module_id == ModuleId.AUTHENTICATION.value:
+        if architecture is ArchitectureStyle.SIMPLE:
+            app_config = "identity"
+            urls_module = "identity.urls"
+            model_module = "identity.models"
+        elif architecture is ArchitectureStyle.MODULAR_MONOLITH:
+            app_config = "apps.identity"
+            urls_module = "apps.identity.urls"
+            model_module = "apps.identity.models"
+        else:
+            app_config = ""
+            urls_module = "presentation.api.auth_urls"
+            model_module = "infrastructure.persistence.authentication"
+        apps.append(DjangoAppContribution(module_id=module_id, app_config=app_config, urls_module=urls_module, url_prefix="auth/"))
+        model_imports.append(ModelImportContribution(module_id=module_id, import_module=model_module, symbol="User"))
+        endpoints.extend(_authentication_endpoints("/api/auth", registration=True, trailing_slash=True))
+        return
+
     if architecture is ArchitectureStyle.SIMPLE:
         app_config = py_id
         urls_module = f"{py_id}.urls"
@@ -646,6 +735,26 @@ def _files_endpoints(
     ]
 
 
+def _authentication_endpoints(
+    prefix: str, *, registration: bool, trailing_slash: bool
+) -> list[tuple[str, str, str]]:
+    slash = "/" if trailing_slash else ""
+    rows: list[tuple[str, str, str]] = []
+    if registration:
+        rows.append(("POST", f"{prefix}/register{slash}", "Register identity"))
+    rows.extend(
+        [
+            ("POST", f"{prefix}/login{slash}", "Authenticate"),
+            ("POST", f"{prefix}/refresh{slash}", "Rotate refresh session"),
+            ("POST", f"{prefix}/logout{slash}", "Revoke refresh session"),
+            ("POST", f"{prefix}/logout-all{slash}", "Revoke all sessions"),
+            ("GET", f"{prefix}/me{slash}", "Current identity"),
+            ("POST", f"{prefix}/password/change{slash}", "Change password"),
+        ]
+    )
+    return rows
+
+
 def _crud_endpoints(
     prefix: str,
     label: str,
@@ -682,6 +791,8 @@ def contribution_jinja_dict(contributions: ModuleContributions) -> dict[str, obj
         "has_background_jobs": contributions.has_background_jobs,
         "has_email": contributions.has_email,
         "has_webhooks": contributions.has_webhooks,
+        "has_authentication": contributions.has_authentication,
+        "authentication_registration": contributions.authentication_registration,
         "products_link_categories": contributions.products_link_categories,
         "fastapi_routers": [
             {

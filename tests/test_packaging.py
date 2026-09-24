@@ -63,7 +63,7 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
         "License-Expression: GPL-3.0-only" in metadata
         or "License: GPL-3.0-only" in metadata
     )
-    assert any(n.endswith("licenses/LICENSE") or n.endswith("/LICENSE") for n in names)
+    assert any(n.endswith(("licenses/LICENSE", "/LICENSE")) for n in names)
     templates = [n for n in names if n.startswith("forge/templates/python/")]
     assert len(templates) >= 50
     assert any("fastapi" in n for n in templates)
@@ -89,6 +89,14 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
     assert any(
         "/modules/webhooks/" in n for n in templates
     ), "missing webhooks module templates"
+    auth_templates = [n for n in templates if "/modules/authentication/" in n]
+    assert auth_templates, "missing authentication module templates"
+    for framework in ("fastapi", "django", "flask"):
+        for architecture in ("simple", "modular-monolith", "clean"):
+            assert any(
+                f"/modules/authentication/{framework}/{architecture}/" in n
+                for n in auth_templates
+            ), f"missing {framework}/{architecture} authentication templates"
     assert any(
         "/modules/_foundation/" in n for n in templates
     ), "missing module foundation templates"
@@ -209,6 +217,52 @@ def test_clean_wheel_install_generates_outside_repo(tmp_path: Path) -> None:
     assert "Dry run" in dry.stdout
     assert "pyproject.toml" in dry.stdout
     assert not (gen_dir / "dry-wheel").exists()
+
+    auth_plan = subprocess.run(
+        [str(forge_bin), "plan", "--preset", "fastapi-auth", "wheel-auth"],
+        cwd=gen_dir,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "Authentication" in auth_plan.stdout
+    assert "generated locally" in auth_plan.stdout
+    auth_dry = subprocess.run(
+        [
+            str(forge_bin),
+            "new",
+            "wheel-auth-dry",
+            "--preset",
+            "fastapi-auth",
+            "--dry-run",
+        ],
+        cwd=gen_dir,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert ".env" in auth_dry.stdout
+    assert not (gen_dir / "wheel-auth-dry").exists()
+    auth_generate = subprocess.run(
+        [str(forge_bin), "new", "wheel-auth", "--preset", "fastapi-auth"],
+        cwd=gen_dir,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    auth_env = (gen_dir / "wheel-auth" / ".env").read_text(encoding="utf-8")
+    secret = next(
+        line.partition("=")[2]
+        for line in auth_env.splitlines()
+        if line.startswith("AUTH_JWT_SECRET=")
+    )
+    assert len(secret) >= 43
+    assert secret not in auth_generate.stdout
+    assert secret not in auth_plan.stdout
+    assert secret not in auth_dry.stdout
 
     # Generate with CI from the installed wheel (packaged ``_shared`` template).
     config = gen_dir / "with-ci.yaml"

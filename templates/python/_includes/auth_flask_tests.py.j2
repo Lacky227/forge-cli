@@ -1,0 +1,39 @@
+EMAIL = "person@example.com"
+PASSWORD = "correct horse battery staple"
+NEW_PASSWORD = "new correct horse battery staple"
+
+
+def register(client):
+    return client.post("/api/auth/register", json={"email": EMAIL, "password": PASSWORD, "display_name": "Person"})
+
+
+{% if authentication_registration %}
+def test_auth_lifecycle_rotation_and_replay(client):
+    assert register(client).status_code == 201
+    assert register(client).status_code == 409
+    assert client.post("/api/auth/login", json={"email": EMAIL, "password": "bad password value"}).status_code == 401
+    login = client.post("/api/auth/login", json={"email": EMAIL.upper(), "password": PASSWORD})
+    assert login.status_code == 200
+    assert login.headers["Cache-Control"] == "no-store"
+    first = login.get_json()
+    headers = {"Authorization": f"Bearer {first['access_token']}"}
+    assert client.get("/api/auth/me").status_code == 401
+    assert client.get("/api/auth/me", headers=headers).get_json()["email"] == EMAIL
+    rotated = client.post("/api/auth/refresh", json={"refresh_token": first["refresh_token"]})
+    assert rotated.status_code == 200
+    second = rotated.get_json()
+    assert client.post("/api/auth/refresh", json={"refresh_token": first["refresh_token"]}).status_code == 401
+    assert client.post("/api/auth/refresh", json={"refresh_token": second["refresh_token"]}).status_code == 401
+
+
+def test_password_change_invalidates_tokens(client):
+    register(client)
+    tokens = client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD}).get_json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+    assert client.post("/api/auth/password/change", headers=headers, json={"current_password": PASSWORD, "new_password": NEW_PASSWORD}).status_code == 204
+    assert client.get("/api/auth/me", headers=headers).status_code == 401
+    assert client.post("/api/auth/login", json={"email": EMAIL, "password": NEW_PASSWORD}).status_code == 200
+{% else %}
+def test_registration_is_not_exposed(client):
+    assert register(client).status_code == 404
+{% endif %}

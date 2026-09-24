@@ -169,6 +169,7 @@ Optional multi-select modules add real application capabilities:
 | Background Jobs | RQ + Redis |
 | Email | SMTP |
 | Webhooks | Background Jobs → RQ + Redis (outgoing delivery only) |
+| Authentication | SQL; Alembic on FastAPI/Flask |
 
 When Products and Categories are both selected, products may reference a category.
 Collection CRUD endpoints include pagination, filtering, and allow-listed sorting.
@@ -228,6 +229,7 @@ Presets are named compositions of valid Forge choices — not separate generator
 
 | Preset | Stack |
 |--------|--------|
+| `fastapi-auth` | FastAPI · Modular Monolith · Authentication · PostgreSQL · Alembic · Docker |
 | `fastapi-postgres` | FastAPI · Modular Monolith · PostgreSQL · Alembic · Docker |
 | `fastapi-postgres-clean` | FastAPI · Clean Architecture · PostgreSQL · Alembic · Docker |
 | `fastapi-mongo` | FastAPI · Modular Monolith · MongoDB · Docker |
@@ -293,6 +295,10 @@ modules:
   - background-jobs
   - email
   - webhooks
+  - authentication
+
+authentication:
+  registration: true
 
 storage:
   backend: s3
@@ -308,7 +314,7 @@ docker: true
 forge new --config forge.yaml
 ```
 
-Omit `modules` (or use `modules: []`) for a scaffold-only project. `storage` is only valid when Files is selected. Legacy `database: postgresql` remains supported as an SQL-only shorthand; prefer `persistence` for new configs.
+Omit `modules` (or use `modules: []`) for a scaffold-only project. `storage` is only valid when Files is selected; `authentication` options are only valid with Authentication. Authentication requires SQL and, on FastAPI/Flask, Alembic. Legacy `database: postgresql` remains supported as an SQL-only shorthand; prefer `persistence` for new configs.
 
 `--preset` and `--config` cannot be combined.
 
@@ -348,7 +354,7 @@ Current limitations:
 - Redis integration is a client wiring — not cache/session/queue abstractions
 - MongoDB uses PyMongo directly — no ODM layer
 - At most one SQL database and one NoSQL database per project
-- Users / Auth modules are not in 0.4 (reserved for a later release)
+- Stage 1 Authentication is under development for 0.5.0; Authorization/RBAC and account recovery remain future work
 - Webhooks are outgoing-only; Background Jobs use RQ only; Files storage is local or S3-compatible
 
 ---

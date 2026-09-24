@@ -7,6 +7,18 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
 
 ## [Unreleased]
 
+### Added
+
+- Stage 1 `authentication` module across all FastAPI, Django REST, and Flask architectures.
+- Email identities, Argon2id passwords, strict access JWTs, rotating opaque SQL refresh sessions, replay-family revocation, logout-all, and password change.
+- Generic generated-secret plans; `AUTH_JWT_SECRET` is created only in gitignored local `.env` and remains blank in `.env.example`.
+- `fastapi-auth` preset and Authentication-aware interactive, YAML, plan, and dry-run flows.
+
+### Compatibility
+
+- Authentication requires SQL; FastAPI and Flask also require Alembic. Existing configurations without Authentication keep their 0.4 behavior.
+- Authorization/RBAC, email verification, and password recovery remain intentionally deferred.
+
 ## [0.4.0] - 2026-09-24
 
 Selectable project modules with real generated capabilities: catalog CRUD, files/storage, background jobs, email, and outgoing webhooks.

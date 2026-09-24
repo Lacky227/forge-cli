@@ -25,6 +25,15 @@ class EnvVarSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class GeneratedSecretSpec:
+    """A sensitive value created only during real project generation."""
+
+    environment_variable: str
+    entropy_bytes: int = 32
+    target_file: str = ".env"
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessSpec:
     """One runtime process the generated project is expected to run."""
 
@@ -69,6 +78,8 @@ class GenerationFeatures:
     email: bool = False
     webhooks: bool = False
     rq: bool = False
+    authentication: bool = False
+    registration: bool = False
 
     @property
     def ci(self) -> bool:
@@ -121,6 +132,7 @@ class GenerationPlan:
     framework_label: str
     # Canonical env vars for the selected stack (plan, .env.example, README).
     environment_variables: tuple[EnvVarSpec, ...] = ()
+    generated_secrets: tuple[GeneratedSecretSpec, ...] = ()
     # Compose dependency service names when Docker is enabled (not the app).
     docker_services: tuple[str, ...] = ()
     # Runtime processes (API always; worker when background jobs).
@@ -139,6 +151,10 @@ class GenerationPlan:
     def emits_env_example(self) -> bool:
         """Emit ``.env.example`` only when there are concrete variables."""
         return bool(self.environment_variables)
+
+    @property
+    def emits_local_env(self) -> bool:
+        return bool(self.generated_secrets)
 
     @property
     def worker_command(self) -> str | None:
@@ -185,6 +201,34 @@ class GenerationPlan:
                         (("Products", "Category (many-to-one)"),),
                     )
                 )
+
+        if features.authentication:
+            sections.extend(
+                [
+                    PlanSummarySection(
+                        "Identity",
+                        (("Identifier", "email"), ("User ID", "UUID"), ("Persistence", "SQL")),
+                    ),
+                    PlanSummarySection(
+                        "Authentication",
+                        (
+                            ("Registration", "enabled" if features.registration else "disabled"),
+                            ("Access tokens", "JWT, 15 minutes"),
+                            ("Refresh sessions", "opaque, persistent, rotating"),
+                            ("Refresh lifetime", "30 days"),
+                            ("Logout", "refresh-session revocation"),
+                        ),
+                    ),
+                    PlanSummarySection(
+                        "Security",
+                        (
+                            ("Password hashing", "Argon2id"),
+                            ("Transport", "Authorization Bearer"),
+                            ("JWT secret", "generated locally / required in production"),
+                        ),
+                    ),
+                ]
+            )
 
         if features.storage_backend:
             storage_rows: list[tuple[str, str]] = [
@@ -406,6 +450,8 @@ class GenerationPlan:
             "has_email": features.email,
             "has_webhooks": features.webhooks,
             "has_rq": features.rq,
+            "has_authentication": features.authentication,
+            "authentication_registration": features.registration,
             "has_worker": any(p.id == "worker" for p in self.processes),
             "is_simple": definition.architecture.value == "simple",
             "is_modular": definition.architecture.value == "modular-monolith",
@@ -431,6 +477,7 @@ class GenerationPlan:
                 for spec in self.environment_variables
             ],
             "emits_env_example": self.emits_env_example,
+            "emits_local_env": self.emits_local_env,
             "docker_services": self.docker_services,
             "processes": [
                 {"id": p.id, "label": p.label, "command": p.command}

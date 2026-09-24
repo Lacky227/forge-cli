@@ -20,13 +20,14 @@ contributions.
 | Background Jobs | `background-jobs` | no | RQ workers (implies Redis) |
 | Email | `email` | no | SMTP email service |
 | Webhooks | `webhooks` | no | Outgoing delivery via Background Jobs |
+| Authentication | `authentication` | yes | Email identity, JWT access, rotating refresh sessions |
 
 Modules are independently multi-selectable. Selecting **Webhooks** expands to
 include **Background Jobs** (and therefore Redis). When **both** Products and
 Categories are selected, Forge generates a many-to-one relationship.
 
-Authentication, users, and security modules are reserved for a later release
-(not part of 0.4).
+Authentication is the Stage 1 foundation for 0.5.0. Authorization, email
+verification, and password recovery are not part of Stage 1.
 
 **Django Clean note:** Django Clean module packs wire presentation (DRF) and ORM
 models in `infrastructure.persistence`; they do **not** add full
@@ -93,6 +94,34 @@ modules. Follow-ups are adaptive:
 - **Django** — SQL remains required as before
 - **FastAPI / Flask** — if modules requiring SQL are selected, Forge asks for
   an SQL engine (it does **not** silently pick one)
+- **Authentication** — announces SQL, requires Alembic on FastAPI/Flask, and
+  asks whether public registration is enabled (recommended by default)
+
+## Authentication
+
+Authentication is one user-facing module. Identity, password credentials,
+access tokens, refresh sessions, and baseline security are internal parts of
+that module—not additional checkboxes.
+
+Generated endpoints cover registration (when enabled), login, refresh, logout,
+logout-all, current user, and password change. Email lookup trims surrounding
+whitespace and case-folds without provider-specific rewriting. Passwords use
+Argon2id with a 15-character minimum, a 128-character/1024-byte maximum, and no
+composition or periodic-expiry rules.
+
+Access tokens are HS256 JWTs with a 15-minute lifetime and strict algorithm,
+issuer, audience, purpose, and required-claim checks. Opaque refresh tokens use
+256 bits of randomness, are stored only as SHA-256 digests, rotate
+transactionally, retain a 30-day absolute family expiry, and revoke the family
+on replay. Logout revokes the refresh family; an issued access token can remain
+valid until its short expiry. Logout-all and password change increment
+`auth_version`, invalidating older access tokens during identity resolution.
+
+Real generation creates `AUTH_JWT_SECRET` only in gitignored `.env`.
+`.env.example` leaves it blank, while plan and dry-run disclose no value.
+Production rejects missing or obvious placeholder secrets. Authentication does
+not imply Redis, SMTP, RQ, recovery, verification, or protection of existing
+module endpoints.
 
 ## Files
 

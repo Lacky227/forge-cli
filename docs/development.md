@@ -104,6 +104,12 @@ forge.core → (no UI; may load YAML config → ProjectDefinition)
 4. Adaptive CLI prompts (only user-selectable questions; leave implications to the resolver)
 5. Tests + generated-project smoke validation
 
+Authentication changes additionally require the six-project SQLite executable
+matrix in [generation.md](./generation.md), Django
+`makemigrations --check --dry-run`, and wheel-content checks for every
+`templates/python/modules/authentication/` family. FastAPI TestClient may need
+to run outside a restricted worker-thread sandbox.
+
 Do not add a plugin manager for the next framework.
 
 Keep the distinction:

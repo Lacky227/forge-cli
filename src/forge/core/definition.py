@@ -57,6 +57,14 @@ class StorageOptions(BaseModel):
         return self
 
 
+class AuthenticationOptions(BaseModel):
+    """Stage 1 public authentication choices."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    registration: bool = True
+
+
 
 class Capabilities(BaseModel):
     """Explicit user-facing capability choices.
@@ -152,6 +160,8 @@ class ProjectDefinition(BaseModel):
     # Files storage options — required shape when ``files`` is selected;
     # must be None when Files is not selected.
     storage: StorageOptions | None = None
+    # Authentication options are meaningful only with the authentication module.
+    authentication: AuthenticationOptions | None = None
 
     @field_validator("name")
     @classmethod
@@ -283,6 +293,21 @@ class ProjectDefinition(BaseModel):
         has_files = ModuleId.FILES.value in expand_module_dependencies(
             self.modules
         )
+        has_authentication = ModuleId.AUTHENTICATION.value in expand_module_dependencies(
+            self.modules
+        )
+        if not has_authentication and self.authentication is not None:
+            raise ValueError(
+                "authentication options require the authentication module to be selected"
+            )
+        if (
+            has_authentication
+            and self.framework in {"fastapi", "flask"}
+            and not caps.migrations
+        ):
+            raise ValueError(
+                "authentication requires Alembic migrations for FastAPI and Flask"
+            )
         if not has_files and self.storage is not None:
             raise ValueError(
                 "storage options require the files module to be selected"
@@ -296,6 +321,11 @@ class ProjectDefinition(BaseModel):
             )
 
         return self
+
+    @property
+    def authentication_options(self) -> AuthenticationOptions:
+        """Resolved Stage 1 defaults when Authentication is selected."""
+        return self.authentication or AuthenticationOptions()
 
     def to_display_dict(self) -> dict[str, Any]:
         """Human-oriented summary of explicit choices (plus implied labels).

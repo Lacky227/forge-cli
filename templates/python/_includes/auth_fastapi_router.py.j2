@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, Response, status
+from fastapi.routing import APIRouter
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.orm import Session
+
+from {{ auth_database_import }} import get_db
+from {{ auth_models_import }} import User
+from {{ auth_service_import }} import (
+    AuthFailure, DuplicateIdentity, authenticate_user, change_password,
+    create_session, issue_access_token, register_user, resolve_user,
+    revoke_all, revoke_refresh, rotate_session,
+)
+
+router = APIRouter()
+bearer = HTTPBearer(auto_error=False)
+
+
+class RegistrationInput(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, max_length=120)
+
+
+class LoginInput(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+
+class RefreshInput(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=512)
+
+
+class PasswordChangeInput(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=1, max_length=128)
+
+
+def public_user(user: User) -> dict[str, object]:
+    return {"id": str(user.id), "email": user.email, "display_name": user.display_name, "is_active": user.is_active, "is_verified": user.is_verified, "created_at": user.created_at}
+
+
+def token_response(user: User, raw: str, session_id: str, response: Response) -> dict[str, object]:
+    response.headers["Cache-Control"] = "no-store"
+    return {"access_token": issue_access_token(user, session_id), "refresh_token": raw, "token_type": "bearer", "expires_in": 900}
+
+
+def auth_error(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc), headers={"WWW-Authenticate": "Bearer"})
+
+
+def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)], db: Annotated[Session, Depends(get_db)]) -> User:
+    if credentials is None:
+        raise auth_error(AuthFailure("authentication required"))
+    try:
+        return resolve_user(db, credentials.credentials)
+    except AuthFailure as exc:
+        raise auth_error(exc) from exc
+
+{% if authentication_registration %}
+@router.post("/register", status_code=201)
+def register(payload: RegistrationInput, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
+    try:
+        return public_user(register_user(db, str(payload.email), payload.password, payload.display_name))
+    except DuplicateIdentity as exc:
+        raise HTTPException(status_code=409, detail="identity already exists") from exc
+    except AuthFailure as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+{% endif %}
+@router.post("/login")
+def login(payload: LoginInput, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
+    try:
+        user = authenticate_user(db, str(payload.email), payload.password)
+        raw, session = create_session(db, user)
+        return token_response(user, raw, session.id, response)
+    except AuthFailure as exc:
+        raise auth_error(exc) from exc
+
+
+@router.post("/refresh")
+def refresh(payload: RefreshInput, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
+    try:
+        user, raw, session = rotate_session(db, payload.refresh_token)
+        return token_response(user, raw, session.id, response)
+    except AuthFailure as exc:
+        raise auth_error(exc) from exc
+
+
+@router.post("/logout", status_code=204)
+def logout(payload: RefreshInput, db: Annotated[Session, Depends(get_db)]) -> Response:
+    revoke_refresh(db, payload.refresh_token)
+    return Response(status_code=204)
+
+
+@router.get("/me")
+def me(user: Annotated[User, Depends(get_current_user)]) -> dict[str, object]:
+    return public_user(user)
+
+
+@router.post("/logout-all", status_code=204)
+def logout_all(user: Annotated[User, Depends(get_current_user)], db: Annotated[Session, Depends(get_db)]) -> Response:
+    revoke_all(db, user)
+    return Response(status_code=204)
+
+
+@router.post("/password/change", status_code=204)
+def password_change(payload: PasswordChangeInput, user: Annotated[User, Depends(get_current_user)], db: Annotated[Session, Depends(get_db)]) -> Response:
+    try:
+        change_password(db, user, payload.current_password, payload.new_password)
+    except AuthFailure as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(status_code=204)

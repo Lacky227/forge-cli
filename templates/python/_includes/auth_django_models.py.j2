@@ -1,0 +1,69 @@
+import hashlib
+import uuid
+
+from django.contrib.auth.base_user import BaseUserManager
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+
+def canonicalize_email(value: str) -> str:
+    return value.strip().casefold()
+
+
+class UserManager(BaseUserManager):
+    use_in_migrations = True
+
+    def create_user(self, email: str, password: str | None = None, **extra_fields):
+        if not email:
+            raise ValueError("email is required")
+        normalized = self.normalize_email(email).strip()
+        user = self.model(email=normalized, canonical_email=canonicalize_email(normalized), **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email: str, password: str, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("is_active", True)
+        return self.create_user(email, password, **extra_fields)
+
+
+class User(AbstractUser):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    username = None
+    email = models.EmailField(max_length=320)
+    canonical_email = models.CharField(max_length=320, unique=True)
+    display_name = models.CharField(max_length=120, blank=True)
+    is_verified = models.BooleanField(default=True)
+    auth_version = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    USERNAME_FIELD = "canonical_email"
+    REQUIRED_FIELDS = ["email"]
+    objects = UserManager()
+
+    def save(self, *args, **kwargs):
+        self.email = self.email.strip()
+        self.canonical_email = canonicalize_email(self.email)
+        super().save(*args, **kwargs)
+
+
+class AuthSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="auth_sessions")
+    family_id = models.UUIDField(db_index=True)
+    token_digest = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    replaced_by = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        indexes = [models.Index(fields=["family_id", "revoked_at"], name="auth_family_active_idx")]
+
+    @staticmethod
+    def digest(raw: str) -> str:
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()

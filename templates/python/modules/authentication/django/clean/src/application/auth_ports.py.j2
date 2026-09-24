@@ -1,0 +1,8 @@
+"""Ports for token handling at the application boundary."""
+
+from typing import Protocol
+
+
+class AccessTokenCodec(Protocol):
+    def encode(self, claims: dict[str, object]) -> str: ...
+    def decode(self, token: str) -> dict[str, object]: ...

@@ -24,6 +24,7 @@ class ModuleId(StrEnum):
     BACKGROUND_JOBS = "background-jobs"
     EMAIL = "email"
     WEBHOOKS = "webhooks"
+    AUTHENTICATION = "authentication"
 
 
 class StorageBackend(StrEnum):
@@ -87,6 +88,12 @@ MODULE_SPECS: dict[ModuleId, ModuleSpec] = {
         description="Outgoing webhook delivery via background jobs.",
         depends_on=(ModuleId.BACKGROUND_JOBS,),
     ),
+    ModuleId.AUTHENTICATION: ModuleSpec(
+        id=ModuleId.AUTHENTICATION,
+        label="Authentication",
+        description="Email/password identity with JWT access and rotating refresh sessions.",
+        requires_sql=True,
+    ),
 }
 
 MODULE_LABELS: dict[str, str] = {
@@ -101,6 +108,7 @@ MODULE_ORDER: tuple[ModuleId, ...] = (
     ModuleId.BACKGROUND_JOBS,
     ModuleId.EMAIL,
     ModuleId.WEBHOOKS,
+    ModuleId.AUTHENTICATION,
 )
 
 # Modules that share the CRUD foundation (pagination helpers / conftest).
@@ -109,6 +117,7 @@ _FOUNDATION_MODULES: frozenset[str] = frozenset(
         ModuleId.PRODUCTS.value,
         ModuleId.CATEGORIES.value,
         ModuleId.FILES.value,
+        ModuleId.AUTHENTICATION.value,
     }
 )
 

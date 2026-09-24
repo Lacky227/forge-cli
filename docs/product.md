@@ -87,7 +87,7 @@ The first product version targets **Python** project generation.
 - SQL databases: PostgreSQL, SQLite
 - NoSQL / infrastructure clients: MongoDB, Redis
 - ORMs: SQLAlchemy, Django ORM (SQL only)
-- Project modules: Products, Categories, Files, Background Jobs, Email, Webhooks (see [modules.md](./modules.md))
+- Project modules: Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication (see [modules.md](./modules.md))
 - JWT authentication
 - Docker
 - pytest, Ruff
@@ -136,5 +136,10 @@ By default, Forge is **not**:
 - a tool that hides all architectural decisions from developers
 - a generator of gigantic opaque applications users cannot understand
 - a single forced architecture for every project
+
+Stage 1 Authentication is intentionally narrower than a full identity platform:
+it provides owned email identities, password login, access JWTs, persistent
+refresh sessions, logout, and password change. Authorization/RBAC, ownership
+policies, email verification, and password recovery remain Stage 2 work.
 
 Forge helps developers make and implement architectural choices—then gets out of the way.

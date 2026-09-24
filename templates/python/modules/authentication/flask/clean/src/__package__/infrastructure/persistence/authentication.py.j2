@@ -1,0 +1,5 @@
+from {{ package_name }}.infrastructure.persistence.base import Base
+{% set auth_model_base = "Base" %}
+{% include "auth_sqlalchemy_models.py.j2" %}
+
+UserModel = User

@@ -89,3 +89,7 @@ markers = [
     "packaging: build/install smoke tests (slower; may build wheels)",
     "generation_smoke: generate + uv sync + framework/pytest/ruff (slower)",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Typer's declarative CLI API intentionally uses Option() in parameter defaults.
+"src/forge/cli/app.py" = ["B008"]
