@@ -366,9 +366,14 @@ Current limitations:
 - MongoDB uses PyMongo directly — no ODM layer
 - At most one SQL database and one NoSQL database per project
 - MFA, passkeys/OAuth, audit platforms, cookie sessions, and automatic
-  Products/Categories protection remain future work
-- Authentication rate limits are process-local (not cluster-wide); multi-instance
-  deployments should also throttle at the gateway
+  Products/Categories/Files protection remain future work
+- Access JWTs remain valid until their short expiry after logout
+- Authentication rate limits are process-local (no Redis for throttling; not
+  cluster-wide); multi-instance deployments should also throttle at the gateway
+- Ownership helpers do not replace query scoping (IDOR remains a caller concern)
+- HSTS is opt-in (`AUTH_ENABLE_HSTS`) under production HTTPS assumptions
+- When Background Jobs delivers security email, RQ may temporarily hold raw
+  recovery tokens in job arguments (SQL stores digests only)
 - Webhooks are outgoing-only; Background Jobs use RQ only; Files storage is local or S3-compatible
 
 ---

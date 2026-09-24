@@ -27,9 +27,15 @@ Python **REST API** only. CLI / Worker project types are catalogued but not gene
 ### Project modules
 
 Optional selectable modules (`products`, `categories`, `files`, `background-jobs`,
-`email`, `webhooks`) add architecture-native capabilities. See [modules.md](./modules.md)
-for the catalog, storage options, Redis/RQ implications, and composition model.
-Representative cases are included in `SUPPORTED_GENERATION_CASES`.
+`email`, `webhooks`, `authentication`, `authorization`) add architecture-native
+capabilities. See [modules.md](./modules.md) for the catalog, storage options,
+Redis/RQ implications, Authentication/Authorization contracts, and composition
+model.
+
+Representative Products/Files/Jobs cases are included in
+`SUPPORTED_GENERATION_CASES`. Authentication and Authorization are covered by
+dedicated security tests and the Stage 3 nine-family executable matrix (not by
+the published compatibility-case list alone).
 
 ### Persistence
 

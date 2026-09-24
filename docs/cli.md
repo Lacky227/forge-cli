@@ -121,11 +121,15 @@ Error: destination already exists and is not empty: /path/to/my-api
 ```text
 Error: unknown preset 'fastapi-prod'.
 Available presets:
+  fastapi-auth
+  django-auth
   fastapi-postgres
   fastapi-postgres-clean
-  fastapi-mongo
   flask-postgres
   django-postgres
+  fastapi-mongo
+  fastapi-catalog
+  fastapi-files
 ```
 
 ```text
@@ -252,8 +256,9 @@ forge new --config forge.yaml          # uses name from YAML
 | `type` | yes | e.g. `rest-api` |
 | `framework` | yes | e.g. `fastapi`, `django`, `flask` |
 | `architecture` | yes | `simple`, `modular-monolith`, `clean` |
-| `modules` | no | list of module ids (`products`, `categories`, `files`, `background-jobs`, `email`, `webhooks`); omit or `[]` for none — see [modules.md](./modules.md) |
+| `modules` | no | list of module ids (`products`, `categories`, `files`, `background-jobs`, `email`, `webhooks`, `authentication`, `authorization`); omit or `[]` for none — see [modules.md](./modules.md) |
 | `storage` | no | `{ backend: local\|s3, minio?: bool }` when `files` is selected |
+| `authentication` | no | `{ registration?, email_verification?, password_reset? }` when Authentication is selected or implied; orphan blocks without the module are rejected |
 | `persistence` | no | mapping with optional `sql` / `nosql` keys (see below) |
 | `database` | no | **legacy SQL shorthand** — engine `postgresql` / `sqlite`, or `false`/`null` for none |
 | `orm` | no | optional explicit override; usually omit |

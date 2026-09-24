@@ -36,7 +36,7 @@ uv run forge new --config forge.yaml
 uv run pytest
 ```
 
-Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`, `tests/test_dry_run.py`, `tests/test_modules.py`, `tests/test_modules_stage2.py`.
+Public CLI contract: `tests/test_cli.py`, `tests/test_presets.py`, `tests/test_plan.py`, `tests/test_dry_run.py`, `tests/test_modules.py`, `tests/test_modules_stage2.py`, `tests/test_authentication.py`, `tests/test_security_stage2.py`, `tests/test_security_stage3.py`.
 See [cli.md](./cli.md) for the full command surface, presets, and destination/exit behavior.
 Module catalog and composition: [modules.md](./modules.md).
 
