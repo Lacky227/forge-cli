@@ -37,3 +37,13 @@ def client() -> TestClient:
         yield test_client
     app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=engine)
+
+{% if has_authentication %}
+@pytest.fixture(autouse=True)
+def _reset_auth_rate_limiter():
+    from {{ package_name ~ ".auth_rate_limit" }} import limiter as _auth_limiter
+
+    _auth_limiter.reset()
+    yield
+    _auth_limiter.reset()
+{% endif %}

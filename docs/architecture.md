@@ -222,6 +222,14 @@ construction/delivery is a narrow adapter. Selecting Background Jobs swaps
 delivery to the existing RQ queue and worker without introducing a second
 broker or mail stack.
 
+Stage 3 hardening reuses the same contribution pipeline: shared includes for
+process-local rate limiting, ASGI/WSGI host/CORS/header helpers, cleanup entry
+points, and sensitive-log redaction, mounted through Authentication template
+packs. Resolution adds env metadata (`TRUSTED_HOSTS` /
+`DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `AUTH_ENABLE_HSTS`, optional
+`AUTH_RATE_LIMIT_*`) without new interactive questions. Plan **Security**
+summarizes abuse protection, trusted hosts, CORS, and cleanup availability.
+
 ## Package layout
 
 ```text

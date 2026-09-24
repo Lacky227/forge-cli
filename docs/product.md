@@ -138,10 +138,12 @@ By default, Forge is **not**:
 - a single forced architecture for every project
 
 Forge 0.5 security includes owned email identities, password login, access
-JWTs, rotating persistent refresh sessions, optional verification/reset, and a
-reusable authorization boundary. Authorization supplies roles, permissions,
-policies, and explicit ownership checks without automatically changing existing
-resource APIs. Rate limiting, MFA, audit trails, and broader release hardening
-remain later work.
+JWTs, rotating persistent refresh sessions, optional verification/reset, a
+reusable authorization boundary, and Stage 3 hardening (process-local abuse
+throttling, trusted hosts, restricted CORS, security headers, auth-state
+cleanup). Authorization supplies roles, permissions, policies, and explicit
+ownership checks without automatically changing existing resource APIs. MFA,
+passkeys/OAuth, audit platforms, cookie sessions, and automatic protection of
+Products/Categories remain deferred.
 
 Forge helps developers make and implement architectural choices—then gets out of the way.

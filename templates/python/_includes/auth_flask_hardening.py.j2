@@ -1,0 +1,79 @@
+"""WSGI HTTP hardening helpers for Authentication-enabled Flask apps."""
+
+from __future__ import annotations
+
+import os
+
+from flask import Flask, Response, abort, request
+
+# testserver is included for local TestClient compatibility.
+_DEFAULT_TRUSTED = "localhost,127.0.0.1,[::1],testserver"
+_AUTH_BODY_LIMIT = 16 * 1024
+
+
+def _csv_env(name: str, default: str = "") -> list[str]:
+    raw = os.environ.get(name, default)
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def trusted_hosts() -> list[str]:
+    hosts = _csv_env("TRUSTED_HOSTS", _DEFAULT_TRUSTED)
+    app_env = os.environ.get("APP_ENV", "development").lower()
+    if app_env == "production" and (not hosts or hosts == ["*"]):
+        raise RuntimeError(
+            "TRUSTED_HOSTS must be an explicit non-wildcard list in production"
+        )
+    return hosts
+
+
+def cors_origins() -> list[str]:
+    return _csv_env("CORS_ALLOWED_ORIGINS", "")
+
+
+def install_security(app: Flask) -> None:
+    hosts = trusted_hosts()
+    allow_star = hosts == ["*"]
+    origins = cors_origins()
+    enable_hsts = (
+        os.environ.get("APP_ENV", "development").lower() == "production"
+        and os.environ.get("AUTH_ENABLE_HSTS", "false").lower() in {"1", "true", "yes"}
+    )
+
+    @app.before_request
+    def _enforce_trusted_host() -> None:
+        if allow_star:
+            return
+        host = (request.host or "").split(":")[0].strip().lower()
+        allowed = {item.lower() for item in hosts}
+        if host not in allowed:
+            abort(400)
+
+    @app.before_request
+    def _enforce_auth_body_limit() -> None:
+        if "/auth" not in (request.path or ""):
+            return
+        length = request.content_length
+        if length is not None and length > _AUTH_BODY_LIMIT:
+            abort(413)
+
+    @app.after_request
+    def _security_headers(response: Response) -> Response:
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        if enable_hsts:
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        if origins:
+            origin = request.headers.get("Origin")
+            if origin in origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Vary"] = "Origin"
+                response.headers["Access-Control-Allow-Headers"] = (
+                    "Authorization, Content-Type, Accept"
+                )
+                response.headers["Access-Control-Allow-Methods"] = (
+                    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                )
+        return response

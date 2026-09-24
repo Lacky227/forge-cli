@@ -135,6 +135,42 @@ Production rejects missing or obvious placeholder secrets. Authentication
 alone does not imply Redis, SMTP, RQ, recovery, verification, Authorization, or
 protection of existing module endpoints.
 
+### Hardening (Stage 3)
+
+When Authentication is selected, Forge also generates:
+
+- **Process-local rate limiting** on register/login/refresh and recovery
+  *request* endpoints (`email-verification/request`, `password/forgot`)
+  (credential / registration / refresh / recovery buckets, keyed by
+  `category + client IP`, never by email alone). Confirm/reset endpoints rely
+  on opaque high-entropy tokens rather than the recovery request bucket.
+  Returns HTTP 429 with `Retry-After`. Limits are env-configurable with secure
+  defaults; there is **no Redis dependency** and no cluster-wide shared counter
+  — multi-instance deployments must throttle at the gateway as well.
+- **Trusted hosts** — FastAPI/Flask `TRUSTED_HOSTS` (default localhost loopback
+  + `testserver`); Django prefers `DJANGO_ALLOWED_HOSTS` and accepts
+  `TRUSTED_HOSTS` as an alias. Production (`APP_ENV=production`) rejects empty
+  or `*` host lists; Django also rejects `DEBUG=true` with Authentication.
+- **CORS** — `CORS_ALLOWED_ORIGINS` (default empty = no cross-origin
+  allowance). Never pairs `*` with credentials; Bearer tokens use
+  `allow_credentials=False`.
+- **Security headers** — `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`. HSTS only when
+  `APP_ENV=production` **and** `AUTH_ENABLE_HSTS=true` (opt-in; never for
+  localhost by default).
+- **Auth-route body limits** (~16 KiB Content-Length) on FastAPI/Flask without
+  affecting Files uploads. Broader body limits remain a reverse-proxy concern.
+- **Cleanup maintenance** — FastAPI/Flask
+  `python -m <package>[.security|.infrastructure].auth_cleanup`; Django
+  `manage.py cleanup_auth_state`. Removes expired action tokens and refresh
+  sessions past family `expires_at` while retaining in-family replaced sessions
+  needed for replay detection. Scheduling is the deployment's responsibility.
+- **Sensitive logging helpers** — redaction utilities for passwords, tokens,
+  Authorization headers, and secrets. RQ security-email jobs use
+  `result_ttl=0` / `failure_ttl=0` and a token-free description; raw tokens
+  still appear in Redis job args until the worker runs (only digests are in
+  SQL).
+
 ### Account security flows
 
 Email verification (24-hour default) and password reset (30-minute default)
@@ -260,7 +296,10 @@ re-derive the infrastructure graph.
 
 Selected modules appear under **Modules** (implied ones marked). Additional
 sections when applicable: Storage, Background Jobs, Email, Webhooks,
-Processes, Infrastructure (Redis when implied), Docker services.
+Identity/Authentication/Security/Authorization, Processes, Infrastructure
+(Redis when implied), Docker services. Security hardening facts (process-local
+throttling, trusted hosts, CORS, cleanup) appear under **Security** when
+Authentication is selected.
 
 ## Testing
 

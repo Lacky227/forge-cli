@@ -28,3 +28,13 @@ def client():
         Base.metadata.drop_all(bind=database_module._engine)
         database_module._engine = None
         database_module._SessionLocal = None
+
+{% if has_authentication %}
+@pytest.fixture(autouse=True)
+def _reset_auth_rate_limiter():
+    from {{ package_name ~ ".infrastructure.rate_limit" }} import limiter as _auth_limiter
+
+    _auth_limiter.reset()
+    yield
+    _auth_limiter.reset()
+{% endif %}

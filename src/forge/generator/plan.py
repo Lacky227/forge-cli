@@ -236,6 +236,16 @@ class GenerationPlan:
                             ("Password hashing", "Argon2id"),
                             ("Transport", "Authorization Bearer"),
                             ("JWT secret", "generated locally / required in production"),
+                            (
+                                "Abuse protection",
+                                "process-local throttling (not cluster-wide)",
+                            ),
+                            ("Trusted hosts", "configurable allow-list"),
+                            ("CORS", "restricted / configurable origins"),
+                            (
+                                "Cleanup",
+                                "maintenance command for expired auth state",
+                            ),
                             *(
                                 (("Verification tokens", "opaque, single-use, 24 hours"),)
                                 if features.email_verification

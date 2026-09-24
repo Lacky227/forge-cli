@@ -418,6 +418,56 @@ def _append_module_dependencies(
                 ("AUTH_REFRESH_TOKEN_TTL_DAYS", "30", "Absolute refresh-family lifetime in days"),
             ]
         )
+        if definition.framework == "django":
+            env_vars.append(
+                (
+                    "DJANGO_ALLOWED_HOSTS",
+                    "localhost,127.0.0.1,[::1],testserver",
+                    "Allowed Host headers (TRUSTED_HOSTS accepted as alias)",
+                )
+            )
+        else:
+            env_vars.append(
+                (
+                    "TRUSTED_HOSTS",
+                    "localhost,127.0.0.1,[::1],testserver",
+                    "Comma-separated Host allow-list (production rejects empty/*)",
+                )
+            )
+        env_vars.extend(
+            [
+                (
+                    "CORS_ALLOWED_ORIGINS",
+                    "",
+                    "Comma-separated browser origins (empty = no CORS)",
+                ),
+                (
+                    "AUTH_ENABLE_HSTS",
+                    "false",
+                    "Opt-in HSTS when APP_ENV=production (never for localhost)",
+                ),
+                (
+                    "AUTH_RATE_LIMIT_CREDENTIAL",
+                    "10",
+                    "Login attempts per client IP per window (process-local)",
+                ),
+                (
+                    "AUTH_RATE_LIMIT_REGISTRATION",
+                    "5",
+                    "Registration attempts per client IP per window (process-local)",
+                ),
+                (
+                    "AUTH_RATE_LIMIT_REFRESH",
+                    "30",
+                    "Refresh attempts per client IP per window (process-local)",
+                ),
+                (
+                    "AUTH_RATE_LIMIT_RECOVERY",
+                    "5",
+                    "Verification/reset attempts per client IP per window (process-local)",
+                ),
+            ]
+        )
         auth = definition.authentication_options
         if auth.email_verification or auth.password_reset:
             env_vars.append(

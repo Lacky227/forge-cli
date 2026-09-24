@@ -401,7 +401,7 @@ docker: true
 - Framework options depend on language + project type (FastAPI, Django, Flask, …)
 - Architecture for REST API: Simple, Modular Monolith, Clean Architecture
 - **Project modules:** optional multi-select (Products, Categories, Files, Background Jobs, Email, Webhooks, Authentication, Authorization). See [modules.md](./modules.md)
-- **Authentication:** announces its SQL requirement, requires Alembic on FastAPI/Flask, asks about registration, then offers optional Email verification and Password reset
+- **Authentication:** announces its SQL requirement, requires Alembic on FastAPI/Flask, asks about registration, then offers optional Email verification and Password reset. Rate limits, trusted hosts, CORS, HSTS, and cleanup use secure defaults / env vars — **no additional wizard questions**
 - **Authorization:** announces that Authentication is implied; account-security email flows announce that Email is implied
 - **FastAPI / Flask:** if modules requiring SQL are selected, ask for an SQL engine (no silent default); otherwise optional “Add a database?” → SQL / NoSQL / Both → engine prompts; Alembic only when SQL is selected; SQLAlchemy is implied for SQL (dim note); pymongo / redis clients noted for NoSQL
 - **Django (REST API):** SQL engine required; optional “Also add a NoSQL database?”; Django ORM + Django migrations + DRF are implied (dim notes, not selectable choices)

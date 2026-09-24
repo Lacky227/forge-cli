@@ -10,6 +10,7 @@ from flask import Blueprint, g, jsonify, request
 from pydantic import BaseModel, EmailStr, Field, ValidationError
 
 from {{ auth_database_import }} import get_session
+from {{ auth_rate_limit_import }} import check_rate_limit
 from {{ auth_service_import }} import (
     AuthFailure, DuplicateIdentity, authenticate_user, change_password,
     create_session, issue_access_token, register_user, resolve_user,
@@ -90,6 +91,24 @@ def tokens(user, raw, session):
     return response
 
 
+def rate_limited(category: str):
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            ip = (request.remote_addr or "unknown").strip() or "unknown"
+            decision = check_rate_limit(category, ip)
+            if not decision.allowed:
+                response = jsonify({"detail": "too many requests"})
+                response.status_code = 429
+                response.headers["Retry-After"] = str(decision.retry_after)
+                return response
+            return view(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
 def require_authenticated(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -106,6 +125,7 @@ def require_authenticated(view):
 
 {% if authentication_registration %}
 @bp.post("/register")
+@rate_limited("registration")
 def register():
     data = payload(RegistrationInput)
     if data is None:
@@ -128,6 +148,7 @@ def register():
 
 {% endif %}
 @bp.post("/login")
+@rate_limited("credential")
 def login():
     data = payload(LoginInput)
     if data is None:
@@ -142,6 +163,7 @@ def login():
 
 
 @bp.post("/refresh")
+@rate_limited("refresh")
 def refresh():
     data = payload(RefreshInput)
     if data is None:
@@ -191,6 +213,7 @@ def password_change(db):
 
 {% if authentication_email_verification %}
 @bp.post("/email-verification/request")
+@rate_limited("recovery")
 def request_email_verification():
     data = payload(EmailActionInput)
     if data is None:
@@ -221,6 +244,7 @@ def confirm_email_verification():
 
 {% if authentication_password_reset %}
 @bp.post("/password/forgot")
+@rate_limited("recovery")
 def forgot_password():
     data = payload(EmailActionInput)
     if data is not None:

@@ -107,8 +107,9 @@ forge.core → (no UI; may load YAML config → ProjectDefinition)
 Security changes additionally require the nine-family SQLite executable matrix
 in [generation.md](./generation.md), Django
 `makemigrations --check --dry-run`, and wheel-content checks for every
-Authentication and Authorization template family. FastAPI TestClient may need
-to run outside a restricted worker-thread sandbox.
+Authentication and Authorization template family (including Stage 3 hardening
+includes and cleanup commands). FastAPI TestClient may need to run outside a
+restricted worker-thread sandbox.
 
 Do not add a plugin manager for the next framework.
 

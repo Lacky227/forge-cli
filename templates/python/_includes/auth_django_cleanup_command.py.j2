@@ -1,0 +1,46 @@
+"""Django management command: cleanup expired auth tokens and sessions."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from django.core.management.base import BaseCommand
+from django.utils import timezone as django_timezone
+
+from {{ auth_django_models_import }} import AuthSession
+{% if authentication_email_verification or authentication_password_reset %}
+from {{ auth_django_models_import }} import AuthActionToken
+{% endif %}
+
+
+def cleanup_auth_state(*, now: datetime | None = None) -> dict[str, int]:
+    """Delete expired action tokens and refresh sessions past family expiry.
+
+    Replaced/revoked sessions still within family ``expires_at`` are retained
+    for replay detection. Scheduling is the deployment's responsibility.
+    """
+    moment = now or django_timezone.now()
+{% if authentication_email_verification or authentication_password_reset %}
+    tokens_deleted, _ = AuthActionToken.objects.filter(expires_at__lte=moment).delete()
+{% else %}
+    tokens_deleted = 0
+{% endif %}
+    sessions_deleted, _ = AuthSession.objects.filter(expires_at__lte=moment).delete()
+    return {"action_tokens": int(tokens_deleted), "sessions": int(sessions_deleted)}
+
+
+class Command(BaseCommand):
+    help = (
+        "Remove expired authentication action tokens and refresh sessions "
+        "past family expiry (idempotent)."
+    )
+
+    def handle(self, *args, **options):
+        result = cleanup_auth_state()
+        self.stdout.write(
+            self.style.SUCCESS(
+                "cleanup_auth_state: removed "
+                f"{result['action_tokens']} action tokens, "
+                f"{result['sessions']} sessions"
+            )
+        )

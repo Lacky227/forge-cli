@@ -1,0 +1,11 @@
+{% set auth_test_django = true %}
+{% set auth_test_module = "presentation.api.auth_views" %}
+{% set auth_rate_limit_module = "infrastructure.rate_limit" %}
+{% set auth_django_cleanup_import = "infrastructure.persistence.management.commands.cleanup_auth_state" %}
+{% set auth_django_models_import = "infrastructure.persistence.authentication" %}
+{% set auth_sensitive_logging_module = "infrastructure.sensitive_logging" %}
+{% set auth_test_prefix = "/api/auth" %}
+{% set auth_test_slash = "/" %}
+{% set auth_test_health = "/api/health" %}
+{% set auth_test_fixture = "api_client" %}
+{% include "auth_security_hardening_tests.py.j2" %}

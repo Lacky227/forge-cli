@@ -13,3 +13,4 @@ htmlcov/
 .DS_Store
 .smoke/
 .stage3-dense/
+.stage3-smoke/

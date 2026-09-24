@@ -206,6 +206,13 @@ checks DB/API wiring and confirms Redis/worker appear only when Background Jobs
 is selected. Dry-run lists every policy, delivery, migration, and generated test
 artifact without sampling tokens, secrets, sending mail, or creating a target.
 
+Stage 3 hardening (process-local throttling, trusted hosts, CORS, security
+headers, auth cleanup, sensitive-log helpers) is emitted whenever Authentication
+is selected. Plan output surfaces hardening facts under **Security**; env
+metadata includes host/CORS/HSTS/rate-limit knobs without new wizard questions.
+Generated projects document reverse-proxy responsibility for cluster-wide abuse
+protection and request-body limits beyond auth-route Content-Length checks.
+
 ## Forge tests vs generated tests
 
 Forge tests live in this repo’s `tests/`. Generated app tests live inside each generated project.

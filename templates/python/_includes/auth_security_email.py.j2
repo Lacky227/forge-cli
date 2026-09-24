@@ -44,6 +44,8 @@ def send_security_email_now(to: str, purpose: str, token: str) -> None:
 
 def deliver_security_email(to: str, purpose: str, token: str) -> None:
 {% if has_background_jobs %}
+    # Raw tokens necessarily appear in Redis job args until the worker runs.
+    # Only digests are stored in SQL; do not log job kwargs or describe the token.
     get_queue().enqueue(
         send_security_email_now,
         to,
@@ -51,6 +53,8 @@ def deliver_security_email(to: str, purpose: str, token: str) -> None:
         token,
         retry=Retry(max=3, interval=[30, 120, 300]),
         result_ttl=0,
+        failure_ttl=0,
+        description=f"security-email:{purpose}",
     )
 {% else %}
     send_security_email_now(to, purpose, token)

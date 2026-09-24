@@ -1,0 +1,114 @@
+"""Process-local sliding-window rate limiter for authentication abuse protection.
+
+This limiter is intentionally single-process. Multi-instance deployments must
+add gateway or shared-store throttling; Redis is not required by Authentication.
+"""
+
+from __future__ import annotations
+
+import os
+import threading
+import time
+from collections import defaultdict, deque
+from collections.abc import Callable
+from dataclasses import dataclass
+
+DEFAULT_LIMITS: dict[str, tuple[int, float]] = {
+    "credential": (10, 60.0),
+    "registration": (5, 60.0),
+    "refresh": (30, 60.0),
+    "recovery": (5, 60.0),
+}
+
+_ENV_LIMITS = {
+    "credential": (
+        "AUTH_RATE_LIMIT_CREDENTIAL",
+        "AUTH_RATE_LIMIT_CREDENTIAL_WINDOW",
+    ),
+    "registration": (
+        "AUTH_RATE_LIMIT_REGISTRATION",
+        "AUTH_RATE_LIMIT_REGISTRATION_WINDOW",
+    ),
+    "refresh": (
+        "AUTH_RATE_LIMIT_REFRESH",
+        "AUTH_RATE_LIMIT_REFRESH_WINDOW",
+    ),
+    "recovery": (
+        "AUTH_RATE_LIMIT_RECOVERY",
+        "AUTH_RATE_LIMIT_RECOVERY_WINDOW",
+    ),
+}
+
+
+def _parse_limit(category: str) -> tuple[int, float]:
+    max_events, window = DEFAULT_LIMITS[category]
+    count_env, window_env = _ENV_LIMITS[category]
+    raw_count = os.environ.get(count_env)
+    raw_window = os.environ.get(window_env)
+    if raw_count is not None and raw_count.strip():
+        max_events = max(1, int(raw_count))
+    if raw_window is not None and raw_window.strip():
+        window = max(1.0, float(raw_window))
+    return max_events, window
+
+
+@dataclass(frozen=True)
+class RateLimitDecision:
+    allowed: bool
+    retry_after: int = 0
+
+
+class SlidingWindowRateLimiter:
+    """Thread-safe process-local sliding window keyed by category + client IP."""
+
+    def __init__(self, *, clock: Callable[[], float] | None = None) -> None:
+        self._clock = clock or time.monotonic
+        self._lock = threading.Lock()
+        self._events: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._events.clear()
+            self._clock = time.monotonic
+
+    def set_clock(self, clock: Callable[[], float]) -> None:
+        self._clock = clock
+
+    def check(self, category: str, client_ip: str) -> RateLimitDecision:
+        if category not in DEFAULT_LIMITS:
+            raise ValueError(f"unknown rate-limit category: {category}")
+        max_events, window = _parse_limit(category)
+        key = (category, client_ip or "unknown")
+        now = self._clock()
+        with self._lock:
+            bucket = self._events[key]
+            cutoff = now - window
+            while bucket and bucket[0] <= cutoff:
+                bucket.popleft()
+            if len(bucket) >= max_events:
+                retry_after = max(1, int((bucket[0] + window - now) + 0.999))
+                return RateLimitDecision(allowed=False, retry_after=retry_after)
+            bucket.append(now)
+            return RateLimitDecision(allowed=True)
+
+
+limiter = SlidingWindowRateLimiter()
+
+
+def client_ip_from_environ(
+    environ: dict[str, str] | None = None,
+    *,
+    remote_addr: str | None = None,
+) -> str:
+    """Resolve client IP without trusting spoofable forwarded headers."""
+    if remote_addr:
+        return remote_addr.strip() or "unknown"
+    if environ:
+        value = (environ.get("REMOTE_ADDR") or "").strip()
+        if value:
+            return value
+    return "unknown"
+
+
+def check_rate_limit(category: str, client_ip: str) -> RateLimitDecision:
+    return limiter.check(category, client_ip)

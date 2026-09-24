@@ -5,7 +5,7 @@ import os
 {% endif %}
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Response, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.routing import APIRouter
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from {{ auth_database_import }} import get_db
 from {{ auth_models_import }} import User
+from {{ auth_rate_limit_import }} import check_rate_limit
 from {{ auth_service_import }} import (
     AuthFailure, DuplicateIdentity, authenticate_user, change_password,
     create_session, issue_access_token, register_user, resolve_user,
@@ -79,6 +80,23 @@ def auth_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc), headers={"WWW-Authenticate": "Bearer"})
 
 
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client is not None else "unknown"
+
+
+def enforce_rate_limit(category: str):
+    def dependency(request: Request) -> None:
+        decision = check_rate_limit(category, _client_ip(request))
+        if not decision.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="too many requests",
+                headers={"Retry-After": str(decision.retry_after)},
+            )
+
+    return dependency
+
+
 def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)], db: Annotated[Session, Depends(get_db)]) -> User:
     if credentials is None:
         raise auth_error(AuthFailure("authentication required"))
@@ -88,7 +106,7 @@ def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None,
         raise auth_error(exc) from exc
 
 {% if authentication_registration %}
-@router.post("/register", status_code=201)
+@router.post("/register", status_code=201, dependencies=[Depends(enforce_rate_limit("registration"))])
 def register(payload: RegistrationInput, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
     try:
         user = register_user(db, str(payload.email), payload.password, payload.display_name)
@@ -106,7 +124,7 @@ def register(payload: RegistrationInput, db: Annotated[Session, Depends(get_db)]
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 {% endif %}
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(enforce_rate_limit("credential"))])
 def login(payload: LoginInput, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
     try:
         user = authenticate_user(db, str(payload.email), payload.password)
@@ -116,7 +134,7 @@ def login(payload: LoginInput, response: Response, db: Annotated[Session, Depend
         raise auth_error(exc) from exc
 
 
-@router.post("/refresh")
+@router.post("/refresh", dependencies=[Depends(enforce_rate_limit("refresh"))])
 def refresh(payload: RefreshInput, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
     try:
         user, raw, session = rotate_session(db, payload.refresh_token)
@@ -151,7 +169,7 @@ def password_change(payload: PasswordChangeInput, user: Annotated[User, Depends(
     return Response(status_code=204)
 
 {% if authentication_email_verification %}
-@router.post("/email-verification/request", status_code=202)
+@router.post("/email-verification/request", status_code=202, dependencies=[Depends(enforce_rate_limit("recovery"))])
 def request_email_verification(payload: EmailActionInput, db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
     user = db.query(User).filter(User.canonical_email == str(payload.email).strip().casefold()).first()
     if user is not None and user.is_active and not user.is_verified:
@@ -173,7 +191,7 @@ def confirm_email_verification(payload: ActionTokenInput, db: Annotated[Session,
 {% endif %}
 
 {% if authentication_password_reset %}
-@router.post("/password/forgot", status_code=202)
+@router.post("/password/forgot", status_code=202, dependencies=[Depends(enforce_rate_limit("recovery"))])
 def forgot_password(payload: EmailActionInput, db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
     user = db.query(User).filter(User.canonical_email == str(payload.email).strip().casefold()).first()
     if user is not None and user.is_active:

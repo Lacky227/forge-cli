@@ -365,8 +365,10 @@ Current limitations:
 - Redis integration is a client wiring — not cache/session/queue abstractions
 - MongoDB uses PyMongo directly — no ODM layer
 - At most one SQL database and one NoSQL database per project
-- Stage 3 rate limiting, MFA, audit trails, production key management, and
-  release-hardening remain future work
+- MFA, passkeys/OAuth, audit platforms, cookie sessions, and automatic
+  Products/Categories protection remain future work
+- Authentication rate limits are process-local (not cluster-wide); multi-instance
+  deployments should also throttle at the gateway
 - Webhooks are outgoing-only; Background Jobs use RQ only; Files storage is local or S3-compatible
 
 ---

@@ -13,6 +13,10 @@ from {{ auth_django_security_import }} import (
     AuthFailure, ForgeBearerAuthentication, create_session, issue_access_token,
     revoke_all, revoke_refresh, rotate_session, validate_password_policy,
 )
+from {{ auth_django_throttles_import }} import (
+    CredentialRateThrottle, RecoveryRateThrottle, RefreshRateThrottle,
+    RegistrationRateThrottle,
+)
 {% if authentication_email_verification %}
 from {{ auth_django_security_import }} import VERIFY_EMAIL, confirm_email_token
 {% endif %}
@@ -72,6 +76,7 @@ def token_response(user, raw, auth_session):
 class RegisterView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [RegistrationRateThrottle]
 
     def post(self, request):
         serializer = RegistrationSerializer(data=request.data)
@@ -99,6 +104,7 @@ class RegisterView(APIView):
 class LoginView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [CredentialRateThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -120,6 +126,7 @@ class LoginView(APIView):
 class RefreshView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [RefreshRateThrottle]
 
     def post(self, request):
         serializer = RefreshSerializer(data=request.data)
@@ -183,6 +190,7 @@ class PasswordChangeView(APIView):
 class EmailVerificationRequestView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [RecoveryRateThrottle]
 
     def post(self, request):
         serializer = EmailActionSerializer(data=request.data)
@@ -215,6 +223,7 @@ class EmailVerificationConfirmView(APIView):
 class ForgotPasswordView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [RecoveryRateThrottle]
 
     def post(self, request):
         serializer = EmailActionSerializer(data=request.data)

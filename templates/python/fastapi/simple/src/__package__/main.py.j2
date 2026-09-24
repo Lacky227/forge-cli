@@ -5,6 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from {{ package_name }}.config import settings
+{% if has_authentication %}
+from {{ package_name }}.auth_hardening import install_security
+{% endif %}
 {% for router in fastapi_routers|sort(attribute='module_id') %}
 from {{ router.import_module }} import (
     {{ router.router_attr }} as {{ router.module_id }}_router,
@@ -39,6 +42,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 {% else %}
 app = FastAPI(title=settings.app_name)
+{% endif %}
+{% if has_authentication %}
+install_security(app)
 {% endif %}
 
 

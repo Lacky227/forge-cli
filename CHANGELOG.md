@@ -22,12 +22,20 @@ and this project follows the versioning policy in [docs/development.md](docs/dev
   single-use opaque action tokens and the existing Email capability.
 - Optional RQ delivery for account-security email when Background Jobs is
   independently selected, plus the curated `django-auth` preset.
+- Stage 3 hardening: process-local sliding-window rate limits (429 +
+  `Retry-After`), trusted hosts, restricted CORS, baseline security headers
+  (opt-in HSTS in production), auth-route body limits, sensitive-log redaction,
+  production host/DEBUG/secret checks, and idempotent auth-state cleanup
+  commands — without Redis for throttling and without new wizard questions.
 
 ### Compatibility
 
 - Authentication and Authorization require SQL; FastAPI and Flask also require
   Alembic. Authorization implies Authentication. Verification/reset imply
   Email, but not Background Jobs or Redis.
+- Rate limits are process-local only; gateway throttling remains a deployment
+  concern for multi-instance setups. RQ security-email jobs may carry raw
+  tokens in Redis args until the worker runs (SQL stores digests only).
 - Existing configurations without security modules and Stage 1
   Authentication-only configurations retain their prior behavior. Existing
   Products, Categories, and Files routes are not automatically protected.

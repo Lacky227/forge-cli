@@ -62,6 +62,18 @@ for module in ("authentication", "authorization"):
 assert any(
     n.endswith("auth_account_security_tests.py.j2") for n in templates
 ), "missing account-security test templates"
+assert any(
+    n.endswith("auth_rate_limit.py.j2") for n in templates
+), "missing Stage 3 rate-limit templates"
+assert any(
+    n.endswith("auth_security_hardening_tests.py.j2") for n in templates
+), "missing Stage 3 hardening test templates"
+assert any(
+    n.endswith("auth_cleanup_sqlalchemy.py.j2") for n in templates
+), "missing Stage 3 cleanup templates"
+assert any(
+    n.endswith("auth_fastapi_hardening.py.j2") for n in templates
+), "missing Stage 3 FastAPI hardening templates"
 # Must not ship tests or local smoke trees inside the package
 assert not any(n.startswith("forge/tests/") for n in names)
 assert not any(".smoke" in n for n in names)

@@ -113,6 +113,10 @@ def test_wheel_contains_runtime_templates(tmp_path: Path) -> None:
             ), f"missing {framework}/{architecture} authorization templates"
     assert any(n.endswith("auth_account_security_tests.py.j2") for n in templates)
     assert any(n.endswith("auth_security_email.py.j2") for n in templates)
+    assert any(n.endswith("auth_rate_limit.py.j2") for n in templates)
+    assert any(n.endswith("auth_security_hardening_tests.py.j2") for n in templates)
+    assert any(n.endswith("auth_cleanup_sqlalchemy.py.j2") for n in templates)
+    assert any(n.endswith("auth_fastapi_hardening.py.j2") for n in templates)
     assert any(
         "/modules/_foundation/" in n for n in templates
     ), "missing module foundation templates"
@@ -361,6 +365,10 @@ linting: true
         if project_name != "wheel-authz":
             assert (package / "security_email.py").is_file()
             assert (generated / "tests" / "test_account_security.py").is_file()
+        assert (package / "auth_rate_limit.py").is_file() or (
+            package / "security" / "rate_limit.py"
+        ).is_file()
+        assert (generated / "tests" / "test_security_hardening.py").is_file()
 
     # Generate with CI from the installed wheel (packaged ``_shared`` template).
     config = gen_dir / "with-ci.yaml"

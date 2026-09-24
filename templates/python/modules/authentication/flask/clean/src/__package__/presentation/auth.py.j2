@@ -3,4 +3,5 @@
 {% set auth_service_import = package_name ~ ".infrastructure.auth_security" %}
 {% set auth_delivery_import = package_name ~ ".infrastructure.security_email" %}
 {% set auth_delivery_symbol = "security_email_delivery" %}
+{% set auth_rate_limit_import = package_name ~ ".infrastructure.rate_limit" %}
 {% include "auth_flask_blueprint.py.j2" %}

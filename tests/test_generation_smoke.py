@@ -95,15 +95,15 @@ def test_executable_generation_smoke(case: GenerationCase, tmp_path: Path) -> No
 @pytest.mark.generation_smoke
 @pytest.mark.parametrize("framework", ["fastapi", "flask", "django"])
 @pytest.mark.parametrize("architecture", tuple(ArchitectureStyle))
-def test_stage2_security_matrix(
+def test_stage3_security_matrix(
     framework: str,
     architecture: ArchitectureStyle,
     tmp_path: Path,
 ) -> None:
-    """Execute every Stage 2 family with the recommended dense/recovery mix."""
+    """Execute every Stage 3 family with hardening + dense/recovery mix."""
     dense = architecture != ArchitectureStyle.MODULAR_MONOLITH
     project = ProjectDefinition(
-        name=f"stage2-{framework}-{architecture.value}",
+        name=f"stage3-{framework}-{architecture.value}",
         language=Language.PYTHON,
         project_type=ProjectType.REST_API,
         framework=framework,

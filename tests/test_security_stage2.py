@@ -190,6 +190,8 @@ def test_action_tokens_are_digest_only_and_jobs_reuse_existing_worker(tmp_path: 
     ).read_text(encoding="utf-8")
     assert "get_queue().enqueue" in security_email
     assert "Retry(max=3" in security_email
+    assert "result_ttl=0" in security_email
+    assert "failure_ttl=0" in security_email
     assert "redis:" in compose and "worker:" in compose
 
 

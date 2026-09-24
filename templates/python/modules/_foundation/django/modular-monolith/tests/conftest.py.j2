@@ -9,3 +9,13 @@ from rest_framework.test import APIClient
 @pytest.fixture
 def api_client() -> APIClient:
     return APIClient()
+
+{% if has_authentication %}
+@pytest.fixture(autouse=True)
+def _reset_auth_rate_limiter():
+    from {{ "apps.identity.rate_limit" }} import limiter as _auth_limiter
+
+    _auth_limiter.reset()
+    yield
+    _auth_limiter.reset()
+{% endif %}

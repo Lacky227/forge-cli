@@ -45,7 +45,47 @@ PASSWORD_HASHERS = [
 ]
 {% endif %}
 DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() in {"1", "true", "yes"}
+{% if has_authentication %}
+_raw_allowed_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS") or os.environ.get(
+    "TRUSTED_HOSTS",
+    "localhost,127.0.0.1,[::1],testserver",
+)
+ALLOWED_HOSTS: list[str] = [
+    h.strip() for h in _raw_allowed_hosts.split(",") if h.strip()
+]
+if (
+    os.environ.get("APP_ENV", "development").lower() == "production"
+    and (not ALLOWED_HOSTS or ALLOWED_HOSTS == ["*"])
+):
+    raise RuntimeError(
+        "DJANGO_ALLOWED_HOSTS (or TRUSTED_HOSTS) must be an explicit "
+        "non-wildcard list in production"
+    )
+if (
+    os.environ.get("APP_ENV", "development").lower() == "production"
+    and DEBUG
+):
+    raise RuntimeError(
+        "DJANGO_DEBUG must be false when APP_ENV=production "
+        "with Authentication"
+    )
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "no-referrer"
+X_FRAME_OPTIONS = "DENY"
+if (
+    os.environ.get("APP_ENV", "development").lower() == "production"
+    and os.environ.get("AUTH_ENABLE_HSTS", "false").lower() in {"1", "true", "yes"}
+):
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+CORS_ALLOWED_ORIGINS: list[str] = [
+    part.strip()
+    for part in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+    if part.strip()
+]
+{% else %}
 ALLOWED_HOSTS: list[str] = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
+{% endif %}
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -67,6 +107,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+{% if has_authentication %}
+    *(["apps.identity.cors.ForgeCorsMiddleware"] if CORS_ALLOWED_ORIGINS else []),
+{% endif %}
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
